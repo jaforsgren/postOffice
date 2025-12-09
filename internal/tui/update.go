@@ -102,13 +102,13 @@ func (m Model) executeCommand() Model {
 	switch parts[0] {
 	case "collections", "c", "col":
 		m.mode = ModeCollections
-		m.loadCollectionsList()
+		m = m.loadCollectionsList()
 		m.statusMessage = "Showing collections"
 
 	case "request", "requests", "r", "req":
 		if m.collection != nil {
 			m.mode = ModeRequests
-			m.loadRequestsList()
+			m = m.loadRequestsList()
 			m.statusMessage = "Showing requests"
 		} else {
 			m.statusMessage = "No collection loaded. Load a collection first."
@@ -149,7 +149,7 @@ func (m Model) executeCommand() Model {
 	return m
 }
 
-func (m Model) loadCollectionsList() {
+func (m Model) loadCollectionsList() Model {
 	collections := m.parser.ListCollections()
 	m.items = collections
 	m.cursor = 0
@@ -159,13 +159,14 @@ func (m Model) loadCollectionsList() {
 	if len(m.items) == 0 {
 		m.statusMessage = "No collections loaded yet. Use :load <path> to load a collection"
 	}
+	return m
 }
 
-func (m Model) loadRequestsList() {
+func (m Model) loadRequestsList() Model {
 	if m.collection == nil {
 		m.items = []string{}
 		m.statusMessage = "No collection loaded"
-		return
+		return m
 	}
 
 	m.items = []string{}
@@ -198,6 +199,7 @@ func (m Model) loadRequestsList() {
 		m.statusMessage = fmt.Sprintf("Loaded %d items (folders: %d, requests: %d, other: %d)",
 			len(m.items), folderCount, requestCount, otherCount)
 	}
+	return m
 }
 
 func (m Model) loadCollection(path string) Model {
@@ -210,7 +212,7 @@ func (m Model) loadCollection(path string) Model {
 	m.collection = collection
 	m.statusMessage = fmt.Sprintf("Loaded collection: %s", collection.Info.Name)
 	m.mode = ModeRequests
-	m.loadRequestsList()
+	m = m.loadRequestsList()
 	return m
 }
 
@@ -271,7 +273,7 @@ func (m Model) navigateUp() Model {
 	m.breadcrumb = m.breadcrumb[:len(m.breadcrumb)-1]
 
 	if len(m.breadcrumb) == 0 {
-		m.loadRequestsList()
+		m = m.loadRequestsList()
 	} else {
 		current := m.collection.Items
 		for _, crumb := range m.breadcrumb {
