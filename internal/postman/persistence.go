@@ -9,7 +9,8 @@ import (
 const configFileName = ".postoffice_collections.json"
 
 type PersistenceConfig struct {
-	CollectionPaths []string `json:"collection_paths"`
+	CollectionPaths  []string `json:"collection_paths"`
+	EnvironmentPaths []string `json:"environment_paths"`
 }
 
 func (p *Parser) SaveState() error {
@@ -20,15 +21,23 @@ func (p *Parser) SaveState() error {
 
 	configPath := filepath.Join(homeDir, configFileName)
 
-	paths := make([]string, 0)
+	collectionPaths := make([]string, 0)
 	for name := range p.collections {
 		if path, exists := p.pathMap[name]; exists {
-			paths = append(paths, path)
+			collectionPaths = append(collectionPaths, path)
+		}
+	}
+
+	environmentPaths := make([]string, 0)
+	for name := range p.environments {
+		if path, exists := p.envPathMap[name]; exists {
+			environmentPaths = append(environmentPaths, path)
 		}
 	}
 
 	config := PersistenceConfig{
-		CollectionPaths: paths,
+		CollectionPaths:  collectionPaths,
+		EnvironmentPaths: environmentPaths,
 	}
 
 	data, err := json.MarshalIndent(config, "", "  ")
@@ -62,6 +71,10 @@ func (p *Parser) LoadState() error {
 
 	for _, path := range config.CollectionPaths {
 		_, _ = p.LoadCollection(path)
+	}
+
+	for _, path := range config.EnvironmentPaths {
+		_, _ = p.LoadEnvironment(path)
 	}
 
 	return nil

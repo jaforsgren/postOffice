@@ -9,14 +9,18 @@ import (
 )
 
 type Parser struct {
-	collections map[string]*Collection
-	pathMap     map[string]string
+	collections  map[string]*Collection
+	pathMap      map[string]string
+	environments map[string]*Environment
+	envPathMap   map[string]string
 }
 
 func NewParser() *Parser {
 	return &Parser{
-		collections: make(map[string]*Collection),
-		pathMap:     make(map[string]string),
+		collections:  make(map[string]*Collection),
+		pathMap:      make(map[string]string),
+		environments: make(map[string]*Environment),
+		envPathMap:   make(map[string]string),
 	}
 }
 
@@ -61,6 +65,40 @@ func (p *Parser) GetCollection(name string) (*Collection, bool) {
 func (p *Parser) ListCollections() []string {
 	names := make([]string, 0, len(p.collections))
 	for name := range p.collections {
+		names = append(names, name)
+	}
+	return names
+}
+
+func (p *Parser) LoadEnvironment(path string) (*Environment, error) {
+	expandedPath, err := expandPath(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand path: %w", err)
+	}
+
+	data, err := os.ReadFile(expandedPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read environment file: %w", err)
+	}
+
+	var environment Environment
+	if err := json.Unmarshal(data, &environment); err != nil {
+		return nil, fmt.Errorf("failed to parse environment: %w", err)
+	}
+
+	p.environments[environment.Name] = &environment
+	p.envPathMap[environment.Name] = expandedPath
+	return &environment, nil
+}
+
+func (p *Parser) GetEnvironment(name string) (*Environment, bool) {
+	environment, exists := p.environments[name]
+	return environment, exists
+}
+
+func (p *Parser) ListEnvironments() []string {
+	names := make([]string, 0, len(p.environments))
+	for name := range p.environments {
 		names = append(names, name)
 	}
 	return names

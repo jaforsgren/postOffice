@@ -26,6 +26,12 @@ func (m Model) View() string {
 		responseHeight := availableForMain - mainHeight
 		sections = append(sections, m.renderItemsList(mainHeight))
 		sections = append(sections, m.renderResponsePopup(responseHeight))
+	} else if m.mode == ModeInfo && m.currentInfoItem != nil {
+		availableForMain := m.height - totalOverhead
+		mainHeight := availableForMain / 2
+		infoHeight := availableForMain - mainHeight
+		sections = append(sections, m.renderItemsList(mainHeight))
+		sections = append(sections, m.renderInfoPopup(infoHeight))
 	} else {
 		sections = append(sections, m.renderMainWindow())
 	}
@@ -52,6 +58,10 @@ func (m Model) renderTopBar() string {
 		modeStr = "Requests"
 	case ModeResponse:
 		modeStr = "Response"
+	case ModeInfo:
+		modeStr = "Info"
+	case ModeEnvironments:
+		modeStr = "Environments"
 	}
 
 	path := "/"
@@ -67,11 +77,18 @@ func (m Model) renderTopBar() string {
 	}
 
 	rightCol := []string{
-		"  ____             __  ____   _____ _         ",
-		" / __ \\____  _____/ /_/ __ \\ / __(_) _______ ",
-		"/ /_/ / __ \\/ ___/ __/ / / // /_/ / / ___/ _ \\",
-		"/ ____/ /_/ (__  ) /_/ /_/ / __/ / / /__/  __/",
-		"/_/    \\____/____/\\__/\\____/_/ /_/_/\\___/\\___/ ",
+		"██████╗  ██████╗ ███████╗████████╗",
+		"██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝",
+		"██████╔╝██║   ██║███████╗   ██║",
+		"██╔═══╝ ██║   ██║╚════██║   ██║",
+		"██║     ╚██████╔╝███████║   ██║",
+		"╚═╝      ╚═════╝ ╚══════╝   ╚═╝",
+		" ██████╗ ███████╗███████╗██╗ ██████╗███████╗",
+		"██╔═══██╗██╔════╝██╔════╝██║██╔════╝██╔════╝",
+		"██║   ██║█████╗  █████╗  ██║██║     █████╗",
+		" █║   ██║██╔══╝  ██╔══╝  ██║██║     ██╔══╝",
+		"╚██████╔╝██║     ██║     ██║╚██████╗███████╗",
+		" ╚═════╝ ╚═╝     ╚═╝     ╚═╝ ╚═════╝╚══════╝",
 	}
 
 	for i := 0; i < len(leftCol); i++ {
@@ -101,6 +118,7 @@ func (m Model) getContextualShortcuts() string {
 	case ModeCollections:
 		shortcuts = []string{
 			"<enter> Select",
+			"</> Search",
 			"<:l> Load",
 			"<:r> Requests",
 			"<q> Quit",
@@ -108,6 +126,8 @@ func (m Model) getContextualShortcuts() string {
 	case ModeRequests:
 		shortcuts = []string{
 			"<enter> Select/Execute",
+			"<i> Info",
+			"</> Search",
 			"<esc/h> Back",
 			"<j/k> Navigate",
 			"<:c> Collections",
@@ -120,6 +140,21 @@ func (m Model) getContextualShortcuts() string {
 			"<j/k> Scroll",
 			"<q> Quit",
 		}
+	case ModeInfo:
+		shortcuts = []string{
+			"<esc> Close",
+			"<j/k> Scroll",
+			"<q> Quit",
+		}
+	case ModeEnvironments:
+		shortcuts = []string{
+			"<enter> Select",
+			"</> Search",
+			"<:le> Load",
+			"<:c> Collections",
+			"<:r> Requests",
+			"<q> Quit",
+		}
 	}
 
 	return strings.Join(shortcuts, "  ")
@@ -129,11 +164,14 @@ func (m Model) renderItemsList(availableHeight int) string {
 	if len(m.items) == 0 {
 		emptyMsg := "No items to display\n\n"
 		emptyMsg += "Commands:\n"
-		emptyMsg += "  :load <path> or :l <path>  - Load a Postman collection\n"
-		emptyMsg += "  :collections or :c         - List loaded collections\n"
-		emptyMsg += "  :requests or :r            - Browse requests in current collection\n"
-		emptyMsg += "  :help or :h or :?          - Show this help\n"
-		emptyMsg += "  :quit or :q                - Quit application\n"
+		emptyMsg += "  :load <path> or :l <path>     - Load a Postman collection\n"
+		emptyMsg += "  :loadenv <path> or :le <path> - Load a Postman environment\n"
+		emptyMsg += "  :collections or :c            - List loaded collections\n"
+		emptyMsg += "  :environments or :e           - List loaded environments\n"
+		emptyMsg += "  :requests or :r               - Browse requests in current collection\n"
+		emptyMsg += "  / (in lists)                  - Search (recursive for requests)\n"
+		emptyMsg += "  :help or :h or :?             - Show this help\n"
+		emptyMsg += "  :quit or :q                   - Quit application\n"
 		if m.collection != nil {
 			emptyMsg += fmt.Sprintf("\n[Collection loaded: %s - %d items]\n", m.collection.Info.Name, len(m.collection.Items))
 		}
@@ -272,17 +310,11 @@ func (m Model) renderResponsePopup(availableHeight int) string {
 		lines = append(lines, folderStyle.Render(fmt.Sprintf("Duration: %v", m.lastResponse.Duration)))
 		lines = append(lines, "")
 
-		if len(m.lastResponse.Headers) > 0 && availableHeight > 15 {
+		if len(m.lastResponse.Headers) > 0 {
 			lines = append(lines, requestStyle.Render("Headers:"))
-			headerCount := 0
 			for key, values := range m.lastResponse.Headers {
-				if headerCount >= 5 {
-					lines = append(lines, "  ... (more headers)")
-					break
-				}
 				for _, value := range values {
 					lines = append(lines, fmt.Sprintf("  %s: %s", key, value))
-					headerCount++
 				}
 			}
 			lines = append(lines, "")
@@ -291,19 +323,174 @@ func (m Model) renderResponsePopup(availableHeight int) string {
 		if m.lastResponse.Body != "" {
 			lines = append(lines, requestStyle.Render("Body:"))
 			bodyLines := strings.Split(m.lastResponse.Body, "\n")
-			maxBodyLines := availableHeight - len(lines) - 5
-			if maxBodyLines < 1 {
-				maxBodyLines = 1
-			}
-			if len(bodyLines) > maxBodyLines {
-				bodyLines = bodyLines[:maxBodyLines]
-				bodyLines = append(bodyLines, "... (truncated)")
-			}
 			lines = append(lines, bodyLines...)
 		}
 	}
 
-	content := strings.Join(lines, "\n")
+	visibleLines := availableHeight - 2
+	if visibleLines < 1 {
+		visibleLines = 1
+	}
+
+	startIdx := m.scrollOffset
+	if startIdx > len(lines) {
+		startIdx = len(lines)
+	}
+	endIdx := startIdx + visibleLines
+	if endIdx > len(lines) {
+		endIdx = len(lines)
+	}
+
+	visibleContent := lines[startIdx:endIdx]
+	content := strings.Join(visibleContent, "\n")
+
+	return lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("5")).
+		Height(availableHeight).
+		Width(m.width-4).
+		Padding(1, 2).
+		Render(content)
+}
+
+func (m Model) renderInfoPopup(availableHeight int) string {
+	if m.currentInfoItem == nil && m.environment == nil {
+		return lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("5")).
+			Height(availableHeight).
+			Width(m.width-4).
+			Padding(1, 2).
+			Render("No item selected")
+	}
+
+	var lines []string
+
+	if m.environment != nil && m.previousMode == ModeEnvironments {
+		lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Environment Info (press Esc to close)"))
+		lines = append(lines, "")
+
+		lines = append(lines, requestStyle.Render("Name:"))
+		lines = append(lines, "  "+m.environment.Name)
+		lines = append(lines, "")
+
+		lines = append(lines, requestStyle.Render("ID:"))
+		lines = append(lines, "  "+m.environment.ID)
+		lines = append(lines, "")
+
+		lines = append(lines, requestStyle.Render("Variables:"))
+		if len(m.environment.Values) == 0 {
+			lines = append(lines, "  No variables defined")
+		} else {
+			for _, variable := range m.environment.Values {
+				status := ""
+				if !variable.Enabled {
+					status = " (disabled)"
+				}
+				lines = append(lines, fmt.Sprintf("  %s = %s%s", variable.Key, variable.Value, status))
+			}
+		}
+	} else if m.currentInfoItem != nil {
+		lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Item Info (press Esc to close)"))
+		lines = append(lines, "")
+
+		lines = append(lines, requestStyle.Render("Name:"))
+		lines = append(lines, "  "+m.currentInfoItem.Name)
+		lines = append(lines, "")
+
+		if m.currentInfoItem.IsFolder() {
+			lines = append(lines, requestStyle.Render("Type:"))
+			lines = append(lines, "  Folder")
+			lines = append(lines, "")
+
+			lines = append(lines, requestStyle.Render("Contents:"))
+			folderCount := 0
+			requestCount := 0
+			for _, item := range m.currentInfoItem.Items {
+				if item.IsFolder() {
+					folderCount++
+				} else if item.IsRequest() {
+					requestCount++
+				}
+			}
+			lines = append(lines, fmt.Sprintf("  Folders: %d", folderCount))
+			lines = append(lines, fmt.Sprintf("  Requests: %d", requestCount))
+			lines = append(lines, fmt.Sprintf("  Total: %d", len(m.currentInfoItem.Items)))
+			lines = append(lines, "")
+
+			if m.currentInfoItem.Description != "" {
+				lines = append(lines, requestStyle.Render("Description:"))
+				descLines := strings.Split(m.currentInfoItem.Description, "\n")
+				for _, line := range descLines {
+					lines = append(lines, "  "+line)
+				}
+			}
+		} else if m.currentInfoItem.IsRequest() {
+			lines = append(lines, requestStyle.Render("Type:"))
+			lines = append(lines, "  HTTP Request")
+			lines = append(lines, "")
+
+			req := m.currentInfoItem.Request
+			lines = append(lines, requestStyle.Render("Method:"))
+			lines = append(lines, "  "+req.Method)
+			lines = append(lines, "")
+
+			lines = append(lines, requestStyle.Render("URL:"))
+			url := req.URL.Raw
+			if url == "" && len(req.URL.Host) > 0 {
+				url = "https://" + strings.Join(req.URL.Host, ".")
+				if len(req.URL.Path) > 0 {
+					url += "/" + strings.Join(req.URL.Path, "/")
+				}
+			}
+			lines = append(lines, "  "+url)
+			lines = append(lines, "")
+
+			if len(req.Header) > 0 {
+				lines = append(lines, requestStyle.Render("Headers:"))
+				for _, header := range req.Header {
+					lines = append(lines, fmt.Sprintf("  %s: %s", header.Key, header.Value))
+				}
+				lines = append(lines, "")
+			}
+
+			if req.Body != nil && req.Body.Raw != "" {
+				lines = append(lines, requestStyle.Render("Body:"))
+				lines = append(lines, fmt.Sprintf("  Mode: %s", req.Body.Mode))
+				bodyLines := strings.Split(req.Body.Raw, "\n")
+				for _, line := range bodyLines {
+					lines = append(lines, "  "+line)
+				}
+				lines = append(lines, "")
+			}
+
+			if m.currentInfoItem.Description != "" {
+				lines = append(lines, requestStyle.Render("Description:"))
+				descLines := strings.Split(m.currentInfoItem.Description, "\n")
+				for _, line := range descLines {
+					lines = append(lines, "  "+line)
+				}
+			}
+		}
+	}
+
+	visibleLines := availableHeight - 2
+	if visibleLines < 1 {
+		visibleLines = 1
+	}
+
+	startIdx := m.scrollOffset
+	if startIdx > len(lines) {
+		startIdx = len(lines)
+	}
+	endIdx := startIdx + visibleLines
+	if endIdx > len(lines) {
+		endIdx = len(lines)
+	}
+
+	visibleContent := lines[startIdx:endIdx]
+	content := strings.Join(visibleContent, "\n")
+
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("5")).
@@ -317,11 +504,14 @@ func (m Model) renderCommandBar() string {
 	if m.commandMode {
 		return commandBarStyle.Width(m.width).Render(":" + m.commandInput)
 	}
+	if m.searchMode {
+		return commandBarStyle.Width(m.width).Render("/" + m.searchQuery)
+	}
 	return commandBarStyle.Width(m.width).Render("")
 }
 
 func (m Model) renderStatusBar() string {
-	help := "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | :: command"
+	help := "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
 	if m.statusMessage != "" {
 		help = m.statusMessage + " | " + help
 	}

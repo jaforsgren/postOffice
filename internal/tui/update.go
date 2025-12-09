@@ -19,6 +19,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.commandMode {
 			return m.handleCommandMode(msg)
 		}
+		if m.searchMode {
+			return m.handleSearchMode(msg)
+		}
 		return m.handleNormalMode(msg)
 	}
 
@@ -57,6 +60,47 @@ func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
+func (m Model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.searchMode = false
+		m.searchQuery = ""
+		m.items = m.allItems
+		m.currentItems = m.allCurrentItems
+		m.cursor = 0
+		m.statusMessage = "Search cancelled"
+		return m, nil
+
+	case tea.KeyEnter:
+		m.searchMode = false
+		if len(m.items) > 0 {
+			m.statusMessage = fmt.Sprintf("Found %d results", len(m.items))
+		} else {
+			m.statusMessage = "No results found"
+		}
+		return m, nil
+
+	case tea.KeyBackspace:
+		if len(m.searchQuery) > 0 {
+			m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
+			m = m.filterItems()
+		}
+		return m, nil
+
+	case tea.KeySpace:
+		m.searchQuery += " "
+		m = m.filterItems()
+		return m, nil
+
+	default:
+		if msg.Type == tea.KeyRunes {
+			m.searchQuery += string(msg.Runes)
+			m = m.filterItems()
+		}
+		return m, nil
+	}
+}
+
 func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
@@ -67,25 +111,72 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.commandInput = ""
 		return m, nil
 
+	case "/":
+		if m.mode == ModeCollections || m.mode == ModeRequests || m.mode == ModeEnvironments {
+			m.searchMode = true
+			m.searchQuery = ""
+			m.allItems = m.items
+			m.allCurrentItems = m.currentItems
+			m.statusMessage = "Enter search query (Esc to cancel, Enter to confirm)"
+		}
+		return m, nil
+
 	case "up", "k":
-		if m.cursor > 0 {
-			m.cursor--
+		if m.mode == ModeInfo || m.mode == ModeResponse {
+			if m.scrollOffset > 0 {
+				m.scrollOffset--
+			}
+		} else {
+			if m.cursor > 0 {
+				m.cursor--
+			}
 		}
 		return m, nil
 
 	case "down", "j":
-		if m.cursor < len(m.items)-1 {
-			m.cursor++
+		if m.mode == ModeInfo || m.mode == ModeResponse {
+			m.scrollOffset++
+		} else {
+			if m.cursor < len(m.items)-1 {
+				m.cursor++
+			}
 		}
 		return m, nil
 
 	case "enter":
 		return m.handleSelection(), nil
 
+	case "i":
+		if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
+			m.currentInfoItem = &m.currentItems[m.cursor]
+			m.scrollOffset = 0
+			m.previousMode = m.mode
+			m.mode = ModeInfo
+			m.statusMessage = "Showing item info"
+		} else if m.mode == ModeEnvironments && m.environment != nil {
+			m.scrollOffset = 0
+			m.previousMode = m.mode
+			m.mode = ModeInfo
+			m.statusMessage = "Showing environment info"
+		}
+		return m, nil
+
 	case "esc", "left", "backspace", "h":
 		if m.mode == ModeResponse {
 			m.mode = ModeRequests
+			m.scrollOffset = 0
 			m.statusMessage = "Closed response view"
+			return m, nil
+		}
+		if m.mode == ModeInfo {
+			if m.previousMode != 0 {
+				m.mode = m.previousMode
+			} else {
+				m.mode = ModeRequests
+			}
+			m.currentInfoItem = nil
+			m.scrollOffset = 0
+			m.statusMessage = "Closed info view"
 			return m, nil
 		}
 		if len(m.breadcrumb) > 0 {
@@ -129,11 +220,25 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 			m.statusMessage = "Usage: load <path>"
 		}
 
+	case "loadenv", "le", "env-load":
+		if len(parts) > 1 {
+			pathStart := strings.Index(cmd, parts[0]) + len(parts[0])
+			path := strings.TrimSpace(cmd[pathStart:])
+			m = m.loadEnvironment(path)
+		} else {
+			m.statusMessage = "Usage: loadenv <path>"
+		}
+
+	case "environments", "e", "env", "envs":
+		m.mode = ModeEnvironments
+		m = m.loadEnvironmentsList()
+		m.statusMessage = "Showing environments"
+
 	case "quit", "q", "exit":
 		return m, tea.Quit
 
 	case "help", "h", "?":
-		m.statusMessage = "Commands: :load <path> | :collections (c) | :requests (r) | :quit (q)"
+		m.statusMessage = "Commands: :load/:l <path> | :loadenv/:le <path> | :collections/:c | :environments/:e | :requests/:r | /search | :info/:i | :quit/:q"
 
 	case "debug", "d":
 		if m.collection != nil {
@@ -146,6 +251,18 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 			m.statusMessage = itemInfo
 		} else {
 			m.statusMessage = "No collection loaded"
+		}
+
+	case "info", "i":
+		if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
+			m.currentInfoItem = &m.currentItems[m.cursor]
+			m.scrollOffset = 0
+			m.mode = ModeInfo
+			m.statusMessage = "Showing item info"
+		} else if m.mode == ModeCollections {
+			m.statusMessage = "Info command is only available in requests mode"
+		} else {
+			m.statusMessage = "No item selected"
 		}
 
 	default:
@@ -255,6 +372,7 @@ func (m Model) handleSelection() Model {
 			} else if item.IsRequest() {
 				m.statusMessage = fmt.Sprintf("Executing: %s %s", item.Request.Method, item.Name)
 				m.lastResponse = m.executor.Execute(item.Request)
+				m.scrollOffset = 0
 				m.mode = ModeResponse
 				if m.lastResponse.Error != nil {
 					m.statusMessage = fmt.Sprintf("Request failed: %v", m.lastResponse.Error)
@@ -266,6 +384,18 @@ func (m Model) handleSelection() Model {
 	case ModeResponse:
 		m.mode = ModeRequests
 		m.statusMessage = "Returned to request list"
+
+	case ModeEnvironments:
+		if m.cursor < len(m.items) {
+			envName := m.items[m.cursor]
+			environment, exists := m.parser.GetEnvironment(envName)
+			if exists {
+				m.environment = environment
+				m.statusMessage = fmt.Sprintf("Selected environment: %s (press i for details)", envName)
+			} else {
+				m.statusMessage = fmt.Sprintf("Environment not found: %s", envName)
+			}
+		}
 	}
 
 	return m
@@ -325,5 +455,115 @@ func (m Model) navigateUp() Model {
 		m.cursor = 0
 	}
 
+	return m
+}
+
+func (m Model) searchItemsRecursive(items []postman.Item, query string, parentPath string) ([]string, []postman.Item, []int) {
+	var displayItems []string
+	var foundItems []postman.Item
+	var indices []int
+	query = strings.ToLower(query)
+
+	for idx, item := range items {
+		itemName := strings.ToLower(item.Name)
+		fullPath := parentPath
+		if fullPath != "" {
+			fullPath += " / "
+		}
+		fullPath += item.Name
+
+		matches := strings.Contains(itemName, query)
+
+		if item.IsFolder() {
+			subDisplay, subItems, _ := m.searchItemsRecursive(item.Items, query, fullPath)
+			if len(subDisplay) > 0 {
+				displayItems = append(displayItems, subDisplay...)
+				foundItems = append(foundItems, subItems...)
+				for range subDisplay {
+					indices = append(indices, idx)
+				}
+			}
+			if matches {
+				prefix := "[DIR] "
+				displayItems = append(displayItems, prefix+fullPath)
+				foundItems = append(foundItems, item)
+				indices = append(indices, idx)
+			}
+		} else if item.IsRequest() && matches {
+			prefix := fmt.Sprintf("[%s] ", item.Request.Method)
+			displayItems = append(displayItems, prefix+fullPath)
+			foundItems = append(foundItems, item)
+			indices = append(indices, idx)
+		}
+	}
+
+	return displayItems, foundItems, indices
+}
+
+func (m Model) filterItems() Model {
+	if m.searchQuery == "" {
+		m.items = m.allItems
+		m.currentItems = m.allCurrentItems
+		m.filteredItems = []string{}
+		m.filteredIndices = []int{}
+		m.cursor = 0
+		return m
+	}
+
+	query := strings.ToLower(m.searchQuery)
+
+	if m.mode == ModeCollections || m.mode == ModeEnvironments {
+		m.filteredItems = []string{}
+		m.filteredIndices = []int{}
+		for idx, item := range m.allItems {
+			if strings.Contains(strings.ToLower(item), query) {
+				m.filteredItems = append(m.filteredItems, item)
+				m.filteredIndices = append(m.filteredIndices, idx)
+			}
+		}
+		m.items = m.filteredItems
+	} else if m.mode == ModeRequests {
+		if m.collection != nil {
+			displayItems, foundItems, indices := m.searchItemsRecursive(m.collection.Items, m.searchQuery, "")
+			m.filteredItems = displayItems
+			m.currentItems = foundItems
+			m.filteredIndices = indices
+			m.items = m.filteredItems
+		}
+	}
+
+	m.cursor = 0
+	return m
+}
+
+func (m Model) loadEnvironmentsList() Model {
+	environments := m.parser.ListEnvironments()
+	m.items = environments
+	m.cursor = 0
+	m.breadcrumb = []string{}
+	m.currentItems = []postman.Item{}
+
+	if len(m.items) == 0 {
+		m.statusMessage = "No environments loaded yet. Use :loadenv <path> to load an environment"
+	}
+	return m
+}
+
+func (m Model) loadEnvironment(path string) Model {
+	environment, err := m.parser.LoadEnvironment(path)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to load environment: %v", err)
+		return m
+	}
+
+	if err := m.parser.SaveState(); err != nil {
+		m.statusMessage = fmt.Sprintf("Loaded environment: %s (warning: failed to save state)", environment.Name)
+	} else {
+		m.statusMessage = fmt.Sprintf("Loaded environment: %s", environment.Name)
+	}
+
+	m.environment = environment
+	m.mode = ModeEnvironments
+	m = m.loadEnvironmentsList()
 	return m
 }

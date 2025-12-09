@@ -13,23 +13,35 @@ const (
 	ModeCollections ViewMode = iota
 	ModeRequests
 	ModeResponse
+	ModeInfo
+	ModeEnvironments
 )
 
 type Model struct {
-	parser        *postman.Parser
-	executor      *http.Executor
-	mode          ViewMode
-	commandMode   bool
-	commandInput  string
-	cursor        int
-	items         []string
-	currentItems  []postman.Item
-	collection    *postman.Collection
-	breadcrumb    []string
-	width         int
-	height        int
-	statusMessage string
-	lastResponse  *http.Response
+	parser          *postman.Parser
+	executor        *http.Executor
+	mode            ViewMode
+	commandMode     bool
+	commandInput    string
+	cursor          int
+	items           []string
+	currentItems    []postman.Item
+	collection      *postman.Collection
+	breadcrumb      []string
+	width           int
+	height          int
+	statusMessage   string
+	lastResponse    *http.Response
+	currentInfoItem *postman.Item
+	scrollOffset    int
+	searchMode      bool
+	searchQuery     string
+	filteredItems   []string
+	filteredIndices []int
+	allItems        []string
+	allCurrentItems []postman.Item
+	environment     *postman.Environment
+	previousMode    ViewMode
 }
 
 func NewModel(parser *postman.Parser) Model {

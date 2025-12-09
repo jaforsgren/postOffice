@@ -4,25 +4,21 @@ import "github.com/charmbracelet/lipgloss"
 
 var (
 	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderForeground(lipgloss.Color("63")).
-			Foreground(lipgloss.Color("6")).
-			Background(lipgloss.Color("0")).
-			Padding(0, 1)
+			Bold(false).
+		// BorderStyle(lipgloss.NormalBorder()).
+		// BorderForeground(lipgloss.Color("63")).
+		Foreground(lipgloss.Color("6")).
+		Background(lipgloss.Color("#000000")).
+		Padding(1, 1)
 
 	commandBarStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("7")).
-			Background(lipgloss.Color("0")).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderForeground(lipgloss.Color("63"))
-		// PaddingTop(2)
+			Background(lipgloss.Color("#000000")).
+			Padding(0, 2)
 
 	selectedItemStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("0")).
-				Background(lipgloss.Color("6")).
-				BorderStyle(lipgloss.NormalBorder()).
-				BorderForeground(lipgloss.Color("63")).
+				Foreground(lipgloss.Color("1")).
+				Background(lipgloss.Color("#000000")).
 				Bold(true)
 
 	normalItemStyle = lipgloss.NewStyle().
@@ -30,17 +26,15 @@ var (
 
 	folderStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("4")).
-			Bold(true)
+			Bold(false)
 
 	requestStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("2"))
 
 	statusBarStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("0")).
-			Background(lipgloss.Color("7")).
-		// BorderStyle(lipgloss.NormalBorder()).
-		// BorderForeground(lipgloss.Color("#001100")).
-		Padding(0, 1)
+			Background(lipgloss.Color("#000000")).
+			Padding(0, 1)
 
 	mainWindowStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
