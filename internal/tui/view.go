@@ -53,9 +53,14 @@ func (m Model) renderMainWindow() string {
 	if len(m.items) == 0 {
 		emptyMsg := "No items to display\n\n"
 		emptyMsg += "Commands:\n"
-		emptyMsg += "  :load <path>    - Load a Postman collection\n"
-		emptyMsg += "  :collections    - List loaded collections\n"
-		emptyMsg += "  :request        - Browse requests in current collection\n"
+		emptyMsg += "  :load <path> or :l <path>  - Load a Postman collection\n"
+		emptyMsg += "  :collections or :c         - List loaded collections\n"
+		emptyMsg += "  :requests or :r            - Browse requests in current collection\n"
+		emptyMsg += "  :help or :h or :?          - Show this help\n"
+		emptyMsg += "  :quit or :q                - Quit application\n"
+		if m.collection != nil {
+			emptyMsg += fmt.Sprintf("\n[Collection loaded: %s - %d items]\n", m.collection.Info.Name, len(m.collection.Items))
+		}
 		return lipgloss.NewStyle().
 			Height(availableHeight).
 			Width(m.width).

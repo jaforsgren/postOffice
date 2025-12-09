@@ -100,12 +100,12 @@ func (m Model) executeCommand() Model {
 	}
 
 	switch parts[0] {
-	case "collections", "c":
+	case "collections", "c", "col":
 		m.mode = ModeCollections
 		m.loadCollectionsList()
 		m.statusMessage = "Showing collections"
 
-	case "request", "r":
+	case "request", "requests", "r", "req":
 		if m.collection != nil {
 			m.mode = ModeRequests
 			m.loadRequestsList()
@@ -116,16 +116,21 @@ func (m Model) executeCommand() Model {
 
 	case "load", "l":
 		if len(parts) > 1 {
-			m = m.loadCollection(parts[1])
+			pathStart := strings.Index(cmd, parts[0]) + len(parts[0])
+			path := strings.TrimSpace(cmd[pathStart:])
+			m = m.loadCollection(path)
 		} else {
 			m.statusMessage = "Usage: load <path>"
 		}
 
-	case "quit", "q":
+	case "quit", "q", "exit":
 		return m
 
+	case "help", "h", "?":
+		m.statusMessage = "Commands: :load <path> | :collections (c) | :requests (r) | :quit (q)"
+
 	default:
-		m.statusMessage = fmt.Sprintf("Unknown command: %s", parts[0])
+		m.statusMessage = fmt.Sprintf("Unknown command: %s (try :help)", parts[0])
 	}
 
 	return m
@@ -136,16 +141,24 @@ func (m Model) loadCollectionsList() {
 	m.items = collections
 	m.cursor = 0
 	m.breadcrumb = []string{}
+	m.currentItems = []postman.Item{}
+
+	if len(m.items) == 0 {
+		m.statusMessage = "No collections loaded yet. Use :load <path> to load a collection"
+	}
 }
 
 func (m Model) loadRequestsList() {
 	if m.collection == nil {
 		m.items = []string{}
+		m.statusMessage = "No collection loaded"
 		return
 	}
 
 	m.items = []string{}
 	m.currentItems = m.collection.Items
+	m.breadcrumb = []string{}
+
 	for _, item := range m.collection.Items {
 		prefix := ""
 		if item.IsFolder() {
@@ -156,6 +169,10 @@ func (m Model) loadRequestsList() {
 		m.items = append(m.items, prefix+item.Name)
 	}
 	m.cursor = 0
+
+	if len(m.items) == 0 {
+		m.statusMessage = "Collection loaded but contains no items"
+	}
 }
 
 func (m Model) loadCollection(path string) Model {
