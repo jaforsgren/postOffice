@@ -61,10 +61,9 @@ func (m Model) renderMainWindow() string {
 		if m.collection != nil {
 			emptyMsg += fmt.Sprintf("\n[Collection loaded: %s - %d items]\n", m.collection.Info.Name, len(m.collection.Items))
 		}
-		return lipgloss.NewStyle().
+		return mainWindowStyle.
 			Height(availableHeight).
-			Width(m.width).
-			Padding(1, 2).
+			Width(m.width - 4).
 			Render(emptyMsg)
 	}
 
@@ -112,19 +111,17 @@ func (m Model) renderMainWindow() string {
 	}
 
 	content := strings.Join(lines, "\n")
-	return lipgloss.NewStyle().
+	return mainWindowStyle.
 		Height(availableHeight).
-		Width(m.width).
-		Padding(1, 2).
+		Width(m.width - 4).
 		Render(content)
 }
 
 func (m Model) renderResponse(availableHeight int) string {
 	if m.lastResponse == nil {
-		return lipgloss.NewStyle().
+		return mainWindowStyle.
 			Height(availableHeight).
-			Width(m.width).
-			Padding(1, 2).
+			Width(m.width - 4).
 			Render("No response available")
 	}
 
@@ -162,10 +159,9 @@ func (m Model) renderResponse(availableHeight int) string {
 	}
 
 	content := strings.Join(lines, "\n")
-	return lipgloss.NewStyle().
+	return mainWindowStyle.
 		Height(availableHeight).
-		Width(m.width).
-		Padding(1, 2).
+		Width(m.width - 4).
 		Render(content)
 }
 
