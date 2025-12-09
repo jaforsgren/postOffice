@@ -65,6 +65,7 @@ func (m Model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEsc:
 		m.searchMode = false
 		m.searchQuery = ""
+		m.searchActive = false
 		m.items = m.allItems
 		m.currentItems = m.allCurrentItems
 		m.cursor = 0
@@ -73,8 +74,9 @@ func (m Model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyEnter:
 		m.searchMode = false
+		m.searchActive = len(m.items) > 0 && m.searchQuery != ""
 		if len(m.items) > 0 {
-			m.statusMessage = fmt.Sprintf("Found %d results", len(m.items))
+			m.statusMessage = fmt.Sprintf("Found %d results (press Esc to clear search)", len(m.items))
 		} else {
 			m.statusMessage = "No results found"
 		}
@@ -186,6 +188,15 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.currentInfoItem = nil
 			m.scrollOffset = 0
 			m.statusMessage = "Closed info view"
+			return m, nil
+		}
+		if m.searchActive {
+			m.searchActive = false
+			m.searchQuery = ""
+			m.items = m.allItems
+			m.currentItems = m.allCurrentItems
+			m.cursor = 0
+			m.statusMessage = "Search cleared"
 			return m, nil
 		}
 		if len(m.breadcrumb) > 0 {
@@ -436,6 +447,8 @@ func (m Model) navigateInto(item postman.Item) Model {
 		m.items = append(m.items, prefix+subItem.Name)
 	}
 	m.cursor = 0
+	m.searchActive = false
+	m.searchQuery = ""
 	return m
 }
 
@@ -474,6 +487,8 @@ func (m Model) navigateUp() Model {
 		m.cursor = 0
 	}
 
+	m.searchActive = false
+	m.searchQuery = ""
 	return m
 }
 

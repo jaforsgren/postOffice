@@ -37,6 +37,7 @@ type Model struct {
 	scrollOffset    int
 	searchMode      bool
 	searchQuery     string
+	searchActive    bool
 	filteredItems   []string
 	filteredIndices []int
 	allItems        []string

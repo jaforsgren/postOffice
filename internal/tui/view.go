@@ -72,6 +72,10 @@ func (m Model) renderTopBar() string {
 	if len(m.breadcrumb) > 0 {
 		path = "/" + strings.Join(m.breadcrumb, "/")
 	}
+	if m.searchActive && m.searchQuery != "" {
+		searchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+		path += searchStyle.Render(fmt.Sprintf(" [search: %s]", m.searchQuery))
+	}
 
 	leftCol := []string{
 		fmt.Sprintf("Collection: %s", collectionName),
