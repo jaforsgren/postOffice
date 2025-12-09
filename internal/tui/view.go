@@ -34,6 +34,8 @@ func (m Model) renderTopBar() string {
 		modeStr = "Collections"
 	case ModeRequests:
 		modeStr = "Requests"
+	case ModeResponse:
+		modeStr = "Response"
 	}
 
 	title += fmt.Sprintf("[%s] ", modeStr)
@@ -43,6 +45,10 @@ func (m Model) renderTopBar() string {
 
 func (m Model) renderMainWindow() string {
 	availableHeight := m.height - 4
+
+	if m.mode == ModeResponse {
+		return m.renderResponse(availableHeight)
+	}
 
 	if len(m.items) == 0 {
 		emptyMsg := "No items to display\n\n"
@@ -97,6 +103,56 @@ func (m Model) renderMainWindow() string {
 				style = requestStyle
 			}
 			lines = append(lines, style.Render(line))
+		}
+	}
+
+	content := strings.Join(lines, "\n")
+	return lipgloss.NewStyle().
+		Height(availableHeight).
+		Width(m.width).
+		Padding(1, 2).
+		Render(content)
+}
+
+func (m Model) renderResponse(availableHeight int) string {
+	if m.lastResponse == nil {
+		return lipgloss.NewStyle().
+			Height(availableHeight).
+			Width(m.width).
+			Padding(1, 2).
+			Render("No response available")
+	}
+
+	var lines []string
+
+	if m.lastResponse.Error != nil {
+		lines = append(lines, requestStyle.Render("Error:"))
+		lines = append(lines, m.lastResponse.Error.Error())
+		lines = append(lines, "")
+	} else {
+		lines = append(lines, requestStyle.Render(fmt.Sprintf("Status: %s", m.lastResponse.Status)))
+		lines = append(lines, folderStyle.Render(fmt.Sprintf("Duration: %v", m.lastResponse.Duration)))
+		lines = append(lines, "")
+
+		if len(m.lastResponse.Headers) > 0 {
+			lines = append(lines, requestStyle.Render("Headers:"))
+			for key, values := range m.lastResponse.Headers {
+				for _, value := range values {
+					lines = append(lines, fmt.Sprintf("  %s: %s", key, value))
+				}
+			}
+			lines = append(lines, "")
+		}
+
+		if m.lastResponse.Body != "" {
+			lines = append(lines, requestStyle.Render("Body:"))
+			bodyLines := strings.Split(m.lastResponse.Body, "\n")
+			maxBodyLines := availableHeight - len(lines) - 3
+			if len(bodyLines) > maxBodyLines {
+				bodyLines = bodyLines[:maxBodyLines]
+				bodyLines = append(bodyLines, "... (truncated)")
+			}
+			lines = append(lines, bodyLines...)
 		}
 	}
 

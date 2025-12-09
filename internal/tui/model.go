@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"postOffice/internal/http"
 	"postOffice/internal/postman"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,10 +12,12 @@ type ViewMode int
 const (
 	ModeCollections ViewMode = iota
 	ModeRequests
+	ModeResponse
 )
 
 type Model struct {
 	parser        *postman.Parser
+	executor      *http.Executor
 	mode          ViewMode
 	commandMode   bool
 	commandInput  string
@@ -26,11 +29,13 @@ type Model struct {
 	width         int
 	height        int
 	statusMessage string
+	lastResponse  *http.Response
 }
 
 func NewModel(parser *postman.Parser) Model {
 	return Model{
 		parser:        parser,
+		executor:      http.NewExecutor(),
 		mode:          ModeCollections,
 		commandMode:   false,
 		commandInput:  "",

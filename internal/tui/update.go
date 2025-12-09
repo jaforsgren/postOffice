@@ -180,9 +180,19 @@ func (m Model) handleSelection() Model {
 			if item.IsFolder() {
 				m = m.navigateInto(item)
 			} else if item.IsRequest() {
-				m.statusMessage = fmt.Sprintf("Selected: %s %s", item.Request.Method, item.Name)
+				m.statusMessage = fmt.Sprintf("Executing: %s %s", item.Request.Method, item.Name)
+				m.lastResponse = m.executor.Execute(item.Request)
+				m.mode = ModeResponse
+				if m.lastResponse.Error != nil {
+					m.statusMessage = fmt.Sprintf("Request failed: %v", m.lastResponse.Error)
+				} else {
+					m.statusMessage = fmt.Sprintf("Response: %s (%v)", m.lastResponse.Status, m.lastResponse.Duration)
+				}
 			}
 		}
+	case ModeResponse:
+		m.mode = ModeRequests
+		m.statusMessage = "Returned to request list"
 	}
 
 	return m
