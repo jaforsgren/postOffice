@@ -33,10 +33,11 @@ func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyEnter:
-		m = m.executeCommand()
+		var cmd tea.Cmd
+		m, cmd = m.executeCommand()
 		m.commandMode = false
 		m.commandInput = ""
-		return m, nil
+		return m, cmd
 
 	case tea.KeyBackspace:
 		if len(m.commandInput) > 0 {
@@ -81,7 +82,12 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.handleSelection(), nil
 
-	case "backspace", "h":
+	case "esc", "left", "backspace", "h":
+		if m.mode == ModeResponse {
+			m.mode = ModeRequests
+			m.statusMessage = "Closed response view"
+			return m, nil
+		}
 		if len(m.breadcrumb) > 0 {
 			m = m.navigateUp()
 		}
@@ -91,12 +97,12 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) executeCommand() Model {
+func (m Model) executeCommand() (Model, tea.Cmd) {
 	cmd := strings.TrimSpace(m.commandInput)
 	parts := strings.Fields(cmd)
 
 	if len(parts) == 0 {
-		return m
+		return m, nil
 	}
 
 	switch parts[0] {
@@ -124,7 +130,7 @@ func (m Model) executeCommand() Model {
 		}
 
 	case "quit", "q", "exit":
-		return m
+		return m, tea.Quit
 
 	case "help", "h", "?":
 		m.statusMessage = "Commands: :load <path> | :collections (c) | :requests (r) | :quit (q)"
@@ -146,7 +152,7 @@ func (m Model) executeCommand() Model {
 		m.statusMessage = fmt.Sprintf("Unknown command: %s (try :help)", parts[0])
 	}
 
-	return m
+	return m, nil
 }
 
 func (m Model) loadCollectionsList() Model {
@@ -209,8 +215,13 @@ func (m Model) loadCollection(path string) Model {
 		return m
 	}
 
+	if err := m.parser.SaveState(); err != nil {
+		m.statusMessage = fmt.Sprintf("Loaded collection: %s (warning: failed to save state)", collection.Info.Name)
+	} else {
+		m.statusMessage = fmt.Sprintf("Loaded collection: %s", collection.Info.Name)
+	}
+
 	m.collection = collection
-	m.statusMessage = fmt.Sprintf("Loaded collection: %s", collection.Info.Name)
 	m.mode = ModeRequests
 	m = m.loadRequestsList()
 	return m

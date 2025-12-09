@@ -18,6 +18,10 @@ func main() {
 
 func run() error {
 	parser := postman.NewParser()
+	if err := parser.LoadState(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load previous state: %v\n", err)
+	}
+
 	model := tui.NewModel(parser)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())

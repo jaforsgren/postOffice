@@ -10,11 +10,13 @@ import (
 
 type Parser struct {
 	collections map[string]*Collection
+	pathMap     map[string]string
 }
 
 func NewParser() *Parser {
 	return &Parser{
 		collections: make(map[string]*Collection),
+		pathMap:     make(map[string]string),
 	}
 }
 
@@ -35,6 +37,7 @@ func (p *Parser) LoadCollection(path string) (*Collection, error) {
 	}
 
 	p.collections[collection.Info.Name] = &collection
+	p.pathMap[collection.Info.Name] = expandedPath
 	return &collection, nil
 }
 

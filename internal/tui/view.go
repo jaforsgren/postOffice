@@ -15,7 +15,16 @@ func (m Model) View() string {
 	var sections []string
 
 	sections = append(sections, m.renderTopBar())
-	sections = append(sections, m.renderMainWindow())
+
+	if m.mode == ModeResponse && m.lastResponse != nil {
+		mainHeight := (m.height - 4) / 2
+		responseHeight := (m.height - 4) - mainHeight
+		sections = append(sections, m.renderItemsList(mainHeight))
+		sections = append(sections, m.renderResponsePopup(responseHeight))
+	} else {
+		sections = append(sections, m.renderMainWindow())
+	}
+
 	sections = append(sections, m.renderCommandBar())
 	sections = append(sections, m.renderStatusBar())
 
@@ -43,13 +52,7 @@ func (m Model) renderTopBar() string {
 	return titleStyle.Width(m.width).Render(title)
 }
 
-func (m Model) renderMainWindow() string {
-	availableHeight := m.height - 4
-
-	if m.mode == ModeResponse {
-		return m.renderResponse(availableHeight)
-	}
-
+func (m Model) renderItemsList(availableHeight int) string {
 	if len(m.items) == 0 {
 		emptyMsg := "No items to display\n\n"
 		emptyMsg += "Commands:\n"
@@ -117,6 +120,11 @@ func (m Model) renderMainWindow() string {
 		Render(content)
 }
 
+func (m Model) renderMainWindow() string {
+	availableHeight := m.height - 4
+	return m.renderItemsList(availableHeight)
+}
+
 func (m Model) renderResponse(availableHeight int) string {
 	if m.lastResponse == nil {
 		return mainWindowStyle.
@@ -162,6 +170,70 @@ func (m Model) renderResponse(availableHeight int) string {
 	return mainWindowStyle.
 		Height(availableHeight).
 		Width(m.width - 4).
+		Render(content)
+}
+
+func (m Model) renderResponsePopup(availableHeight int) string {
+	if m.lastResponse == nil {
+		return lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("5")).
+			Height(availableHeight).
+			Width(m.width-4).
+			Padding(1, 2).
+			Render("No response available")
+	}
+
+	var lines []string
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Response (press Esc to close)"))
+	lines = append(lines, "")
+
+	if m.lastResponse.Error != nil {
+		lines = append(lines, requestStyle.Render("Error:"))
+		lines = append(lines, m.lastResponse.Error.Error())
+	} else {
+		lines = append(lines, requestStyle.Render(fmt.Sprintf("Status: %s", m.lastResponse.Status)))
+		lines = append(lines, folderStyle.Render(fmt.Sprintf("Duration: %v", m.lastResponse.Duration)))
+		lines = append(lines, "")
+
+		if len(m.lastResponse.Headers) > 0 && availableHeight > 15 {
+			lines = append(lines, requestStyle.Render("Headers:"))
+			headerCount := 0
+			for key, values := range m.lastResponse.Headers {
+				if headerCount >= 5 {
+					lines = append(lines, "  ... (more headers)")
+					break
+				}
+				for _, value := range values {
+					lines = append(lines, fmt.Sprintf("  %s: %s", key, value))
+					headerCount++
+				}
+			}
+			lines = append(lines, "")
+		}
+
+		if m.lastResponse.Body != "" {
+			lines = append(lines, requestStyle.Render("Body:"))
+			bodyLines := strings.Split(m.lastResponse.Body, "\n")
+			maxBodyLines := availableHeight - len(lines) - 5
+			if maxBodyLines < 1 {
+				maxBodyLines = 1
+			}
+			if len(bodyLines) > maxBodyLines {
+				bodyLines = bodyLines[:maxBodyLines]
+				bodyLines = append(bodyLines, "... (truncated)")
+			}
+			lines = append(lines, bodyLines...)
+		}
+	}
+
+	content := strings.Join(lines, "\n")
+	return lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("5")).
+		Height(availableHeight).
+		Width(m.width-4).
+		Padding(1, 2).
 		Render(content)
 }
 
