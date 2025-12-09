@@ -1,8 +1,8 @@
 package postman
 
 type Collection struct {
-	Info  Info    `json:"info"`
-	Items []Item  `json:"item"`
+	Info  Info   `json:"info"`
+	Items []Item `json:"item"`
 }
 
 type Info struct {
@@ -19,10 +19,10 @@ type Item struct {
 }
 
 type Request struct {
-	Method string  `json:"method"`
+	Method string   `json:"method"`
 	Header []Header `json:"header"`
-	Body   *Body   `json:"body,omitempty"`
-	URL    URL     `json:"url"`
+	Body   *Body    `json:"body,omitempty"`
+	URL    URL      `json:"url"`
 }
 
 type Header struct {

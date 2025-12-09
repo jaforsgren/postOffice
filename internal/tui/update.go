@@ -2,8 +2,8 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"postOffice/internal/postman"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
