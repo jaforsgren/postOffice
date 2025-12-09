@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 type Parser struct {
@@ -17,7 +19,12 @@ func NewParser() *Parser {
 }
 
 func (p *Parser) LoadCollection(path string) (*Collection, error) {
-	data, err := os.ReadFile(path)
+	expandedPath, err := expandPath(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand path: %w", err)
+	}
+
+	data, err := os.ReadFile(expandedPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read collection file: %w", err)
 	}
@@ -29,6 +36,18 @@ func (p *Parser) LoadCollection(path string) (*Collection, error) {
 
 	p.collections[collection.Info.Name] = &collection
 	return &collection, nil
+}
+
+func expandPath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if strings.HasPrefix(path, "~/") {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		path = filepath.Join(homeDir, path[2:])
+	}
+	return path, nil
 }
 
 func (p *Parser) GetCollection(name string) (*Collection, bool) {
