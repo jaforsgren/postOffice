@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"postOffice/internal/postman"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -508,6 +509,8 @@ func (m Model) renderInfoPopup(availableHeight int) string {
 			lines = append(lines, "")
 
 			req := m.currentInfoItem.Request
+			variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+
 			lines = append(lines, requestStyle.Render("Method:"))
 			lines = append(lines, "  "+req.Method)
 			lines = append(lines, "")
@@ -521,12 +524,24 @@ func (m Model) renderInfoPopup(availableHeight int) string {
 				}
 			}
 			lines = append(lines, "  "+url)
+			resolvedURL := postman.ResolveVariables(url, variables)
+			if url != resolvedURL {
+				resolvedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+				lines = append(lines, "  → "+resolvedStyle.Render(resolvedURL))
+			}
 			lines = append(lines, "")
 
 			if len(req.Header) > 0 {
 				lines = append(lines, requestStyle.Render("Headers:"))
 				for _, header := range req.Header {
-					lines = append(lines, fmt.Sprintf("  %s: %s", header.Key, header.Value))
+					originalValue := header.Value
+					resolvedValue := postman.ResolveVariables(originalValue, variables)
+
+					lines = append(lines, fmt.Sprintf("  %s: %s", header.Key, originalValue))
+					if originalValue != resolvedValue {
+						resolvedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+						lines = append(lines, "    → "+resolvedStyle.Render(resolvedValue))
+					}
 				}
 				lines = append(lines, "")
 			}
@@ -534,9 +549,39 @@ func (m Model) renderInfoPopup(availableHeight int) string {
 			if req.Body != nil && req.Body.Raw != "" {
 				lines = append(lines, requestStyle.Render("Body:"))
 				lines = append(lines, fmt.Sprintf("  Mode: %s", req.Body.Mode))
-				bodyLines := strings.Split(req.Body.Raw, "\n")
-				for _, line := range bodyLines {
-					lines = append(lines, "  "+line)
+
+				originalBody := req.Body.Raw
+				resolvedBody := postman.ResolveVariables(originalBody, variables)
+
+				if originalBody != resolvedBody {
+					lines = append(lines, "")
+					lines = append(lines, folderStyle.Render("  Template:"))
+					bodyLines := strings.Split(originalBody, "\n")
+					maxLines := 5
+					for i, line := range bodyLines {
+						if i >= maxLines {
+							lines = append(lines, "    ...")
+							break
+						}
+						lines = append(lines, "    "+line)
+					}
+
+					lines = append(lines, "")
+					resolvedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+					lines = append(lines, resolvedStyle.Render("  Resolved:"))
+					resolvedLines := strings.Split(resolvedBody, "\n")
+					for i, line := range resolvedLines {
+						if i >= maxLines {
+							lines = append(lines, "    ...")
+							break
+						}
+						lines = append(lines, "    "+line)
+					}
+				} else {
+					bodyLines := strings.Split(req.Body.Raw, "\n")
+					for _, line := range bodyLines {
+						lines = append(lines, "  "+line)
+					}
 				}
 				lines = append(lines, "")
 			}
