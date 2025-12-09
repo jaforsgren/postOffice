@@ -233,6 +233,20 @@ func (m Model) handleSelection() Model {
 	}
 
 	switch m.mode {
+	case ModeCollections:
+		if m.cursor < len(m.items) {
+			collectionName := m.items[m.cursor]
+			collection, exists := m.parser.GetCollection(collectionName)
+			if exists {
+				m.collection = collection
+				m.mode = ModeRequests
+				m = m.loadRequestsList()
+				m.statusMessage = fmt.Sprintf("Switched to collection: %s", collectionName)
+			} else {
+				m.statusMessage = fmt.Sprintf("Collection not found: %s", collectionName)
+			}
+		}
+
 	case ModeRequests:
 		if m.cursor < len(m.currentItems) {
 			item := m.currentItems[m.cursor]
