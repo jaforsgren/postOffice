@@ -304,6 +304,34 @@ func (m Model) renderResponsePopup(availableHeight int) string {
 	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Response (press Esc to close)"))
 	lines = append(lines, "")
 
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")).Render("REQUEST"))
+	lines = append(lines, requestStyle.Render(fmt.Sprintf("%s %s", m.lastResponse.RequestMethod, m.lastResponse.RequestURL)))
+
+	if len(m.lastResponse.RequestHeaders) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, folderStyle.Render("Request Headers:"))
+		for key, value := range m.lastResponse.RequestHeaders {
+			lines = append(lines, fmt.Sprintf("  %s: %s", key, value))
+		}
+	}
+
+	if m.lastResponse.RequestBody != "" {
+		lines = append(lines, "")
+		lines = append(lines, folderStyle.Render("Request Body:"))
+		bodyLines := strings.Split(m.lastResponse.RequestBody, "\n")
+		for _, line := range bodyLines {
+			if len(lines) < 10 {
+				lines = append(lines, "  "+line)
+			}
+		}
+		if len(bodyLines) > 8 {
+			lines = append(lines, "  ...")
+		}
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10")).Render("RESPONSE"))
+
 	if m.lastResponse.Error != nil {
 		lines = append(lines, requestStyle.Render("Error:"))
 		lines = append(lines, m.lastResponse.Error.Error())
@@ -313,7 +341,7 @@ func (m Model) renderResponsePopup(availableHeight int) string {
 		lines = append(lines, "")
 
 		if len(m.lastResponse.Headers) > 0 {
-			lines = append(lines, requestStyle.Render("Headers:"))
+			lines = append(lines, requestStyle.Render("Response Headers:"))
 			for key, values := range m.lastResponse.Headers {
 				for _, value := range values {
 					lines = append(lines, fmt.Sprintf("  %s: %s", key, value))
@@ -323,7 +351,7 @@ func (m Model) renderResponsePopup(availableHeight int) string {
 		}
 
 		if m.lastResponse.Body != "" {
-			lines = append(lines, requestStyle.Render("Body:"))
+			lines = append(lines, requestStyle.Render("Response Body:"))
 			bodyLines := strings.Split(m.lastResponse.Body, "\n")
 			lines = append(lines, bodyLines...)
 		}

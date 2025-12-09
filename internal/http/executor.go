@@ -11,12 +11,16 @@ import (
 )
 
 type Response struct {
-	StatusCode int
-	Status     string
-	Headers    map[string][]string
-	Body       string
-	Duration   time.Duration
-	Error      error
+	StatusCode     int
+	Status         string
+	Headers        map[string][]string
+	Body           string
+	Duration       time.Duration
+	Error          error
+	RequestURL     string
+	RequestMethod  string
+	RequestHeaders map[string]string
+	RequestBody    string
 }
 
 type Executor struct {
@@ -40,6 +44,20 @@ func (e *Executor) Execute(req *postman.Request, variables []postman.VariableSou
 		resp.Error = err
 		resp.Duration = time.Since(start)
 		return resp
+	}
+
+	resp.RequestMethod = httpReq.Method
+	resp.RequestURL = httpReq.URL.String()
+	resp.RequestHeaders = make(map[string]string)
+	for key, values := range httpReq.Header {
+		if len(values) > 0 {
+			resp.RequestHeaders[key] = values[0]
+		}
+	}
+	if httpReq.Body != nil {
+		bodyBytes, _ := io.ReadAll(httpReq.Body)
+		resp.RequestBody = string(bodyBytes)
+		httpReq.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	}
 
 	httpResp, err := e.client.Do(httpReq)
