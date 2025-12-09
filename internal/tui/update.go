@@ -165,6 +165,8 @@ func (m Model) loadRequestsList() {
 			prefix = "[DIR] "
 		} else if item.IsRequest() {
 			prefix = fmt.Sprintf("[%s] ", item.Request.Method)
+		} else {
+			prefix = "[???] "
 		}
 		m.items = append(m.items, prefix+item.Name)
 	}
@@ -229,6 +231,8 @@ func (m Model) navigateInto(item postman.Item) Model {
 			prefix = "[DIR] "
 		} else if subItem.IsRequest() {
 			prefix = fmt.Sprintf("[%s] ", subItem.Request.Method)
+		} else {
+			prefix = "[???] "
 		}
 		m.items = append(m.items, prefix+subItem.Name)
 	}
@@ -263,6 +267,8 @@ func (m Model) navigateUp() Model {
 				prefix = "[DIR] "
 			} else if item.IsRequest() {
 				prefix = fmt.Sprintf("[%s] ", item.Request.Method)
+			} else {
+				prefix = "[???] "
 			}
 			m.items = append(m.items, prefix+item.Name)
 		}
