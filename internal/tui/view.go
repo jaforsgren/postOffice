@@ -62,6 +62,8 @@ func (m Model) renderTopBar() string {
 		modeStr = "Info"
 	case ModeEnvironments:
 		modeStr = "Environments"
+	case ModeVariables:
+		modeStr = "Variables"
 	}
 
 	path := "/"
@@ -155,6 +157,14 @@ func (m Model) getContextualShortcuts() string {
 			"<:c> Collections",
 			"<q> Quit",
 		}
+	case ModeVariables:
+		shortcuts = []string{
+			"<j/k> Navigate",
+			"<:c> Collections",
+			"<:e> Environments",
+			"<:r> Requests",
+			"<q> Quit",
+		}
 	}
 
 	return strings.Join(shortcuts, "  ")
@@ -168,6 +178,7 @@ func (m Model) renderItemsList(availableHeight int) string {
 		emptyMsg += "  :loadenv <path> or :le <path> - Load a Postman environment\n"
 		emptyMsg += "  :collections or :c            - List loaded collections\n"
 		emptyMsg += "  :environments or :e           - List loaded environments\n"
+		emptyMsg += "  :variables or :v              - List all variables with sources\n"
 		emptyMsg += "  :requests or :r               - Browse requests in current collection\n"
 		emptyMsg += "  / (in lists)                  - Search (recursive for requests)\n"
 		emptyMsg += "  :help or :h or :?             - Show this help\n"

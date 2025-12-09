@@ -1,8 +1,9 @@
 package postman
 
 type Collection struct {
-	Info  Info   `json:"info"`
-	Items []Item `json:"item"`
+	Info      Info       `json:"info"`
+	Items     []Item     `json:"item"`
+	Variables []Variable `json:"variable,omitempty"`
 }
 
 type Info struct {
@@ -12,10 +13,11 @@ type Info struct {
 }
 
 type Item struct {
-	Name        string   `json:"name"`
-	Request     *Request `json:"request,omitempty"`
-	Items       []Item   `json:"item,omitempty"`
-	Description string   `json:"description,omitempty"`
+	Name        string     `json:"name"`
+	Request     *Request   `json:"request,omitempty"`
+	Items       []Item     `json:"item,omitempty"`
+	Description string     `json:"description,omitempty"`
+	Variables   []Variable `json:"variable,omitempty"`
 }
 
 type Request struct {
@@ -61,4 +63,11 @@ type EnvVariable struct {
 	Value   string `json:"value"`
 	Enabled bool   `json:"enabled"`
 	Type    string `json:"type"`
+}
+
+type Variable struct {
+	Key     string `json:"key"`
+	Value   string `json:"value"`
+	Type    string `json:"type,omitempty"`
+	Enabled bool   `json:"enabled,omitempty"`
 }

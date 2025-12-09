@@ -234,11 +234,16 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 		m = m.loadEnvironmentsList()
 		m.statusMessage = "Showing environments"
 
+	case "variables", "v", "var", "vars":
+		m.mode = ModeVariables
+		m = m.loadVariablesList()
+		m.statusMessage = "Showing all variables"
+
 	case "quit", "q", "exit":
 		return m, tea.Quit
 
 	case "help", "h", "?":
-		m.statusMessage = "Commands: :load/:l <path> | :loadenv/:le <path> | :collections/:c | :environments/:e | :requests/:r | /search | :info/:i | :quit/:q"
+		m.statusMessage = "Commands: :load/:l <path> | :loadenv/:le <path> | :collections/:c | :environments/:e | :variables/:v | :requests/:r | /search | :info/:i | :quit/:q"
 
 	case "debug", "d":
 		if m.collection != nil {
@@ -371,7 +376,8 @@ func (m Model) handleSelection() Model {
 				m = m.navigateInto(item)
 			} else if item.IsRequest() {
 				m.statusMessage = fmt.Sprintf("Executing: %s %s", item.Request.Method, item.Name)
-				m.lastResponse = m.executor.Execute(item.Request)
+				variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+				m.lastResponse = m.executor.Execute(item.Request, variables)
 				m.scrollOffset = 0
 				m.mode = ModeResponse
 				if m.lastResponse.Error != nil {
@@ -568,5 +574,26 @@ func (m Model) loadEnvironment(path string) Model {
 	m.environment = environment
 	m.mode = ModeEnvironments
 	m = m.loadEnvironmentsList()
+	return m
+}
+
+func (m Model) loadVariablesList() Model {
+	variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+
+	m.items = []string{}
+	for _, variable := range variables {
+		display := fmt.Sprintf("%s = %s  [%s]", variable.Key, variable.Value, variable.Source)
+		m.items = append(m.items, display)
+	}
+
+	m.cursor = 0
+	m.breadcrumb = []string{}
+	m.currentItems = []postman.Item{}
+
+	if len(m.items) == 0 {
+		m.statusMessage = "No variables defined. Load a collection or environment with variables."
+	} else {
+		m.statusMessage = fmt.Sprintf("Showing %d variables", len(variables))
+	}
 	return m
 }

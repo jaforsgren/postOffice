@@ -31,11 +31,11 @@ func NewExecutor() *Executor {
 	}
 }
 
-func (e *Executor) Execute(req *postman.Request) *Response {
+func (e *Executor) Execute(req *postman.Request, variables []postman.VariableSource) *Response {
 	start := time.Now()
 	resp := &Response{}
 
-	httpReq, err := e.buildRequest(req)
+	httpReq, err := e.buildRequest(req, variables)
 	if err != nil {
 		resp.Error = err
 		resp.Duration = time.Since(start)
@@ -67,15 +67,17 @@ func (e *Executor) Execute(req *postman.Request) *Response {
 	return resp
 }
 
-func (e *Executor) buildRequest(req *postman.Request) (*http.Request, error) {
+func (e *Executor) buildRequest(req *postman.Request, variables []postman.VariableSource) (*http.Request, error) {
 	url := req.URL.Raw
 	if url == "" {
 		url = e.buildURL(&req.URL)
 	}
+	url = postman.ResolveVariables(url, variables)
 
 	var body io.Reader
 	if req.Body != nil && req.Body.Raw != "" {
-		body = bytes.NewBufferString(req.Body.Raw)
+		resolvedBody := postman.ResolveVariables(req.Body.Raw, variables)
+		body = bytes.NewBufferString(resolvedBody)
 	}
 
 	httpReq, err := http.NewRequest(req.Method, url, body)
@@ -84,7 +86,8 @@ func (e *Executor) buildRequest(req *postman.Request) (*http.Request, error) {
 	}
 
 	for _, header := range req.Header {
-		httpReq.Header.Set(header.Key, header.Value)
+		resolvedValue := postman.ResolveVariables(header.Value, variables)
+		httpReq.Header.Set(header.Key, resolvedValue)
 	}
 
 	return httpReq, nil

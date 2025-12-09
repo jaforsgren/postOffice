@@ -15,6 +15,7 @@ const (
 	ModeResponse
 	ModeInfo
 	ModeEnvironments
+	ModeVariables
 )
 
 type Model struct {
