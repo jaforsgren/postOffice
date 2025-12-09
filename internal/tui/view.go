@@ -132,12 +132,11 @@ func (m Model) getContextualShortcuts() string {
 	case ModeRequests:
 		shortcuts = []string{
 			"<enter> Select/Execute",
+			"<:edit> Edit",
 			"<i> Info",
 			"</> Search",
 			"<esc/h> Back",
 			"<j/k> Navigate",
-			"<:c> Collections",
-			"<:l> Load",
 			"<q> Quit",
 		}
 	case ModeResponse:
@@ -151,6 +150,14 @@ func (m Model) getContextualShortcuts() string {
 			"<esc> Close",
 			"<j/k> Scroll",
 			"<q> Quit",
+		}
+	case ModeEdit:
+		shortcuts = []string{
+			"<enter> Edit Field",
+			"<j/k> Navigate Fields",
+			"<:w> Save",
+			"<:wq> Save & Exit",
+			"<esc> Cancel",
 		}
 	case ModeEnvironments:
 		shortcuts = []string{

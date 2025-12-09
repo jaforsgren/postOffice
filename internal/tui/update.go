@@ -269,7 +269,7 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case "help", "h", "?":
-		m.statusMessage = "Commands: :load/:l <path> | :loadenv/:le <path> | :collections/:c | :environments/:e | :variables/:v | :requests/:r | /search | :info/:i | :quit/:q"
+		m.statusMessage = "Commands: :load/:l | :loadenv/:le | :collections/:c | :environments/:e | :variables/:v | :requests/:r | :edit | :w/:wq | /search | :info/:i | :quit/:q"
 
 	case "debug", "d":
 		if m.collection != nil {
