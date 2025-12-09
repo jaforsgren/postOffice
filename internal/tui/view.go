@@ -33,6 +33,9 @@ func (m Model) View() string {
 		infoHeight := availableForMain - mainHeight
 		sections = append(sections, m.renderItemsList(mainHeight))
 		sections = append(sections, m.renderInfoPopup(infoHeight))
+	} else if m.mode == ModeEdit {
+		availableHeight := m.height - totalOverhead
+		sections = append(sections, m.renderEditPopup(availableHeight))
 	} else if m.mode == ModeVariables {
 		sections = append(sections, m.renderVariablesView())
 	} else {
@@ -51,6 +54,9 @@ func (m Model) renderTopBar() string {
 	collectionName := "none"
 	if m.collection != nil {
 		collectionName = m.collection.Info.Name
+		if m.modifiedCollections[collectionName] {
+			collectionName += " (*)"
+		}
 	}
 
 	modeStr := ""
@@ -67,6 +73,8 @@ func (m Model) renderTopBar() string {
 		modeStr = "Environments"
 	case ModeVariables:
 		modeStr = "Variables"
+	case ModeEdit:
+		modeStr = "Edit (*)"
 	}
 
 	path := "/"
@@ -215,11 +223,23 @@ func (m Model) renderItemsList(availableHeight int) string {
 
 	for i := startIdx; i < endIdx; i++ {
 		line := m.items[i]
+
+		modifiedPrefix := ""
+		if m.mode == ModeRequests && i < len(m.currentItems) {
+			item := m.currentItems[i]
+			if item.IsRequest() {
+				itemID := m.getRequestIdentifier(item)
+				if m.isItemModified(itemID) {
+					modifiedPrefix = "* "
+				}
+			}
+		}
+
 		if i == m.cursor {
-			line = "> " + line
+			line = "> " + modifiedPrefix + line
 			lines = append(lines, selectedItemStyle.Render(line))
 		} else {
-			line = "  " + line
+			line = "  " + modifiedPrefix + line
 			style := normalItemStyle
 			if strings.HasPrefix(m.items[i], "[DIR]") {
 				style = folderStyle
@@ -709,6 +729,88 @@ func (m Model) renderVariablesView() string {
 	return mainWindowStyle.
 		Height(availableHeight).
 		Width(m.width - 4).
+		Render(content)
+}
+
+func (m Model) renderEditPopup(availableHeight int) string {
+	var lines []string
+
+	title := "Edit "
+	switch m.editType {
+	case EditTypeRequest:
+		if m.editRequest != nil {
+			title += "Request: " + m.editRequest.Method
+		}
+	case EditTypeEnvVariable:
+		title += "Environment Variable"
+	case EditTypeCollectionVariable:
+		title += "Collection Variable"
+	}
+
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11")).Render(title))
+	lines = append(lines, "")
+
+	if m.editType == EditTypeRequest && m.editRequest != nil {
+		fields := []struct {
+			label string
+			value string
+		}{
+			{"Method", m.editRequest.Method},
+			{"URL", m.editRequest.URL.Raw},
+			{"Body", ""},
+		}
+
+		if m.editRequest.Body != nil {
+			fields[2].value = m.editRequest.Body.Raw
+		}
+
+		for i, field := range fields {
+			prefix := "  "
+			labelStyle := lipgloss.NewStyle()
+			valueStyle := lipgloss.NewStyle()
+
+			if i == m.editFieldCursor {
+				prefix = "> "
+				labelStyle = labelStyle.Bold(true).Foreground(lipgloss.Color("10"))
+				valueStyle = valueStyle.Foreground(lipgloss.Color("12"))
+			}
+
+			lines = append(lines, prefix+labelStyle.Render(field.label+":"))
+
+			displayValue := field.value
+			if i == m.editFieldCursor && m.editFieldMode {
+				displayValue = m.editFieldInput + "|"
+			}
+
+			if displayValue == "" {
+				displayValue = "(empty)"
+			}
+
+			valueLines := strings.Split(displayValue, "\n")
+			maxLines := 3
+			for j, vLine := range valueLines {
+				if j >= maxLines {
+					lines = append(lines, "    ...")
+					break
+				}
+				lines = append(lines, "    "+valueStyle.Render(vLine))
+			}
+			lines = append(lines, "")
+		}
+	}
+
+	lines = append(lines, "")
+	shortcuts := "<Enter> Edit field  <j/k> Navigate  <Esc> Cancel  <:w> Save  <:wq> Save & Exit"
+	lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(shortcuts))
+
+	content := strings.Join(lines, "\n")
+
+	return lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("11")).
+		Height(availableHeight).
+		Width(m.width-4).
+		Padding(1, 2).
 		Render(content)
 }
 

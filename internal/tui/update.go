@@ -22,6 +22,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.searchMode {
 			return m.handleSearchMode(msg)
 		}
+		if m.mode == ModeEdit {
+			if m.editFieldMode {
+				return m.handleFieldEdit(msg)
+			}
+			return m.handleEditModeKeys(msg)
+		}
 		return m.handleNormalMode(msg)
 	}
 
@@ -290,6 +296,37 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 			m.statusMessage = "No item selected"
 		}
 
+	case "edit":
+		if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
+			item := m.currentItems[m.cursor]
+			if item.IsRequest() {
+				m = m.enterEditMode(item)
+			} else {
+				m.statusMessage = "Can only edit requests, not folders"
+			}
+		} else {
+			m.statusMessage = "No editable item selected"
+		}
+
+	case "write", "w":
+		if m.mode == ModeEdit {
+			m = m.saveEdit()
+		} else {
+			m.statusMessage = "Not in edit mode. Use :e to edit an item first."
+		}
+
+	case "wq":
+		if m.mode == ModeEdit {
+			m = m.saveEdit()
+			if !strings.Contains(m.statusMessage, "Failed") && !strings.Contains(m.statusMessage, "Error") {
+				m.mode = m.previousMode
+				m.editType = EditTypeNone
+				m.editFieldMode = false
+			}
+		} else {
+			m.statusMessage = "Not in edit mode"
+		}
+
 	default:
 		m.statusMessage = fmt.Sprintf("Unknown command: %s (try :help)", parts[0])
 	}
@@ -395,15 +432,32 @@ func (m Model) handleSelection() Model {
 			if item.IsFolder() {
 				m = m.navigateInto(item)
 			} else if item.IsRequest() {
-				m.statusMessage = fmt.Sprintf("Executing: %s %s", item.Request.Method, item.Name)
+				itemID := m.getRequestIdentifier(item)
+				requestToExecute := item.Request
+
+				if m.isItemModified(itemID) {
+					if modifiedReq, exists := m.modifiedRequests[itemID]; exists {
+						requestToExecute = modifiedReq
+						m.statusMessage = fmt.Sprintf("Executing (unsaved): %s %s", requestToExecute.Method, item.Name)
+					} else {
+						m.statusMessage = fmt.Sprintf("Executing: %s %s", item.Request.Method, item.Name)
+					}
+				} else {
+					m.statusMessage = fmt.Sprintf("Executing: %s %s", item.Request.Method, item.Name)
+				}
+
 				variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
-				m.lastResponse = m.executor.Execute(item.Request, variables)
+				m.lastResponse = m.executor.Execute(requestToExecute, variables)
 				m.scrollOffset = 0
 				m.mode = ModeResponse
 				if m.lastResponse.Error != nil {
 					m.statusMessage = fmt.Sprintf("Request failed: %v", m.lastResponse.Error)
 				} else {
-					m.statusMessage = fmt.Sprintf("Response: %s (%v)", m.lastResponse.Status, m.lastResponse.Duration)
+					statusSuffix := ""
+					if m.isItemModified(itemID) {
+						statusSuffix = " [unsaved changes]"
+					}
+					m.statusMessage = fmt.Sprintf("Response: %s (%v)%s", m.lastResponse.Status, m.lastResponse.Duration, statusSuffix)
 				}
 			}
 		}
@@ -620,4 +674,266 @@ func (m Model) loadVariablesList() Model {
 		m.statusMessage = fmt.Sprintf("Showing %d variables", len(m.variables))
 	}
 	return m
+}
+
+func (m Model) enterEditMode(item postman.Item) Model {
+	if !item.IsRequest() || item.Request == nil {
+		m.statusMessage = "Cannot edit: not a request"
+		return m
+	}
+
+	m.editRequest = m.deepCopyRequest(item.Request)
+	m.editType = EditTypeRequest
+	m.editFieldCursor = 0
+	m.editFieldMode = false
+	m.editCollectionName = m.collection.Info.Name
+	m.editItemPath = append([]string{}, m.breadcrumb...)
+	m.previousMode = m.mode
+	m.mode = ModeEdit
+	m.scrollOffset = 0
+	m.statusMessage = "Edit mode: Use j/k to navigate, Enter to edit field, :w to save, :wq to save & exit"
+
+	return m
+}
+
+func (m Model) saveEdit() Model {
+	if m.editType == EditTypeNone {
+		m.statusMessage = "Nothing to save"
+		return m
+	}
+
+	switch m.editType {
+	case EditTypeRequest:
+		if m.collection == nil {
+			m.statusMessage = "Error: No collection loaded"
+			return m
+		}
+
+		if !m.updateRequestInCollection(m.editItemPath, m.editRequest) {
+			m.statusMessage = "Error: Failed to update request in collection"
+			return m
+		}
+
+		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editRequest.Method)
+		m.modifiedRequests[itemID] = m.editRequest
+		m.modifiedItems[itemID] = true
+		m.modifiedCollections[m.editCollectionName] = true
+
+		if err := m.parser.SaveCollection(m.editCollectionName); err != nil {
+			m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
+			return m
+		}
+
+		m.statusMessage = "Saved changes to collection file"
+		delete(m.modifiedItems, itemID)
+		if len(m.modifiedItems) == 0 {
+			delete(m.modifiedCollections, m.editCollectionName)
+		}
+	}
+
+	return m
+}
+
+func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.mode = m.previousMode
+		m.editType = EditTypeNone
+		m.editFieldMode = false
+		m.statusMessage = "Edit cancelled"
+		return m, nil
+
+	case ":":
+		m.commandMode = true
+		m.commandInput = ""
+		return m, nil
+
+	case "j", "down":
+		fieldCount := m.getEditFieldCount()
+		if m.editFieldCursor < fieldCount-1 {
+			m.editFieldCursor++
+		}
+		return m, nil
+
+	case "k", "up":
+		if m.editFieldCursor > 0 {
+			m.editFieldCursor--
+		}
+		return m, nil
+
+	case "enter":
+		m.editFieldMode = true
+		m.editFieldInput = m.getCurrentFieldValue()
+		m.statusMessage = "Editing field... (Enter to confirm, Esc to cancel)"
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.editFieldMode = false
+		m.editFieldInput = ""
+		m.statusMessage = "Field edit cancelled"
+		return m, nil
+
+	case tea.KeyEnter:
+		m.setCurrentFieldValue(m.editFieldInput)
+		m.editFieldMode = false
+		m.editFieldInput = ""
+		m.statusMessage = "Field updated (use :w to save)"
+		return m, nil
+
+	case tea.KeyBackspace:
+		if len(m.editFieldInput) > 0 {
+			m.editFieldInput = m.editFieldInput[:len(m.editFieldInput)-1]
+		}
+		return m, nil
+
+	case tea.KeySpace:
+		m.editFieldInput += " "
+		return m, nil
+
+	default:
+		if msg.Type == tea.KeyRunes {
+			m.editFieldInput += string(msg.Runes)
+		}
+		return m, nil
+	}
+}
+
+func (m Model) deepCopyRequest(req *postman.Request) *postman.Request {
+	if req == nil {
+		return nil
+	}
+
+	copied := &postman.Request{
+		Method: req.Method,
+	}
+
+	copied.URL.Raw = req.URL.Raw
+	if req.URL.Host != nil {
+		copied.URL.Host = make([]string, len(req.URL.Host))
+		copy(copied.URL.Host, req.URL.Host)
+	}
+	if req.URL.Path != nil {
+		copied.URL.Path = make([]string, len(req.URL.Path))
+		copy(copied.URL.Path, req.URL.Path)
+	}
+
+	if req.Header != nil {
+		copied.Header = make([]postman.Header, len(req.Header))
+		copy(copied.Header, req.Header)
+	}
+
+	if req.Body != nil {
+		copied.Body = &postman.Body{
+			Mode: req.Body.Mode,
+			Raw:  req.Body.Raw,
+		}
+	}
+
+	return copied
+}
+
+func (m Model) getRequestIdentifier(item postman.Item) string {
+	if m.collection == nil {
+		return ""
+	}
+	path := strings.Join(m.breadcrumb, "/")
+	if path != "" {
+		return m.collection.Info.Name + "/" + path + "/" + item.Name
+	}
+	return m.collection.Info.Name + "/" + item.Name
+}
+
+func (m Model) getRequestIdentifierByPath(collectionName string, breadcrumb []string, requestName string) string {
+	path := strings.Join(breadcrumb, "/")
+	if path != "" {
+		return collectionName + "/" + path + "/" + requestName
+	}
+	return collectionName + "/" + requestName
+}
+
+func (m Model) isItemModified(itemID string) bool {
+	return m.modifiedItems[itemID]
+}
+
+func (m Model) getEditFieldCount() int {
+	if m.editType == EditTypeRequest {
+		return 3
+	}
+	return 0
+}
+
+func (m Model) getCurrentFieldValue() string {
+	if m.editType == EditTypeRequest && m.editRequest != nil {
+		switch m.editFieldCursor {
+		case 0:
+			return m.editRequest.Method
+		case 1:
+			return m.editRequest.URL.Raw
+		case 2:
+			if m.editRequest.Body != nil {
+				return m.editRequest.Body.Raw
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
+func (m Model) setCurrentFieldValue(value string) {
+	if m.editType == EditTypeRequest && m.editRequest != nil {
+		switch m.editFieldCursor {
+		case 0:
+			m.editRequest.Method = value
+		case 1:
+			m.editRequest.URL.Raw = value
+		case 2:
+			if m.editRequest.Body == nil {
+				m.editRequest.Body = &postman.Body{}
+			}
+			m.editRequest.Body.Raw = value
+		}
+	}
+}
+
+func (m Model) updateRequestInCollection(path []string, updatedRequest *postman.Request) bool {
+	if m.collection == nil || updatedRequest == nil {
+		return false
+	}
+
+	items := &m.collection.Items
+
+	for i, folderName := range path {
+		found := false
+		for j := range *items {
+			if (*items)[j].Name == folderName && (*items)[j].IsFolder() {
+				items = &(*items)[j].Items
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+
+		if i == len(path)-1 {
+			break
+		}
+	}
+
+	for i := range *items {
+		if (*items)[i].IsRequest() && (*items)[i].Request != nil {
+			if (*items)[i].Request.Method == updatedRequest.Method {
+				(*items)[i].Request = updatedRequest
+				return true
+			}
+		}
+	}
+
+	return false
 }

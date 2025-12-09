@@ -16,6 +16,17 @@ const (
 	ModeInfo
 	ModeEnvironments
 	ModeVariables
+	ModeEdit
+)
+
+type EditType int
+
+const (
+	EditTypeNone EditType = iota
+	EditTypeRequest
+	EditTypeEnvVariable
+	EditTypeCollectionVariable
+	EditTypeFolderVariable
 )
 
 type Model struct {
@@ -46,20 +57,39 @@ type Model struct {
 	previousMode    ViewMode
 	variables       []postman.VariableSource
 	envVarCursor    int
+
+	editType             EditType
+	editRequest          *postman.Request
+	editVariable         *postman.Variable
+	editEnvVariable      *postman.EnvVariable
+	editFieldCursor      int
+	editFieldInput       string
+	editFieldMode        bool
+	modifiedItems        map[string]bool
+	modifiedCollections  map[string]bool
+	modifiedEnvironments map[string]bool
+	modifiedRequests     map[string]*postman.Request
+	editItemPath         []string
+	editCollectionName   string
+	editEnvironmentName  string
 }
 
 func NewModel(parser *postman.Parser) Model {
 	return Model{
-		parser:        parser,
-		executor:      http.NewExecutor(),
-		mode:          ModeCollections,
-		commandMode:   false,
-		commandInput:  "",
-		cursor:        0,
-		items:         []string{},
-		currentItems:  []postman.Item{},
-		breadcrumb:    []string{},
-		statusMessage: "Press : to enter command mode",
+		parser:               parser,
+		executor:             http.NewExecutor(),
+		mode:                 ModeCollections,
+		commandMode:          false,
+		commandInput:         "",
+		cursor:               0,
+		items:                []string{},
+		currentItems:         []postman.Item{},
+		breadcrumb:           []string{},
+		statusMessage:        "Press : to enter command mode",
+		modifiedItems:        make(map[string]bool),
+		modifiedCollections:  make(map[string]bool),
+		modifiedEnvironments: make(map[string]bool),
+		modifiedRequests:     make(map[string]*postman.Request),
 	}
 }
 

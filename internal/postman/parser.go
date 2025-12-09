@@ -103,3 +103,61 @@ func (p *Parser) ListEnvironments() []string {
 	}
 	return names
 }
+
+func (p *Parser) SaveCollection(name string) error {
+	collection, exists := p.collections[name]
+	if !exists {
+		return fmt.Errorf("collection not found: %s", name)
+	}
+
+	path, exists := p.pathMap[name]
+	if !exists {
+		return fmt.Errorf("collection path not found: %s", name)
+	}
+
+	data, err := json.MarshalIndent(collection, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal collection: %w", err)
+	}
+
+	tempPath := path + ".tmp"
+	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+
+	if err := os.Rename(tempPath, path); err != nil {
+		os.Remove(tempPath)
+		return fmt.Errorf("failed to rename temp file: %w", err)
+	}
+
+	return nil
+}
+
+func (p *Parser) SaveEnvironment(name string) error {
+	environment, exists := p.environments[name]
+	if !exists {
+		return fmt.Errorf("environment not found: %s", name)
+	}
+
+	path, exists := p.envPathMap[name]
+	if !exists {
+		return fmt.Errorf("environment path not found: %s", name)
+	}
+
+	data, err := json.MarshalIndent(environment, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal environment: %w", err)
+	}
+
+	tempPath := path + ".tmp"
+	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+
+	if err := os.Rename(tempPath, path); err != nil {
+		os.Remove(tempPath)
+		return fmt.Errorf("failed to rename temp file: %w", err)
+	}
+
+	return nil
+}
