@@ -43,6 +43,7 @@ type Model struct {
 	allCurrentItems []postman.Item
 	environment     *postman.Environment
 	previousMode    ViewMode
+	variables       []postman.VariableSource
 }
 
 func NewModel(parser *postman.Parser) Model {

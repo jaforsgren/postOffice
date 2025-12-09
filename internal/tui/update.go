@@ -578,12 +578,11 @@ func (m Model) loadEnvironment(path string) Model {
 }
 
 func (m Model) loadVariablesList() Model {
-	variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+	m.variables = m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
 
 	m.items = []string{}
-	for _, variable := range variables {
-		display := fmt.Sprintf("%s = %s  [%s]", variable.Key, variable.Value, variable.Source)
-		m.items = append(m.items, display)
+	for _, variable := range m.variables {
+		m.items = append(m.items, variable.Key)
 	}
 
 	m.cursor = 0
@@ -593,7 +592,7 @@ func (m Model) loadVariablesList() Model {
 	if len(m.items) == 0 {
 		m.statusMessage = "No variables defined. Load a collection or environment with variables."
 	} else {
-		m.statusMessage = fmt.Sprintf("Showing %d variables", len(variables))
+		m.statusMessage = fmt.Sprintf("Showing %d variables", len(m.variables))
 	}
 	return m
 }

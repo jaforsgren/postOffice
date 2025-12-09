@@ -32,6 +32,8 @@ func (m Model) View() string {
 		infoHeight := availableForMain - mainHeight
 		sections = append(sections, m.renderItemsList(mainHeight))
 		sections = append(sections, m.renderInfoPopup(infoHeight))
+	} else if m.mode == ModeVariables {
+		sections = append(sections, m.renderVariablesView())
 	} else {
 		sections = append(sections, m.renderMainWindow())
 	}
@@ -79,18 +81,7 @@ func (m Model) renderTopBar() string {
 	}
 
 	rightCol := []string{
-		"██████╗  ██████╗ ███████╗████████╗",
-		"██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝",
-		"██████╔╝██║   ██║███████╗   ██║",
-		"██╔═══╝ ██║   ██║╚════██║   ██║",
-		"██║     ╚██████╔╝███████║   ██║",
-		"╚═╝      ╚═════╝ ╚══════╝   ╚═╝",
-		" ██████╗ ███████╗███████╗██╗ ██████╗███████╗",
-		"██╔═══██╗██╔════╝██╔════╝██║██╔════╝██╔════╝",
-		"██║   ██║█████╗  █████╗  ██║██║     █████╗",
-		" █║   ██║██╔══╝  ██╔══╝  ██║██║     ██╔══╝",
-		"╚██████╔╝██║     ██║     ██║╚██████╗███████╗",
-		" ╚═════╝ ╚═╝     ╚═╝     ╚═╝ ╚═════╝╚══════╝",
+		"PostOffice",
 	}
 
 	for i := 0; i < len(leftCol); i++ {
@@ -508,6 +499,91 @@ func (m Model) renderInfoPopup(availableHeight int) string {
 		Height(availableHeight).
 		Width(m.width-4).
 		Padding(1, 2).
+		Render(content)
+}
+
+func (m Model) renderVariablesView() string {
+	topBarHeight := 7
+	statusHeight := 2
+	totalOverhead := topBarHeight + statusHeight
+	availableHeight := m.height - totalOverhead
+
+	if len(m.variables) == 0 {
+		emptyMsg := "No variables defined.\n\n"
+		emptyMsg += "Variables can be defined in:\n"
+		emptyMsg += "  - Environments (highest priority)\n"
+		emptyMsg += "  - Collections\n"
+		emptyMsg += "  - Folders (inherited in hierarchy)\n\n"
+		emptyMsg += "Load a collection or environment with variables to see them here."
+		return mainWindowStyle.
+			Height(availableHeight).
+			Width(m.width - 4).
+			Render(emptyMsg)
+	}
+
+	var lines []string
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Variables"))
+	lines = append(lines, "")
+
+	keyColWidth := 30
+	valueColWidth := m.width - keyColWidth - 10
+
+	headerKey := lipgloss.NewStyle().Bold(true).Width(keyColWidth).Render("Variable")
+	headerValue := lipgloss.NewStyle().Bold(true).Render("Value")
+	lines = append(lines, headerKey+"  "+headerValue)
+	lines = append(lines, strings.Repeat("─", m.width-6))
+
+	for i, variable := range m.variables {
+		keyStyle := normalItemStyle
+		valueStyle := normalItemStyle
+		prefix := "  "
+
+		if i == m.cursor {
+			keyStyle = selectedItemStyle
+			valueStyle = selectedItemStyle
+			prefix = "> "
+		}
+
+		key := keyStyle.Width(keyColWidth - 2).Render(variable.Key)
+
+		var value string
+		if i == m.cursor {
+			value = variable.Value
+			if len(value) > valueColWidth {
+				valueLines := strings.Split(value, "\n")
+				if len(valueLines) > 1 {
+					value = valueLines[0]
+					for j := 1; j < len(valueLines) && j < 5; j++ {
+						value += "\n" + strings.Repeat(" ", keyColWidth) + valueLines[j]
+					}
+					if len(valueLines) > 5 {
+						value += "\n" + strings.Repeat(" ", keyColWidth) + "..."
+					}
+				}
+			}
+		} else {
+			value = variable.Value
+			if len(value) > valueColWidth {
+				value = value[:valueColWidth-3] + "..."
+			}
+			value = strings.ReplaceAll(value, "\n", " ")
+		}
+
+		line := prefix + key + "  " + valueStyle.Render(value)
+		lines = append(lines, line)
+
+		if i == m.cursor {
+			sourceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
+			sourceLine := strings.Repeat(" ", keyColWidth) + sourceStyle.Render("Source: "+variable.Source)
+			lines = append(lines, sourceLine)
+			lines = append(lines, "")
+		}
+	}
+
+	content := strings.Join(lines, "\n")
+	return mainWindowStyle.
+		Height(availableHeight).
+		Width(m.width - 4).
 		Render(content)
 }
 
