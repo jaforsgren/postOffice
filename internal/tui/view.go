@@ -16,9 +16,14 @@ func (m Model) View() string {
 
 	sections = append(sections, m.renderTopBar())
 
+	topBarHeight := 7
+	statusHeight := 2
+	totalOverhead := topBarHeight + statusHeight
+
 	if m.mode == ModeResponse && m.lastResponse != nil {
-		mainHeight := (m.height - 4) / 2
-		responseHeight := (m.height - 4) - mainHeight
+		availableForMain := m.height - totalOverhead
+		mainHeight := availableForMain / 2
+		responseHeight := availableForMain - mainHeight
 		sections = append(sections, m.renderItemsList(mainHeight))
 		sections = append(sections, m.renderResponsePopup(responseHeight))
 	} else {
@@ -32,9 +37,11 @@ func (m Model) View() string {
 }
 
 func (m Model) renderTopBar() string {
-	title := " PostOffice "
+	var lines []string
+
+	collectionName := "none"
 	if m.collection != nil {
-		title += fmt.Sprintf("- %s ", m.collection.Info.Name)
+		collectionName = m.collection.Info.Name
 	}
 
 	modeStr := ""
@@ -47,9 +54,75 @@ func (m Model) renderTopBar() string {
 		modeStr = "Response"
 	}
 
-	title += fmt.Sprintf("[%s] ", modeStr)
+	path := "/"
+	if len(m.breadcrumb) > 0 {
+		path = "/" + strings.Join(m.breadcrumb, "/")
+	}
 
-	return titleStyle.Width(m.width).Render(title)
+	leftCol := []string{
+		fmt.Sprintf("Collection: %s", collectionName),
+		fmt.Sprintf("Mode:       %s", modeStr),
+		fmt.Sprintf("Path:       %s", path),
+		fmt.Sprintf("Items:      %d", len(m.items)),
+	}
+
+	rightCol := []string{
+		"  ____             __  ____   _____ _         ",
+		" / __ \\____  _____/ /_/ __ \\ / __(_) _______ ",
+		"/ /_/ / __ \\/ ___/ __/ / / // /_/ / / ___/ _ \\",
+		"/ ____/ /_/ (__  ) /_/ /_/ / __/ / / /__/  __/",
+		"/_/    \\____/____/\\__/\\____/_/ /_/_/\\___/\\___/ ",
+	}
+
+	for i := 0; i < len(leftCol); i++ {
+		line := leftCol[i]
+		if i < len(rightCol) {
+			padding := m.width - len(line) - len(rightCol[i]) - 2
+			if padding < 0 {
+				padding = 0
+			}
+			line += strings.Repeat(" ", padding) + rightCol[i]
+		}
+		lines = append(lines, line)
+	}
+
+	shortcuts := m.getContextualShortcuts()
+	lines = append(lines, "")
+	lines = append(lines, shortcuts)
+
+	content := strings.Join(lines, "\n")
+	return titleStyle.Width(m.width).Render(content)
+}
+
+func (m Model) getContextualShortcuts() string {
+	var shortcuts []string
+
+	switch m.mode {
+	case ModeCollections:
+		shortcuts = []string{
+			"<enter> Select",
+			"<:l> Load",
+			"<:r> Requests",
+			"<q> Quit",
+		}
+	case ModeRequests:
+		shortcuts = []string{
+			"<enter> Select/Execute",
+			"<esc/h> Back",
+			"<j/k> Navigate",
+			"<:c> Collections",
+			"<:l> Load",
+			"<q> Quit",
+		}
+	case ModeResponse:
+		shortcuts = []string{
+			"<esc> Close",
+			"<j/k> Scroll",
+			"<q> Quit",
+		}
+	}
+
+	return strings.Join(shortcuts, "  ")
 }
 
 func (m Model) renderItemsList(availableHeight int) string {
@@ -121,7 +194,10 @@ func (m Model) renderItemsList(availableHeight int) string {
 }
 
 func (m Model) renderMainWindow() string {
-	availableHeight := m.height - 4
+	topBarHeight := 7
+	statusHeight := 2
+	totalOverhead := topBarHeight + statusHeight
+	availableHeight := m.height - totalOverhead
 	return m.renderItemsList(availableHeight)
 }
 
