@@ -44,6 +44,10 @@ func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.KeySpace:
+		m.commandInput += " "
+		return m, nil
+
 	default:
 		if msg.Type == tea.KeyRunes {
 			m.commandInput += string(msg.Runes)
