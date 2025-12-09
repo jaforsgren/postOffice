@@ -391,7 +391,10 @@ func (m Model) handleSelection() Model {
 			environment, exists := m.parser.GetEnvironment(envName)
 			if exists {
 				m.environment = environment
-				m.statusMessage = fmt.Sprintf("Selected environment: %s (press i for details)", envName)
+				m.scrollOffset = 0
+				m.previousMode = m.mode
+				m.mode = ModeInfo
+				m.statusMessage = fmt.Sprintf("Showing environment: %s", envName)
 			} else {
 				m.statusMessage = fmt.Sprintf("Environment not found: %s", envName)
 			}

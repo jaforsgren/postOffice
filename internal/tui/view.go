@@ -148,11 +148,11 @@ func (m Model) getContextualShortcuts() string {
 		}
 	case ModeEnvironments:
 		shortcuts = []string{
-			"<enter> Select",
+			"<enter> View Info",
+			"<i> Info",
 			"</> Search",
 			"<:le> Load",
 			"<:c> Collections",
-			"<:r> Requests",
 			"<q> Quit",
 		}
 	}
