@@ -44,6 +44,7 @@ type Model struct {
 	environment     *postman.Environment
 	previousMode    ViewMode
 	variables       []postman.VariableSource
+	envVarCursor    int
 }
 
 func NewModel(parser *postman.Parser) Model {

@@ -397,27 +397,70 @@ func (m Model) renderInfoPopup(availableHeight int) string {
 	var lines []string
 
 	if m.environment != nil && m.previousMode == ModeEnvironments {
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Environment Info (press Esc to close)"))
+		lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Environment: "+m.environment.Name+" (press Esc to close)"))
 		lines = append(lines, "")
 
-		lines = append(lines, requestStyle.Render("Name:"))
-		lines = append(lines, "  "+m.environment.Name)
+		lines = append(lines, requestStyle.Render("ID: ")+m.environment.ID)
 		lines = append(lines, "")
 
-		lines = append(lines, requestStyle.Render("ID:"))
-		lines = append(lines, "  "+m.environment.ID)
-		lines = append(lines, "")
-
-		lines = append(lines, requestStyle.Render("Variables:"))
 		if len(m.environment.Values) == 0 {
-			lines = append(lines, "  No variables defined")
+			lines = append(lines, "No variables defined")
 		} else {
-			for _, variable := range m.environment.Values {
-				status := ""
-				if !variable.Enabled {
-					status = " (disabled)"
+			keyColWidth := 30
+			valueColWidth := m.width - keyColWidth - 10
+
+			headerKey := lipgloss.NewStyle().Bold(true).Width(keyColWidth).Render("Variable")
+			headerValue := lipgloss.NewStyle().Bold(true).Render("Value")
+			lines = append(lines, headerKey+"  "+headerValue)
+			lines = append(lines, strings.Repeat("─", m.width-10))
+
+			for i, variable := range m.environment.Values {
+				keyStyle := normalItemStyle
+				valueStyle := normalItemStyle
+				prefix := "  "
+
+				if i == m.envVarCursor {
+					keyStyle = selectedItemStyle
+					valueStyle = selectedItemStyle
+					prefix = "> "
 				}
-				lines = append(lines, fmt.Sprintf("  %s = %s%s", variable.Key, variable.Value, status))
+
+				key := keyStyle.Width(keyColWidth - 2).Render(variable.Key)
+
+				var value string
+				if i == m.envVarCursor {
+					value = variable.Value
+					if len(value) > valueColWidth {
+						valueLines := strings.Split(value, "\n")
+						if len(valueLines) > 1 {
+							value = valueLines[0]
+							for j := 1; j < len(valueLines) && j < 5; j++ {
+								value += "\n" + strings.Repeat(" ", keyColWidth) + valueLines[j]
+							}
+							if len(valueLines) > 5 {
+								value += "\n" + strings.Repeat(" ", keyColWidth) + "..."
+							}
+						}
+					}
+				} else {
+					value = variable.Value
+					if len(value) > valueColWidth {
+						value = value[:valueColWidth-3] + "..."
+					}
+					value = strings.ReplaceAll(value, "\n", " ")
+				}
+
+				line := prefix + key + "  " + valueStyle.Render(value)
+				lines = append(lines, line)
+
+				if i == m.envVarCursor && !variable.Enabled {
+					disabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
+					lines = append(lines, strings.Repeat(" ", keyColWidth)+disabledStyle.Render("(disabled)"))
+				}
+
+				if i == m.envVarCursor {
+					lines = append(lines, "")
+				}
 			}
 		}
 	} else if m.currentInfoItem != nil {
@@ -504,22 +547,27 @@ func (m Model) renderInfoPopup(availableHeight int) string {
 		}
 	}
 
-	visibleLines := availableHeight - 2
-	if visibleLines < 1 {
-		visibleLines = 1
-	}
+	var content string
+	if m.environment != nil && m.previousMode == ModeEnvironments {
+		content = strings.Join(lines, "\n")
+	} else {
+		visibleLines := availableHeight - 2
+		if visibleLines < 1 {
+			visibleLines = 1
+		}
 
-	startIdx := m.scrollOffset
-	if startIdx > len(lines) {
-		startIdx = len(lines)
-	}
-	endIdx := startIdx + visibleLines
-	if endIdx > len(lines) {
-		endIdx = len(lines)
-	}
+		startIdx := m.scrollOffset
+		if startIdx > len(lines) {
+			startIdx = len(lines)
+		}
+		endIdx := startIdx + visibleLines
+		if endIdx > len(lines) {
+			endIdx = len(lines)
+		}
 
-	visibleContent := lines[startIdx:endIdx]
-	content := strings.Join(visibleContent, "\n")
+		visibleContent := lines[startIdx:endIdx]
+		content = strings.Join(visibleContent, "\n")
+	}
 
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).

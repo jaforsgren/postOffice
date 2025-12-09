@@ -122,7 +122,11 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "up", "k":
-		if m.mode == ModeInfo || m.mode == ModeResponse {
+		if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
+			if m.envVarCursor > 0 {
+				m.envVarCursor--
+			}
+		} else if m.mode == ModeInfo || m.mode == ModeResponse {
 			if m.scrollOffset > 0 {
 				m.scrollOffset--
 			}
@@ -134,7 +138,11 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "down", "j":
-		if m.mode == ModeInfo || m.mode == ModeResponse {
+		if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
+			if m.envVarCursor < len(m.environment.Values)-1 {
+				m.envVarCursor++
+			}
+		} else if m.mode == ModeInfo || m.mode == ModeResponse {
 			m.scrollOffset++
 		} else {
 			if m.cursor < len(m.items)-1 {
@@ -155,6 +163,7 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusMessage = "Showing item info"
 		} else if m.mode == ModeEnvironments && m.environment != nil {
 			m.scrollOffset = 0
+			m.envVarCursor = 0
 			m.previousMode = m.mode
 			m.mode = ModeInfo
 			m.statusMessage = "Showing environment info"
@@ -398,6 +407,7 @@ func (m Model) handleSelection() Model {
 			if exists {
 				m.environment = environment
 				m.scrollOffset = 0
+				m.envVarCursor = 0
 				m.previousMode = m.mode
 				m.mode = ModeInfo
 				m.statusMessage = fmt.Sprintf("Showing environment: %s", envName)
