@@ -129,6 +129,19 @@ func (m Model) executeCommand() Model {
 	case "help", "h", "?":
 		m.statusMessage = "Commands: :load <path> | :collections (c) | :requests (r) | :quit (q)"
 
+	case "debug", "d":
+		if m.collection != nil {
+			itemInfo := fmt.Sprintf("Collection: %s, Items count: %d", m.collection.Info.Name, len(m.collection.Items))
+			if len(m.collection.Items) > 0 {
+				first := m.collection.Items[0]
+				itemInfo += fmt.Sprintf(" | First item: name='%s', hasRequest=%v, hasItems=%v, itemsLen=%d",
+					first.Name, first.Request != nil, first.Items != nil, len(first.Items))
+			}
+			m.statusMessage = itemInfo
+		} else {
+			m.statusMessage = "No collection loaded"
+		}
+
 	default:
 		m.statusMessage = fmt.Sprintf("Unknown command: %s (try :help)", parts[0])
 	}
@@ -159,14 +172,21 @@ func (m Model) loadRequestsList() {
 	m.currentItems = m.collection.Items
 	m.breadcrumb = []string{}
 
+	folderCount := 0
+	requestCount := 0
+	otherCount := 0
+
 	for _, item := range m.collection.Items {
 		prefix := ""
 		if item.IsFolder() {
 			prefix = "[DIR] "
+			folderCount++
 		} else if item.IsRequest() {
 			prefix = fmt.Sprintf("[%s] ", item.Request.Method)
+			requestCount++
 		} else {
 			prefix = "[???] "
+			otherCount++
 		}
 		m.items = append(m.items, prefix+item.Name)
 	}
@@ -174,6 +194,9 @@ func (m Model) loadRequestsList() {
 
 	if len(m.items) == 0 {
 		m.statusMessage = "Collection loaded but contains no items"
+	} else {
+		m.statusMessage = fmt.Sprintf("Loaded %d items (folders: %d, requests: %d, other: %d)",
+			len(m.items), folderCount, requestCount, otherCount)
 	}
 }
 
