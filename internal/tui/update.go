@@ -269,7 +269,7 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case "help", "h", "?":
-		m.statusMessage = "Commands: :load/:l | :loadenv/:le | :collections/:c | :environments/:e | :variables/:v | :requests/:r | :edit | :w/:wq | /search | :info/:i | :quit/:q"
+		m.statusMessage = "Commands: :load/:l | :loadenv/:le | :collections/:c | :environments/:e | :variables/:v | :requests/:r | :edit | :w/:wq | :duplicate/:dup | :delete/:del | /search | :info/:i | :quit/:q"
 
 	case "debug", "d":
 		if m.collection != nil {
@@ -325,6 +325,30 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 			}
 		} else {
 			m.statusMessage = "Not in edit mode"
+		}
+
+	case "duplicate", "dup":
+		if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
+			item := m.currentItems[m.cursor]
+			if item.IsRequest() {
+				m = m.duplicateRequest(item)
+			} else {
+				m.statusMessage = "Can only duplicate requests, not folders"
+			}
+		} else {
+			m.statusMessage = "No request selected to duplicate"
+		}
+
+	case "delete", "del":
+		if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
+			item := m.currentItems[m.cursor]
+			if item.IsRequest() {
+				m = m.deleteRequest(item)
+			} else {
+				m.statusMessage = "Can only delete requests, not folders"
+			}
+		} else {
+			m.statusMessage = "No request selected to delete"
 		}
 
 	default:
@@ -683,6 +707,7 @@ func (m Model) enterEditMode(item postman.Item) Model {
 	}
 
 	m.editRequest = m.deepCopyRequest(item.Request)
+	m.editItemName = item.Name
 	m.editType = EditTypeRequest
 	m.editFieldCursor = 0
 	m.editFieldMode = false
@@ -709,7 +734,7 @@ func (m Model) saveEdit() Model {
 			return m
 		}
 
-		if !m.updateRequestInCollection(m.editItemPath, m.editRequest) {
+		if !m.updateRequestInCollection(m.editItemPath, m.editItemName, m.editRequest) {
 			m.statusMessage = "Error: Failed to update request in collection"
 			return m
 		}
@@ -863,7 +888,7 @@ func (m Model) isItemModified(itemID string) bool {
 
 func (m Model) getEditFieldCount() int {
 	if m.editType == EditTypeRequest {
-		return 3
+		return 4
 	}
 	return 0
 }
@@ -872,10 +897,12 @@ func (m Model) getCurrentFieldValue() string {
 	if m.editType == EditTypeRequest && m.editRequest != nil {
 		switch m.editFieldCursor {
 		case 0:
-			return m.editRequest.Method
+			return m.editItemName
 		case 1:
-			return m.editRequest.URL.Raw
+			return m.editRequest.Method
 		case 2:
+			return m.editRequest.URL.Raw
+		case 3:
 			if m.editRequest.Body != nil {
 				return m.editRequest.Body.Raw
 			}
@@ -889,10 +916,12 @@ func (m Model) setCurrentFieldValue(value string) {
 	if m.editType == EditTypeRequest && m.editRequest != nil {
 		switch m.editFieldCursor {
 		case 0:
-			m.editRequest.Method = value
+			m.editItemName = value
 		case 1:
-			m.editRequest.URL.Raw = value
+			m.editRequest.Method = value
 		case 2:
+			m.editRequest.URL.Raw = value
+		case 3:
 			if m.editRequest.Body == nil {
 				m.editRequest.Body = &postman.Body{}
 			}
@@ -901,7 +930,7 @@ func (m Model) setCurrentFieldValue(value string) {
 	}
 }
 
-func (m Model) updateRequestInCollection(path []string, updatedRequest *postman.Request) bool {
+func (m Model) updateRequestInCollection(path []string, newName string, updatedRequest *postman.Request) bool {
 	if m.collection == nil || updatedRequest == nil {
 		return false
 	}
@@ -929,6 +958,7 @@ func (m Model) updateRequestInCollection(path []string, updatedRequest *postman.
 	for i := range *items {
 		if (*items)[i].IsRequest() && (*items)[i].Request != nil {
 			if (*items)[i].Request.Method == updatedRequest.Method {
+				(*items)[i].Name = newName
 				(*items)[i].Request = updatedRequest
 				return true
 			}
@@ -936,4 +966,95 @@ func (m Model) updateRequestInCollection(path []string, updatedRequest *postman.
 	}
 
 	return false
+}
+
+func (m Model) duplicateRequest(item postman.Item) Model {
+	if m.collection == nil || !item.IsRequest() || item.Request == nil {
+		m.statusMessage = "Error: Cannot duplicate request"
+		return m
+	}
+
+	duplicatedItem := postman.Item{
+		Name:        item.Name + " (copy)",
+		Request:     m.deepCopyRequest(item.Request),
+		Description: item.Description,
+	}
+
+	items := &m.collection.Items
+
+	for _, folderName := range m.breadcrumb {
+		found := false
+		for j := range *items {
+			if (*items)[j].Name == folderName && (*items)[j].IsFolder() {
+				items = &(*items)[j].Items
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.statusMessage = "Error: Could not find folder in breadcrumb"
+			return m
+		}
+	}
+
+	*items = append(*items, duplicatedItem)
+
+	m.modifiedCollections[m.collection.Info.Name] = true
+
+	if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
+		return m
+	}
+
+	m = m.loadRequestsList()
+	m.cursor = len(m.currentItems) - 1
+	m.statusMessage = fmt.Sprintf("Duplicated request: %s", duplicatedItem.Name)
+
+	return m
+}
+
+func (m Model) deleteRequest(item postman.Item) Model {
+	if m.collection == nil || !item.IsRequest() {
+		m.statusMessage = "Error: Cannot delete request"
+		return m
+	}
+
+	items := &m.collection.Items
+
+	for _, folderName := range m.breadcrumb {
+		found := false
+		for j := range *items {
+			if (*items)[j].Name == folderName && (*items)[j].IsFolder() {
+				items = &(*items)[j].Items
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.statusMessage = "Error: Could not find folder in breadcrumb"
+			return m
+		}
+	}
+
+	for i := range *items {
+		if (*items)[i].Name == item.Name && (*items)[i].IsRequest() {
+			*items = append((*items)[:i], (*items)[i+1:]...)
+			break
+		}
+	}
+
+	m.modifiedCollections[m.collection.Info.Name] = true
+
+	if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
+		return m
+	}
+
+	m = m.loadRequestsList()
+	if m.cursor >= len(m.currentItems) && m.cursor > 0 {
+		m.cursor = len(m.currentItems) - 1
+	}
+	m.statusMessage = fmt.Sprintf("Deleted request: %s", item.Name)
+
+	return m
 }

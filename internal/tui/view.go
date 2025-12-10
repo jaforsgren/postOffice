@@ -133,10 +133,10 @@ func (m Model) getContextualShortcuts() string {
 		shortcuts = []string{
 			"<enter> Select/Execute",
 			"<:edit> Edit",
+			"<:dup> Duplicate",
+			"<:del> Delete",
 			"<i> Info",
 			"</> Search",
-			"<esc/h> Back",
-			"<j/k> Navigate",
 			"<q> Quit",
 		}
 	case ModeResponse:
@@ -762,13 +762,14 @@ func (m Model) renderEditPopup(availableHeight int) string {
 			label string
 			value string
 		}{
+			{"Name", m.editItemName},
 			{"Method", m.editRequest.Method},
 			{"URL", m.editRequest.URL.Raw},
 			{"Body", ""},
 		}
 
 		if m.editRequest.Body != nil {
-			fields[2].value = m.editRequest.Body.Raw
+			fields[3].value = m.editRequest.Body.Raw
 		}
 
 		for i, field := range fields {
