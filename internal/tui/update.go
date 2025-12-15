@@ -708,6 +708,7 @@ func (m Model) enterEditMode(item postman.Item) Model {
 
 	m.editRequest = m.deepCopyRequest(item.Request)
 	m.editItemName = item.Name
+	m.editOriginalName = item.Name
 	m.editType = EditTypeRequest
 	m.editFieldCursor = 0
 	m.editFieldMode = false
@@ -734,12 +735,12 @@ func (m Model) saveEdit() Model {
 			return m
 		}
 
-		if !m.updateRequestInCollection(m.editItemPath, m.editItemName, m.editRequest) {
+		if !m.updateRequestInCollection(m.editItemPath, m.editOriginalName, m.editItemName, m.editRequest) {
 			m.statusMessage = "Error: Failed to update request in collection"
 			return m
 		}
 
-		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editRequest.Method)
+		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
 		m.modifiedRequests[itemID] = m.editRequest
 		m.modifiedItems[itemID] = true
 		m.modifiedCollections[m.editCollectionName] = true
@@ -930,7 +931,7 @@ func (m Model) setCurrentFieldValue(value string) {
 	}
 }
 
-func (m Model) updateRequestInCollection(path []string, newName string, updatedRequest *postman.Request) bool {
+func (m Model) updateRequestInCollection(path []string, originalName string, newName string, updatedRequest *postman.Request) bool {
 	if m.collection == nil || updatedRequest == nil {
 		return false
 	}
@@ -956,12 +957,10 @@ func (m Model) updateRequestInCollection(path []string, newName string, updatedR
 	}
 
 	for i := range *items {
-		if (*items)[i].IsRequest() && (*items)[i].Request != nil {
-			if (*items)[i].Request.Method == updatedRequest.Method {
-				(*items)[i].Name = newName
-				(*items)[i].Request = updatedRequest
-				return true
-			}
+		if (*items)[i].IsRequest() && (*items)[i].Name == originalName {
+			(*items)[i].Name = newName
+			(*items)[i].Request = updatedRequest
+			return true
 		}
 	}
 

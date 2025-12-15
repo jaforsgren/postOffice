@@ -63,6 +63,7 @@ type Model struct {
 	editVariable         *postman.Variable
 	editEnvVariable      *postman.EnvVariable
 	editItemName         string
+	editOriginalName     string
 	editFieldCursor      int
 	editFieldInput       string
 	editFieldMode        bool
