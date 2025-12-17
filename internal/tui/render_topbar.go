@@ -71,12 +71,12 @@ func (m Model) buildContextInfo() []string {
 		titleOrangeStyle.Render("Collection: ") +
 		valueWhiteStyle.Render(collectionName))
 
-	totalCollections := len(m.parser.ListCollections())
-	collectionsEmoji := "📚"
+	totalRequests := m.countTotalRequests()
+	loadedEmoji := "📚"
 	lines = append(lines,
-		collectionsEmoji + " " +
+		loadedEmoji + " " +
 		titleOrangeStyle.Render("Loaded: ") +
-		valueWhiteStyle.Render(fmt.Sprintf("%d", totalCollections)))
+		valueWhiteStyle.Render(fmt.Sprintf("%d", totalRequests)))
 
 	envName := "none"
 	envEmoji := "🌍"
@@ -101,13 +101,6 @@ func (m Model) buildContextInfo() []string {
 		unsavedEmoji + " " +
 		titleOrangeStyle.Render("Unsaved: ") +
 		valueWhiteStyle.Render(fmt.Sprintf("%d", unsavedCount)))
-
-	totalRequests := m.countTotalRequests()
-	requestEmoji := "🚀"
-	lines = append(lines,
-		requestEmoji + " " +
-		titleOrangeStyle.Render("Requests: ") +
-		valueWhiteStyle.Render(fmt.Sprintf("%d", totalRequests)))
 
 	modeEmoji := "📍"
 	lines = append(lines,
