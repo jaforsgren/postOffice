@@ -36,6 +36,9 @@ type Model struct {
 	mode            ViewMode
 	commandMode     bool
 	commandInput    string
+	commandHistory  []string
+	historyIndex    int
+	commandSuggestion string
 	cursor          int
 	items           []string
 	currentItems    []postman.Item
@@ -85,6 +88,9 @@ func NewModel(parser *postman.Parser) Model {
 		mode:                 ModeCollections,
 		commandMode:          false,
 		commandInput:         "",
+		commandHistory:       []string{},
+		historyIndex:         -1,
+		commandSuggestion:    "",
 		cursor:               0,
 		items:                []string{},
 		currentItems:         []postman.Item{},

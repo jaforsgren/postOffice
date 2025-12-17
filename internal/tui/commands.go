@@ -320,6 +320,30 @@ func (cr *CommandRegistry) GetContextualShortcuts(mode ViewMode) []string {
 	return shortcuts
 }
 
+func (cr *CommandRegistry) GetAutocompleteSuggestion(input string, mode ViewMode) string {
+	input = strings.ToLower(input)
+	var matches []string
+
+	for name, cmd := range cr.commands {
+		if name != cmd.Name {
+			continue
+		}
+		if !isInModes(mode, cmd.AvailableIn) {
+			continue
+		}
+
+		if strings.HasPrefix(strings.ToLower(cmd.Name), input) {
+			matches = append(matches, cmd.Name)
+		}
+	}
+
+	if len(matches) == 1 {
+		return matches[0]
+	}
+
+	return ""
+}
+
 func isInModes(mode ViewMode, modes []ViewMode) bool {
 	for _, m := range modes {
 		if m == mode {

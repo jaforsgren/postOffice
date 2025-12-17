@@ -39,28 +39,73 @@ func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEsc:
 		m.commandMode = false
 		m.commandInput = ""
+		m.commandSuggestion = ""
+		m.historyIndex = -1
 		return m, nil
 
 	case tea.KeyEnter:
 		var cmd tea.Cmd
+		input := strings.TrimSpace(m.commandInput)
+		if input != "" {
+			if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != input {
+				m.commandHistory = append(m.commandHistory, input)
+			}
+		}
 		m, cmd = m.executeCommand()
 		m.commandMode = false
 		m.commandInput = ""
+		m.commandSuggestion = ""
+		m.historyIndex = -1
 		return m, cmd
+
+	case tea.KeyUp:
+		if len(m.commandHistory) > 0 {
+			if m.historyIndex == -1 {
+				m.historyIndex = len(m.commandHistory) - 1
+			} else if m.historyIndex > 0 {
+				m.historyIndex--
+			}
+			m.commandInput = m.commandHistory[m.historyIndex]
+			m.commandSuggestion = ""
+		}
+		return m, nil
+
+	case tea.KeyDown:
+		if m.historyIndex >= 0 {
+			if m.historyIndex < len(m.commandHistory)-1 {
+				m.historyIndex++
+				m.commandInput = m.commandHistory[m.historyIndex]
+			} else {
+				m.historyIndex = -1
+				m.commandInput = ""
+			}
+			m.commandSuggestion = ""
+		}
+		return m, nil
+
+	case tea.KeyTab:
+		if m.commandSuggestion != "" {
+			m.commandInput = m.commandSuggestion
+			m.commandSuggestion = ""
+		}
+		return m, nil
 
 	case tea.KeyBackspace:
 		if len(m.commandInput) > 0 {
 			m.commandInput = m.commandInput[:len(m.commandInput)-1]
+			m.commandSuggestion = m.getCommandSuggestion()
 		}
 		return m, nil
 
 	case tea.KeySpace:
 		m.commandInput += " "
+		m.commandSuggestion = ""
 		return m, nil
 
 	default:
 		if msg.Type == tea.KeyRunes {
 			m.commandInput += string(msg.Runes)
+			m.commandSuggestion = m.getCommandSuggestion()
 		}
 		return m, nil
 	}
@@ -145,6 +190,15 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 	}
 
 	return m.commandRegistry.ExecuteCommand(m, cmdName, args)
+}
+
+func (m Model) getCommandSuggestion() string {
+	input := strings.TrimSpace(m.commandInput)
+	if input == "" || strings.Contains(input, " ") {
+		return ""
+	}
+
+	return m.commandRegistry.GetAutocompleteSuggestion(input, m.mode)
 }
 
 func (m Model) loadCollectionsList() Model {
