@@ -110,105 +110,17 @@ func (m Model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c":
-		return m, tea.Quit
+	key := msg.String()
 
-	case ":":
+	if key == ":" {
 		m.commandMode = true
 		m.commandInput = ""
 		return m, nil
+	}
 
-	case "/":
-		if m.mode == ModeCollections || m.mode == ModeRequests || m.mode == ModeEnvironments {
-			m.searchMode = true
-			m.searchQuery = ""
-			m.allItems = m.items
-			m.allCurrentItems = m.currentItems
-			m.statusMessage = "Enter search query (Esc to cancel, Enter to confirm)"
-		}
-		return m, nil
-
-	case "up", "k":
-		if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
-			if m.envVarCursor > 0 {
-				m.envVarCursor--
-			}
-		} else if m.mode == ModeInfo || m.mode == ModeResponse {
-			if m.scrollOffset > 0 {
-				m.scrollOffset--
-			}
-		} else {
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		}
-		return m, nil
-
-	case "down", "j":
-		if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
-			if m.envVarCursor < len(m.environment.Values)-1 {
-				m.envVarCursor++
-			}
-		} else if m.mode == ModeInfo || m.mode == ModeResponse {
-			m.scrollOffset++
-		} else {
-			if m.cursor < len(m.items)-1 {
-				m.cursor++
-			}
-		}
-		return m, nil
-
-	case "enter":
-		return m.handleSelection(), nil
-
-	case "i":
-		if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
-			m.currentInfoItem = &m.currentItems[m.cursor]
-			m.scrollOffset = 0
-			m.previousMode = m.mode
-			m.mode = ModeInfo
-			m.statusMessage = "Showing item info"
-		} else if m.mode == ModeEnvironments && m.environment != nil {
-			m.scrollOffset = 0
-			m.envVarCursor = 0
-			m.previousMode = m.mode
-			m.mode = ModeInfo
-			m.statusMessage = "Showing environment info"
-		}
-		return m, nil
-
-	case "esc", "left", "backspace", "h":
-		if m.mode == ModeResponse {
-			m.mode = ModeRequests
-			m.scrollOffset = 0
-			m.statusMessage = "Closed response view"
-			return m, nil
-		}
-		if m.mode == ModeInfo {
-			if m.previousMode != 0 {
-				m.mode = m.previousMode
-			} else {
-				m.mode = ModeRequests
-			}
-			m.currentInfoItem = nil
-			m.scrollOffset = 0
-			m.statusMessage = "Closed info view"
-			return m, nil
-		}
-		if m.searchActive {
-			m.searchActive = false
-			m.searchQuery = ""
-			m.items = m.allItems
-			m.currentItems = m.allCurrentItems
-			m.cursor = 0
-			m.statusMessage = "Search cleared"
-			return m, nil
-		}
-		if len(m.breadcrumb) > 0 {
-			m = m.navigateUp()
-		}
-		return m, nil
+	newModel, cmd, handled := m.commandRegistry.HandleKey(m, key)
+	if handled {
+		return newModel, cmd
 	}
 
 	return m, nil
@@ -222,140 +134,17 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	switch parts[0] {
-	case "collections", "c", "col":
-		m.mode = ModeCollections
-		m = m.loadCollectionsList()
-		m.statusMessage = "Showing collections"
-
-	case "request", "requests", "r", "req":
-		if m.collection != nil {
-			m.mode = ModeRequests
-			m = m.loadRequestsList()
-			m.statusMessage = "Showing requests"
-		} else {
-			m.statusMessage = "No collection loaded. Load a collection first."
+	cmdName := parts[0]
+	args := []string{}
+	if len(parts) > 1 {
+		pathStart := strings.Index(cmd, parts[0]) + len(parts[0])
+		argStr := strings.TrimSpace(cmd[pathStart:])
+		if argStr != "" {
+			args = []string{argStr}
 		}
-
-	case "load", "l":
-		if len(parts) > 1 {
-			pathStart := strings.Index(cmd, parts[0]) + len(parts[0])
-			path := strings.TrimSpace(cmd[pathStart:])
-			m = m.loadCollection(path)
-		} else {
-			m.statusMessage = "Usage: load <path>"
-		}
-
-	case "loadenv", "le", "env-load":
-		if len(parts) > 1 {
-			pathStart := strings.Index(cmd, parts[0]) + len(parts[0])
-			path := strings.TrimSpace(cmd[pathStart:])
-			m = m.loadEnvironment(path)
-		} else {
-			m.statusMessage = "Usage: loadenv <path>"
-		}
-
-	case "environments", "e", "env", "envs":
-		m.mode = ModeEnvironments
-		m = m.loadEnvironmentsList()
-		m.statusMessage = "Showing environments"
-
-	case "variables", "v", "var", "vars":
-		m.mode = ModeVariables
-		m = m.loadVariablesList()
-		m.statusMessage = "Showing all variables"
-
-	case "quit", "q", "exit":
-		return m, tea.Quit
-
-	case "help", "h", "?":
-		m.statusMessage = "Commands: :load/:l | :loadenv/:le | :collections/:c | :environments/:e | :variables/:v | :requests/:r | :edit | :w/:wq | :duplicate/:dup | :delete/:del | /search | :info/:i | :quit/:q"
-
-	case "debug", "d":
-		if m.collection != nil {
-			itemInfo := fmt.Sprintf("Collection: %s, Items count: %d", m.collection.Info.Name, len(m.collection.Items))
-			if len(m.collection.Items) > 0 {
-				first := m.collection.Items[0]
-				itemInfo += fmt.Sprintf(" | First item: name='%s', hasRequest=%v, hasItems=%v, itemsLen=%d",
-					first.Name, first.Request != nil, first.Items != nil, len(first.Items))
-			}
-			m.statusMessage = itemInfo
-		} else {
-			m.statusMessage = "No collection loaded"
-		}
-
-	case "info", "i":
-		if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
-			m.currentInfoItem = &m.currentItems[m.cursor]
-			m.scrollOffset = 0
-			m.mode = ModeInfo
-			m.statusMessage = "Showing item info"
-		} else if m.mode == ModeCollections {
-			m.statusMessage = "Info command is only available in requests mode"
-		} else {
-			m.statusMessage = "No item selected"
-		}
-
-	case "edit":
-		if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
-			item := m.currentItems[m.cursor]
-			if item.IsRequest() {
-				m = m.enterEditMode(item)
-			} else {
-				m.statusMessage = "Can only edit requests, not folders"
-			}
-		} else {
-			m.statusMessage = "No editable item selected"
-		}
-
-	case "write", "w":
-		if m.mode == ModeEdit {
-			m = m.saveEdit()
-		} else {
-			m.statusMessage = "Not in edit mode. Use :e to edit an item first."
-		}
-
-	case "wq":
-		if m.mode == ModeEdit {
-			m = m.saveEdit()
-			if !strings.Contains(m.statusMessage, "Failed") && !strings.Contains(m.statusMessage, "Error") {
-				m.mode = m.previousMode
-				m.editType = EditTypeNone
-				m.editFieldMode = false
-			}
-		} else {
-			m.statusMessage = "Not in edit mode"
-		}
-
-	case "duplicate", "dup":
-		if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
-			item := m.currentItems[m.cursor]
-			if item.IsRequest() {
-				m = m.duplicateRequest(item)
-			} else {
-				m.statusMessage = "Can only duplicate requests, not folders"
-			}
-		} else {
-			m.statusMessage = "No request selected to duplicate"
-		}
-
-	case "delete", "del":
-		if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
-			item := m.currentItems[m.cursor]
-			if item.IsRequest() {
-				m = m.deleteRequest(item)
-			} else {
-				m.statusMessage = "Can only delete requests, not folders"
-			}
-		} else {
-			m.statusMessage = "No request selected to delete"
-		}
-
-	default:
-		m.statusMessage = fmt.Sprintf("Unknown command: %s (try :help)", parts[0])
 	}
 
-	return m, nil
+	return m.commandRegistry.ExecuteCommand(m, cmdName, args)
 }
 
 func (m Model) loadCollectionsList() Model {
@@ -567,6 +356,42 @@ func (m Model) navigateUp() Model {
 
 	m.searchActive = false
 	m.searchQuery = ""
+	return m
+}
+
+func (m Model) refreshCurrentView() Model {
+	if m.collection == nil {
+		return m
+	}
+
+	if len(m.breadcrumb) == 0 {
+		m.currentItems = m.collection.Items
+	} else {
+		current := m.collection.Items
+		for _, crumb := range m.breadcrumb {
+			for _, item := range current {
+				if item.Name == crumb {
+					current = item.Items
+					break
+				}
+			}
+		}
+		m.currentItems = current
+	}
+
+	m.items = []string{}
+	for _, item := range m.currentItems {
+		prefix := ""
+		if item.IsFolder() {
+			prefix = "[DIR] "
+		} else if item.IsRequest() {
+			prefix = fmt.Sprintf("[%s] ", item.Request.Method)
+		} else {
+			prefix = "[???] "
+		}
+		m.items = append(m.items, prefix+item.Name)
+	}
+
 	return m
 }
 
@@ -1005,7 +830,7 @@ func (m Model) duplicateRequest(item postman.Item) Model {
 		return m
 	}
 
-	m = m.loadRequestsList()
+	m = m.refreshCurrentView()
 	m.cursor = len(m.currentItems) - 1
 	m.statusMessage = fmt.Sprintf("Duplicated request: %s", duplicatedItem.Name)
 
@@ -1049,7 +874,7 @@ func (m Model) deleteRequest(item postman.Item) Model {
 		return m
 	}
 
-	m = m.loadRequestsList()
+	m = m.refreshCurrentView()
 	if m.cursor >= len(m.currentItems) && m.cursor > 0 {
 		m.cursor = len(m.currentItems) - 1
 	}

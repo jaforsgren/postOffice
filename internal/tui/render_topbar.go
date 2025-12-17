@@ -87,66 +87,7 @@ func (m Model) getPathString() string {
 }
 
 func (m Model) getContextualShortcuts() string {
-	var shortcuts []string
-
-	switch m.mode {
-	case ModeCollections:
-		shortcuts = []string{
-			"<enter> Select",
-			"</> Search",
-			"<:l> Load",
-			"<:r> Requests",
-			"<q> Quit",
-		}
-	case ModeRequests:
-		shortcuts = []string{
-			"<enter> Select/Execute",
-			"<:edit> Edit",
-			"<:dup> Duplicate",
-			"<:del> Delete",
-			"<i> Info",
-			"</> Search",
-			"<q> Quit",
-		}
-	case ModeResponse:
-		shortcuts = []string{
-			"<esc> Close",
-			"<j/k> Scroll",
-			"<q> Quit",
-		}
-	case ModeInfo:
-		shortcuts = []string{
-			"<esc> Close",
-			"<j/k> Scroll",
-			"<q> Quit",
-		}
-	case ModeEdit:
-		shortcuts = []string{
-			"<enter> Edit Field",
-			"<j/k> Navigate Fields",
-			"<:w> Save",
-			"<:wq> Save & Exit",
-			"<esc> Cancel",
-		}
-	case ModeEnvironments:
-		shortcuts = []string{
-			"<enter> View Info",
-			"<i> Info",
-			"</> Search",
-			"<:le> Load",
-			"<:c> Collections",
-			"<q> Quit",
-		}
-	case ModeVariables:
-		shortcuts = []string{
-			"<j/k> Navigate",
-			"<:c> Collections",
-			"<:e> Environments",
-			"<:r> Requests",
-			"<q> Quit",
-		}
-	}
-
+	shortcuts := m.commandRegistry.GetContextualShortcuts(m.mode)
 	return strings.Join(shortcuts, "  ")
 }
 

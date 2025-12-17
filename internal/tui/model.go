@@ -32,6 +32,7 @@ const (
 type Model struct {
 	parser          *postman.Parser
 	executor        *http.Executor
+	commandRegistry *CommandRegistry
 	mode            ViewMode
 	commandMode     bool
 	commandInput    string
@@ -80,6 +81,7 @@ func NewModel(parser *postman.Parser) Model {
 	return Model{
 		parser:               parser,
 		executor:             http.NewExecutor(),
+		commandRegistry:      NewCommandRegistry(),
 		mode:                 ModeCollections,
 		commandMode:          false,
 		commandInput:         "",
