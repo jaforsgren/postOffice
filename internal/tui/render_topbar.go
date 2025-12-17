@@ -71,6 +71,13 @@ func (m Model) buildContextInfo() []string {
 		titleOrangeStyle.Render("Collection: ") +
 		valueWhiteStyle.Render(collectionName))
 
+	totalCollections := len(m.parser.ListCollections())
+	collectionsEmoji := "📚"
+	lines = append(lines,
+		collectionsEmoji + " " +
+		titleOrangeStyle.Render("Loaded: ") +
+		valueWhiteStyle.Render(fmt.Sprintf("%d", totalCollections)))
+
 	envName := "none"
 	envEmoji := "🌍"
 	totalEnvs := len(m.parser.ListEnvironments())
