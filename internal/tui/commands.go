@@ -188,14 +188,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Keys:        []string{"enter"},
 			Description: "Select",
 			ShortHelp:   "enter",
-			Handler:     handleSelectKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeResponse, ModeEnvironments},
+			Handler:     handleEnterKey,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments},
 		},
 		{
 			Keys:        []string{"ctrl+r"},
 			Description: "Execute",
 			ShortHelp:   "ctrl+r",
-			Handler:     handleSelectKey,
+			Handler:     handleExecuteKey,
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
@@ -518,7 +518,20 @@ func handleQuitKey(m Model) (Model, tea.Cmd) {
 	return m, tea.Quit
 }
 
-func handleSelectKey(m Model) (Model, tea.Cmd) {
+func handleEnterKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeRequests {
+		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
+			item := m.currentItems[m.cursor]
+			if item.IsFolder() {
+				m = m.navigateInto(item)
+			}
+		}
+		return m, nil
+	}
+	return m.handleSelection(), nil
+}
+
+func handleExecuteKey(m Model) (Model, tea.Cmd) {
 	return m.handleSelection(), nil
 }
 
