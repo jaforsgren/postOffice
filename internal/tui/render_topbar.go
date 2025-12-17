@@ -14,37 +14,52 @@ func (m Model) renderTopBar() string {
 	titleLine := titleOrangeStyle.Render("PostOffice")
 
 	contextLines := m.buildContextInfo()
-	shortcutLines := m.buildShortcutsDisplay()
+	shortcutCol1, shortcutCol2, col1Width := m.buildShortcutsDisplay(len(contextLines))
 
 	var topSection []string
 	topSection = append(topSection, titleLine)
 	topSection = append(topSection, "")
 
 	maxLines := len(contextLines)
-	if len(shortcutLines) > maxLines {
-		maxLines = len(shortcutLines)
+	if len(shortcutCol1) > maxLines {
+		maxLines = len(shortcutCol1)
 	}
 
 	const contextColWidth = 45
+	const colMargin = 4
 
 	for i := 0; i < maxLines; i++ {
-		var leftCol, rightCol string
+		var contextCol, sc1, sc2 string
 
 		if i < len(contextLines) {
-			leftCol = contextLines[i]
+			contextCol = contextLines[i]
 		}
 
-		if i < len(shortcutLines) {
-			rightCol = shortcutLines[i]
+		if i < len(shortcutCol1) {
+			sc1 = shortcutCol1[i]
 		}
 
-		leftColVisible := lipgloss.Width(leftCol)
-		padding := contextColWidth - leftColVisible
-		if padding < 0 {
-			padding = 1
+		if i < len(shortcutCol2) {
+			sc2 = shortcutCol2[i]
 		}
 
-		line := leftCol + strings.Repeat(" ", padding) + rightCol
+		contextVisible := lipgloss.Width(contextCol)
+		padding1 := contextColWidth - contextVisible
+		if padding1 < 0 {
+			padding1 = 1
+		}
+
+		line := contextCol + strings.Repeat(" ", padding1) + sc1
+
+		if sc2 != "" {
+			sc1Visible := lipgloss.Width(sc1)
+			padding2 := col1Width - sc1Visible + colMargin
+			if padding2 < colMargin {
+				padding2 = colMargin
+			}
+			line += strings.Repeat(" ", padding2) + sc2
+		}
+
 		topSection = append(topSection, line)
 	}
 
@@ -144,17 +159,16 @@ func (m Model) getPathString() string {
 	return path
 }
 
-func (m Model) buildShortcutsDisplay() []string {
+func (m Model) buildShortcutsDisplay(contextHeight int) ([]string, []string, int) {
 	shortcutBlueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Bold(true)
 	descGrayStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
 
 	shortcuts := m.commandRegistry.GetContextualShortcuts(m.mode)
 
-	const shortcutsPerLine = 2
-	var lines []string
-	var currentLine []string
+	var formattedShortcuts []string
+	maxWidth := 0
 
-	for i, shortcut := range shortcuts {
+	for _, shortcut := range shortcuts {
 		parts := strings.SplitN(shortcut, ">", 2)
 		if len(parts) != 2 {
 			continue
@@ -164,16 +178,25 @@ func (m Model) buildShortcutsDisplay() []string {
 		desc := strings.TrimSpace(parts[1])
 
 		formatted := shortcutBlueStyle.Render("<"+key+">") + " " + descGrayStyle.Render(desc)
+		formattedShortcuts = append(formattedShortcuts, formatted)
 
-		currentLine = append(currentLine, formatted)
-
-		if (i+1)%shortcutsPerLine == 0 || i == len(shortcuts)-1 {
-			lines = append(lines, strings.Join(currentLine, "  "))
-			currentLine = []string{}
+		width := lipgloss.Width(formatted)
+		if width > maxWidth {
+			maxWidth = width
 		}
 	}
 
-	return lines
+	var col1, col2 []string
+
+	if len(formattedShortcuts) <= contextHeight {
+		col1 = formattedShortcuts
+	} else {
+		splitPoint := contextHeight
+		col1 = formattedShortcuts[:splitPoint]
+		col2 = formattedShortcuts[splitPoint:]
+	}
+
+	return col1, col2, maxWidth
 }
 
 func (m Model) countTotalRequests() int {
