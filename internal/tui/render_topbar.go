@@ -14,40 +14,39 @@ func (m Model) renderTopBar() string {
 	titleLine := titleOrangeStyle.Render("PostOffice")
 
 	contextLines := m.buildContextInfo()
+	shortcutLines := m.buildShortcutsDisplay()
 
 	var topSection []string
-	maxContextLines := len(contextLines)
-	if maxContextLines == 0 {
-		maxContextLines = 1
+	topSection = append(topSection, titleLine)
+	topSection = append(topSection, "")
+
+	maxLines := len(contextLines)
+	if len(shortcutLines) > maxLines {
+		maxLines = len(shortcutLines)
 	}
 
-	for i := 0; i < maxContextLines; i++ {
-		var line string
-		if i == 0 {
-			line = titleLine
-		} else {
-			line = ""
-		}
+	const contextColWidth = 45
+
+	for i := 0; i < maxLines; i++ {
+		var leftCol, rightCol string
 
 		if i < len(contextLines) {
-			ctxLine := contextLines[i]
-			visibleLen := len(titleLine)
-			if i > 0 {
-				visibleLen = 0
-			}
-			padding := m.width - visibleLen - lipgloss.Width(ctxLine) - 4
-			if padding < 0 {
-				padding = 1
-			}
-			line += strings.Repeat(" ", padding) + ctxLine
+			leftCol = contextLines[i]
 		}
 
+		if i < len(shortcutLines) {
+			rightCol = shortcutLines[i]
+		}
+
+		leftColVisible := lipgloss.Width(leftCol)
+		padding := contextColWidth - leftColVisible
+		if padding < 0 {
+			padding = 1
+		}
+
+		line := leftCol + strings.Repeat(" ", padding) + rightCol
 		topSection = append(topSection, line)
 	}
-
-	shortcuts := m.buildShortcutsDisplay()
-	topSection = append(topSection, "")
-	topSection = append(topSection, shortcuts...)
 
 	content := strings.Join(topSection, "\n")
 	return titleStyle.Width(m.width).Render(content)
@@ -151,14 +150,11 @@ func (m Model) buildShortcutsDisplay() []string {
 
 	shortcuts := m.commandRegistry.GetContextualShortcuts(m.mode)
 
-	const maxWidth = 160
-	const colWidth = 40
-
+	const shortcutsPerLine = 2
 	var lines []string
 	var currentLine []string
-	currentWidth := 0
 
-	for _, shortcut := range shortcuts {
+	for i, shortcut := range shortcuts {
 		parts := strings.SplitN(shortcut, ">", 2)
 		if len(parts) != 2 {
 			continue
@@ -168,20 +164,13 @@ func (m Model) buildShortcutsDisplay() []string {
 		desc := strings.TrimSpace(parts[1])
 
 		formatted := shortcutBlueStyle.Render("<"+key+">") + " " + descGrayStyle.Render(desc)
-		itemWidth := len("<"+key+"> ") + len(desc) + 3
-
-		if currentWidth+itemWidth > maxWidth && len(currentLine) > 0 {
-			lines = append(lines, strings.Join(currentLine, "  "))
-			currentLine = []string{}
-			currentWidth = 0
-		}
 
 		currentLine = append(currentLine, formatted)
-		currentWidth += itemWidth
-	}
 
-	if len(currentLine) > 0 {
-		lines = append(lines, strings.Join(currentLine, "  "))
+		if (i+1)%shortcutsPerLine == 0 || i == len(shortcuts)-1 {
+			lines = append(lines, strings.Join(currentLine, "  "))
+			currentLine = []string{}
+		}
 	}
 
 	return lines
