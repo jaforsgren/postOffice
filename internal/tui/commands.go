@@ -186,10 +186,17 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		},
 		{
 			Keys:        []string{"enter"},
-			Description: "Select/Execute",
+			Description: "Select",
 			ShortHelp:   "enter",
 			Handler:     handleSelectKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments},
+			AvailableIn: []ViewMode{ModeCollections, ModeResponse, ModeEnvironments},
+		},
+		{
+			Keys:        []string{"ctrl+r"},
+			Description: "Execute",
+			ShortHelp:   "ctrl+r",
+			Handler:     handleSelectKey,
+			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
 			Keys:        []string{"i"},
