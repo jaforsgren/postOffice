@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"postOffice/internal/logger"
 	"strings"
 )
 
@@ -27,16 +28,20 @@ func NewParser() *Parser {
 func (p *Parser) LoadCollection(path string) (*Collection, error) {
 	expandedPath, err := expandPath(path)
 	if err != nil {
+		logger.LogError("LoadCollection", path, err)
 		return nil, fmt.Errorf("failed to expand path: %w", err)
 	}
 
+	logger.LogFileOpen(expandedPath)
 	data, err := os.ReadFile(expandedPath)
 	if err != nil {
+		logger.LogError("LoadCollection", expandedPath, err)
 		return nil, fmt.Errorf("failed to read collection file: %w", err)
 	}
 
 	var collection Collection
 	if err := json.Unmarshal(data, &collection); err != nil {
+		logger.LogError("LoadCollection", expandedPath, err)
 		return nil, fmt.Errorf("failed to parse collection: %w", err)
 	}
 
@@ -73,16 +78,20 @@ func (p *Parser) ListCollections() []string {
 func (p *Parser) LoadEnvironment(path string) (*Environment, error) {
 	expandedPath, err := expandPath(path)
 	if err != nil {
+		logger.LogError("LoadEnvironment", path, err)
 		return nil, fmt.Errorf("failed to expand path: %w", err)
 	}
 
+	logger.LogFileOpen(expandedPath)
 	data, err := os.ReadFile(expandedPath)
 	if err != nil {
+		logger.LogError("LoadEnvironment", expandedPath, err)
 		return nil, fmt.Errorf("failed to read environment file: %w", err)
 	}
 
 	var environment Environment
 	if err := json.Unmarshal(data, &environment); err != nil {
+		logger.LogError("LoadEnvironment", expandedPath, err)
 		return nil, fmt.Errorf("failed to parse environment: %w", err)
 	}
 
@@ -107,26 +116,35 @@ func (p *Parser) ListEnvironments() []string {
 func (p *Parser) SaveCollection(name string) error {
 	collection, exists := p.collections[name]
 	if !exists {
-		return fmt.Errorf("collection not found: %s", name)
+		err := fmt.Errorf("collection not found: %s", name)
+		logger.LogError("SaveCollection", name, err)
+		return err
 	}
 
 	path, exists := p.pathMap[name]
 	if !exists {
-		return fmt.Errorf("collection path not found: %s", name)
+		err := fmt.Errorf("collection path not found: %s", name)
+		logger.LogError("SaveCollection", name, err)
+		return err
 	}
 
 	data, err := json.MarshalIndent(collection, "", "  ")
 	if err != nil {
+		logger.LogError("SaveCollection", path, err)
 		return fmt.Errorf("failed to marshal collection: %w", err)
 	}
 
 	tempPath := path + ".tmp"
+	logger.LogFileWrite(tempPath)
 	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		logger.LogError("SaveCollection", tempPath, err)
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 
+	logger.LogFileWrite(path)
 	if err := os.Rename(tempPath, path); err != nil {
 		os.Remove(tempPath)
+		logger.LogError("SaveCollection", path, err)
 		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 
@@ -136,26 +154,35 @@ func (p *Parser) SaveCollection(name string) error {
 func (p *Parser) SaveEnvironment(name string) error {
 	environment, exists := p.environments[name]
 	if !exists {
-		return fmt.Errorf("environment not found: %s", name)
+		err := fmt.Errorf("environment not found: %s", name)
+		logger.LogError("SaveEnvironment", name, err)
+		return err
 	}
 
 	path, exists := p.envPathMap[name]
 	if !exists {
-		return fmt.Errorf("environment path not found: %s", name)
+		err := fmt.Errorf("environment path not found: %s", name)
+		logger.LogError("SaveEnvironment", name, err)
+		return err
 	}
 
 	data, err := json.MarshalIndent(environment, "", "  ")
 	if err != nil {
+		logger.LogError("SaveEnvironment", path, err)
 		return fmt.Errorf("failed to marshal environment: %w", err)
 	}
 
 	tempPath := path + ".tmp"
+	logger.LogFileWrite(tempPath)
 	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		logger.LogError("SaveEnvironment", tempPath, err)
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 
+	logger.LogFileWrite(path)
 	if err := os.Rename(tempPath, path); err != nil {
 		os.Remove(tempPath)
+		logger.LogError("SaveEnvironment", path, err)
 		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
+	"postOffice/internal/logger"
 	"postOffice/internal/postman"
 	"postOffice/internal/tui"
 
@@ -17,6 +19,16 @@ func main() {
 }
 
 func run() error {
+	logPath := flag.String("log", "", "path to log file for debugging file operations")
+	flag.Parse()
+
+	if *logPath != "" {
+		if err := logger.Init(*logPath); err != nil {
+			return fmt.Errorf("failed to initialize logger: %w", err)
+		}
+		defer logger.Close()
+	}
+
 	parser := postman.NewParser()
 	if err := parser.LoadState(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load previous state: %v\n", err)

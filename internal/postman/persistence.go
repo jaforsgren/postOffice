@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"postOffice/internal/logger"
 )
 
 const configFileName = ".postoffice_collections.json"
@@ -16,6 +17,7 @@ type PersistenceConfig struct {
 func (p *Parser) SaveState() error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
+		logger.LogError("SaveState", "UserHomeDir", err)
 		return err
 	}
 
@@ -42,30 +44,41 @@ func (p *Parser) SaveState() error {
 
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
+		logger.LogError("SaveState", configPath, err)
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0644)
+	logger.LogFileWrite(configPath)
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		logger.LogError("SaveState", configPath, err)
+		return err
+	}
+
+	return nil
 }
 
 func (p *Parser) LoadState() error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
+		logger.LogError("LoadState", "UserHomeDir", err)
 		return err
 	}
 
 	configPath := filepath.Join(homeDir, configFileName)
 
+	logger.LogFileOpen(configPath)
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
+		logger.LogError("LoadState", configPath, err)
 		return err
 	}
 
 	var config PersistenceConfig
 	if err := json.Unmarshal(data, &config); err != nil {
+		logger.LogError("LoadState", configPath, err)
 		return err
 	}
 
