@@ -707,7 +707,8 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.editFieldMode = true
 		m.editFieldInput = m.getCurrentFieldValue()
-		m.statusMessage = "Editing field... (Enter to confirm, Esc to cancel, Ctrl+Enter for newline in body)"
+		m.editCursorPos = len(m.editFieldInput)
+		m.statusMessage = "Editing field... (Enter to confirm, Esc to cancel, Shift+Enter for newline in body)"
 		return m, nil
 	}
 
@@ -721,33 +722,65 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEsc:
 		m.editFieldMode = false
 		m.editFieldInput = ""
+		m.editCursorPos = 0
 		m.statusMessage = "Field edit cancelled"
 		return m, nil
 
 	case tea.KeyEnter:
-		if isBodyField && msg.String() == "ctrl+enter" {
-			m.editFieldInput += "\n"
+		if isBodyField && msg.String() == "shift+enter" {
+			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + "\n" + m.editFieldInput[m.editCursorPos:]
+			m.editCursorPos++
 		} else {
 			m.setCurrentFieldValue(m.editFieldInput)
 			m.editFieldMode = false
 			m.editFieldInput = ""
+			m.editCursorPos = 0
 			m.statusMessage = "Field updated (use :w to save)"
 		}
 		return m, nil
 
+	case tea.KeyLeft:
+		if m.editCursorPos > 0 {
+			m.editCursorPos--
+		}
+		return m, nil
+
+	case tea.KeyRight:
+		if m.editCursorPos < len(m.editFieldInput) {
+			m.editCursorPos++
+		}
+		return m, nil
+
+	case tea.KeyHome:
+		m.editCursorPos = 0
+		return m, nil
+
+	case tea.KeyEnd:
+		m.editCursorPos = len(m.editFieldInput)
+		return m, nil
+
 	case tea.KeyBackspace:
-		if len(m.editFieldInput) > 0 {
-			m.editFieldInput = m.editFieldInput[:len(m.editFieldInput)-1]
+		if m.editCursorPos > 0 && len(m.editFieldInput) > 0 {
+			m.editFieldInput = m.editFieldInput[:m.editCursorPos-1] + m.editFieldInput[m.editCursorPos:]
+			m.editCursorPos--
+		}
+		return m, nil
+
+	case tea.KeyDelete:
+		if m.editCursorPos < len(m.editFieldInput) {
+			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + m.editFieldInput[m.editCursorPos+1:]
 		}
 		return m, nil
 
 	case tea.KeySpace:
-		m.editFieldInput += " "
+		m.editFieldInput = m.editFieldInput[:m.editCursorPos] + " " + m.editFieldInput[m.editCursorPos:]
+		m.editCursorPos++
 		return m, nil
 
 	default:
 		if msg.Type == tea.KeyRunes {
-			m.editFieldInput += string(msg.Runes)
+			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + string(msg.Runes) + m.editFieldInput[m.editCursorPos:]
+			m.editCursorPos += len(msg.Runes)
 		}
 		return m, nil
 	}

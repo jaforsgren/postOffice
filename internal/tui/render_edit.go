@@ -84,7 +84,9 @@ func (m Model) buildEditFields() []string {
 
 		displayValue := field.value
 		if i == m.editFieldCursor && m.editFieldMode {
-			displayValue = m.editFieldInput + "|"
+			before := m.editFieldInput[:m.editCursorPos]
+			after := m.editFieldInput[m.editCursorPos:]
+			displayValue = before + "|" + after
 		}
 
 		if displayValue == "" {

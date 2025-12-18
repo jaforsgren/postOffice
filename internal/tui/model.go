@@ -72,6 +72,7 @@ type Model struct {
 	editFieldCursor      int
 	editFieldInput       string
 	editFieldMode        bool
+	editCursorPos        int
 	modifiedItems        map[string]bool
 	modifiedCollections  map[string]bool
 	modifiedEnvironments map[string]bool
