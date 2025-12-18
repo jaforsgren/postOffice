@@ -743,7 +743,23 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + "\n" + m.editFieldInput[m.editCursorPos:]
 			m.editCursorPos++
 		} else {
-			m.setCurrentFieldValue(m.editFieldInput)
+			if m.editType == EditTypeRequest && m.editRequest != nil {
+				switch m.editFieldCursor {
+				case 0:
+					m.editItemName = m.editFieldInput
+				case 1:
+					m.editRequest.Method = m.editFieldInput
+				case 2:
+					m.editRequest.URL.Raw = m.editFieldInput
+				case 3:
+					m.editRequest.Header = m.parseHeaders(m.editFieldInput)
+				case 4:
+					if m.editRequest.Body == nil {
+						m.editRequest.Body = &postman.Body{}
+					}
+					m.editRequest.Body.Raw = m.editFieldInput
+				}
+			}
 			m.editFieldMode = false
 			m.editFieldInput = ""
 			m.editCursorPos = 0
@@ -1002,26 +1018,6 @@ func (m Model) getCurrentFieldValue() string {
 		}
 	}
 	return ""
-}
-
-func (m Model) setCurrentFieldValue(value string) {
-	if m.editType == EditTypeRequest && m.editRequest != nil {
-		switch m.editFieldCursor {
-		case 0:
-			m.editItemName = value
-		case 1:
-			m.editRequest.Method = value
-		case 2:
-			m.editRequest.URL.Raw = value
-		case 3:
-			m.editRequest.Header = m.parseHeaders(value)
-		case 4:
-			if m.editRequest.Body == nil {
-				m.editRequest.Body = &postman.Body{}
-			}
-			m.editRequest.Body.Raw = value
-		}
-	}
 }
 
 func (m Model) parseHeaders(text string) []postman.Header {
