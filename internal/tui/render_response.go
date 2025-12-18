@@ -16,9 +16,14 @@ func (m Model) renderResponsePopup(availableHeight int) string {
 	visibleContent := sliceContent(lines, m.scrollOffset, availableHeight-2)
 	content := strings.Join(visibleContent, "\n")
 
+	borderColor := lipgloss.Color("5")
+	if m.lastResponse.StatusCode < 200 || m.lastResponse.StatusCode >= 300 {
+		borderColor = lipgloss.Color("1")
+	}
+
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("5")).
+		BorderForeground(borderColor).
 		Height(availableHeight).
 		Width(m.width-4).
 		Padding(1, 2).
@@ -78,7 +83,11 @@ func (m Model) buildResponseSection() []string {
 		lines = append(lines, requestStyle.Render("Error:"))
 		lines = append(lines, m.lastResponse.Error.Error())
 	} else {
-		lines = append(lines, requestStyle.Render(fmt.Sprintf("Status: %s", m.lastResponse.Status)))
+		statusStyle := requestStyle
+		if m.lastResponse.StatusCode < 200 || m.lastResponse.StatusCode >= 300 {
+			statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+		}
+		lines = append(lines, statusStyle.Render(fmt.Sprintf("Status: %s", m.lastResponse.Status)))
 		lines = append(lines, folderStyle.Render(fmt.Sprintf("Duration: %v", m.lastResponse.Duration)))
 		lines = append(lines, "")
 
@@ -117,7 +126,11 @@ func (m Model) renderResponse(availableHeight int) string {
 		lines = append(lines, m.lastResponse.Error.Error())
 		lines = append(lines, "")
 	} else {
-		lines = append(lines, requestStyle.Render(fmt.Sprintf("Status: %s", m.lastResponse.Status)))
+		statusStyle := requestStyle
+		if m.lastResponse.StatusCode < 200 || m.lastResponse.StatusCode >= 300 {
+			statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+		}
+		lines = append(lines, statusStyle.Render(fmt.Sprintf("Status: %s", m.lastResponse.Status)))
 		lines = append(lines, folderStyle.Render(fmt.Sprintf("Duration: %v", m.lastResponse.Duration)))
 		lines = append(lines, "")
 
