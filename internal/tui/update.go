@@ -708,7 +708,12 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.editFieldMode = true
 		m.editFieldInput = m.getCurrentFieldValue()
 		m.editCursorPos = len(m.editFieldInput)
-		m.statusMessage = "Editing field... (Enter to confirm, Esc to cancel, Ctrl+J or \\n for newline)"
+		fieldName := []string{"Name", "Method", "URL", "Headers", "Body"}[m.editFieldCursor]
+		if m.editFieldCursor >= 3 {
+			m.statusMessage = fmt.Sprintf("Editing %s... (Enter to confirm, Esc to cancel, Ctrl+J or \\n for newline)", fieldName)
+		} else {
+			m.statusMessage = fmt.Sprintf("Editing %s... (Enter to confirm, Esc to cancel)", fieldName)
+		}
 		return m, nil
 	}
 
@@ -716,7 +721,7 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	isBodyField := m.editFieldCursor == 3
+	isMultiLineField := m.editFieldCursor == 3 || m.editFieldCursor == 4
 
 	switch msg.Type {
 	case tea.KeyEsc:
@@ -727,14 +732,14 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyCtrlJ:
-		if isBodyField {
+		if isMultiLineField {
 			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + "\n" + m.editFieldInput[m.editCursorPos:]
 			m.editCursorPos++
 		}
 		return m, nil
 
 	case tea.KeyEnter:
-		if isBodyField && msg.Alt {
+		if isMultiLineField && msg.Alt {
 			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + "\n" + m.editFieldInput[m.editCursorPos:]
 			m.editCursorPos++
 		} else {
@@ -790,7 +795,7 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + text + m.editFieldInput[m.editCursorPos:]
 			m.editCursorPos += len(msg.Runes)
 
-			if isBodyField && len(m.editFieldInput) >= 2 && m.editCursorPos >= 2 {
+			if isMultiLineField && len(m.editFieldInput) >= 2 && m.editCursorPos >= 2 {
 				if m.editFieldInput[m.editCursorPos-2:m.editCursorPos] == "\\n" {
 					m.editFieldInput = m.editFieldInput[:m.editCursorPos-2] + "\n" + m.editFieldInput[m.editCursorPos:]
 					m.editCursorPos--
@@ -860,7 +865,7 @@ func (m Model) isItemModified(itemID string) bool {
 
 func (m Model) getEditFieldCount() int {
 	if m.editType == EditTypeRequest {
-		return 4
+		return 5
 	}
 	return 0
 }
@@ -981,6 +986,15 @@ func (m Model) getCurrentFieldValue() string {
 		case 2:
 			return m.editRequest.URL.Raw
 		case 3:
+			if len(m.editRequest.Header) > 0 {
+				var headerLines []string
+				for _, h := range m.editRequest.Header {
+					headerLines = append(headerLines, h.Key+": "+h.Value)
+				}
+				return strings.Join(headerLines, "\n")
+			}
+			return ""
+		case 4:
 			if m.editRequest.Body != nil {
 				return m.editRequest.Body.Raw
 			}
@@ -1000,12 +1014,42 @@ func (m Model) setCurrentFieldValue(value string) {
 		case 2:
 			m.editRequest.URL.Raw = value
 		case 3:
+			m.editRequest.Header = m.parseHeaders(value)
+		case 4:
 			if m.editRequest.Body == nil {
 				m.editRequest.Body = &postman.Body{}
 			}
 			m.editRequest.Body.Raw = value
 		}
 	}
+}
+
+func (m Model) parseHeaders(text string) []postman.Header {
+	if text == "" {
+		return []postman.Header{}
+	}
+
+	var headers []postman.Header
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			if key != "" {
+				headers = append(headers, postman.Header{
+					Key:   key,
+					Value: value,
+				})
+			}
+		}
+	}
+	return headers
 }
 
 func (m Model) updateRequestInCollection(path []string, originalName string, newName string, updatedRequest *postman.Request) bool {

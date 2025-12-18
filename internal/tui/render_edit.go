@@ -55,6 +55,15 @@ func (m Model) buildEditTitle() string {
 func (m Model) buildEditFields() []string {
 	var lines []string
 
+	headersText := ""
+	if len(m.editRequest.Header) > 0 {
+		var headerLines []string
+		for _, h := range m.editRequest.Header {
+			headerLines = append(headerLines, h.Key+": "+h.Value)
+		}
+		headersText = strings.Join(headerLines, "\n")
+	}
+
 	fields := []struct {
 		label string
 		value string
@@ -62,11 +71,12 @@ func (m Model) buildEditFields() []string {
 		{"Name", m.editItemName},
 		{"Method", m.editRequest.Method},
 		{"URL", m.editRequest.URL.Raw},
+		{"Headers", headersText},
 		{"Body", ""},
 	}
 
 	if m.editRequest.Body != nil {
-		fields[3].value = m.editRequest.Body.Raw
+		fields[4].value = m.editRequest.Body.Raw
 	}
 
 	for i, field := range fields {
