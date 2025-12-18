@@ -708,7 +708,7 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.editFieldMode = true
 		m.editFieldInput = m.getCurrentFieldValue()
 		m.editCursorPos = len(m.editFieldInput)
-		m.statusMessage = "Editing field... (Enter to confirm, Esc to cancel, Shift+Enter for newline in body)"
+		m.statusMessage = "Editing field... (Enter to confirm, Esc to cancel, Alt+Enter for newline in body)"
 		return m, nil
 	}
 
@@ -727,7 +727,7 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyEnter:
-		if isBodyField && msg.String() == "shift+enter" {
+		if isBodyField && msg.Alt {
 			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + "\n" + m.editFieldInput[m.editCursorPos:]
 			m.editCursorPos++
 		} else {
