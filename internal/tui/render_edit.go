@@ -92,12 +92,7 @@ func (m Model) buildEditFields() []string {
 		}
 
 		valueLines := strings.Split(displayValue, "\n")
-		maxLines := 3
-		for j, vLine := range valueLines {
-			if j >= maxLines {
-				lines = append(lines, "    ...")
-				break
-			}
+		for _, vLine := range valueLines {
 			lines = append(lines, "    "+valueStyle.Render(vLine))
 		}
 		lines = append(lines, "")

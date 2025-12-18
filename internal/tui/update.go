@@ -639,13 +639,45 @@ func (m Model) saveEdit() Model {
 	return m
 }
 
+func (m Model) saveAllModifiedRequests() Model {
+	if len(m.modifiedCollections) == 0 {
+		m.statusMessage = "No unsaved changes"
+		return m
+	}
+
+	savedCount := 0
+	var errors []string
+
+	for collectionName := range m.modifiedCollections {
+		if err := m.parser.SaveCollection(collectionName); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %v", collectionName, err))
+		} else {
+			savedCount++
+		}
+	}
+
+	if len(errors) > 0 {
+		m.statusMessage = fmt.Sprintf("Saved %d collections, %d errors: %s", savedCount, len(errors), strings.Join(errors, "; "))
+	} else {
+		m.statusMessage = fmt.Sprintf("Saved %d collection(s) to file", savedCount)
+		m.modifiedCollections = make(map[string]bool)
+		m.modifiedItems = make(map[string]bool)
+	}
+
+	return m
+}
+
 func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
+		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
+		m.modifiedRequests[itemID] = m.editRequest
+		m.modifiedCollections[m.editCollectionName] = true
 		m.mode = m.previousMode
 		m.editType = EditTypeNone
 		m.editFieldMode = false
-		m.statusMessage = "Edit cancelled"
+		m = m.refreshCurrentView()
+		m.statusMessage = "Changes saved to memory (use :w to write to file)"
 		return m, nil
 
 	case ":":
@@ -669,7 +701,7 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.editFieldMode = true
 		m.editFieldInput = m.getCurrentFieldValue()
-		m.statusMessage = "Editing field... (Enter to confirm, Esc to cancel)"
+		m.statusMessage = "Editing field... (Enter to confirm, Esc to cancel, Ctrl+Enter for newline in body)"
 		return m, nil
 	}
 
@@ -677,6 +709,8 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	isBodyField := m.editFieldCursor == 3
+
 	switch msg.Type {
 	case tea.KeyEsc:
 		m.editFieldMode = false
@@ -685,10 +719,14 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyEnter:
-		m.setCurrentFieldValue(m.editFieldInput)
-		m.editFieldMode = false
-		m.editFieldInput = ""
-		m.statusMessage = "Field updated (use :w to save)"
+		if isBodyField && msg.String() == "ctrl+enter" {
+			m.editFieldInput += "\n"
+		} else {
+			m.setCurrentFieldValue(m.editFieldInput)
+			m.editFieldMode = false
+			m.editFieldInput = ""
+			m.statusMessage = "Field updated (use :w to save)"
+		}
 		return m, nil
 
 	case tea.KeyBackspace:

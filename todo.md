@@ -1,0 +1,10 @@
+- [x] load, support and browse envinronments.
+- [x] better env browing
+- [x] support varialbles form both collections and envinronments
+- [x] :i to get info on both folders and requests.
+- [x] better serach
+- [x] better topbar , one right collum with context clues, loaded collection , loaded env etc . middle bar with help stuff. working right bar with functioning logo
+- [ ] edit request!
+- [ ] scripts...
+- [x] history
+- [x] debug mode

@@ -17,6 +17,7 @@ const (
 	ModeEnvironments
 	ModeVariables
 	ModeEdit
+	ModeChanges
 )
 
 type EditType int

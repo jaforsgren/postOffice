@@ -50,6 +50,10 @@ Press `:` to enter command mode:
 - `:collections` or `:c` - Switch to collections view
 - `:requests` or `:r` - Switch to requests view
 - `:info` or `:i` - Display item info
+- `:edit` - Edit selected request
+- `:w` - Save changes to file
+- `:wq` - Save changes and quit
+- `:changes` or `:ch` - Show unsaved changes
 - `:help` or `:h` - Show help
 - `:quit` or `:q` - Exit
 
@@ -66,10 +70,29 @@ When loading files, `~/` is expanded to your home directory:
 ## Request Execution
 
 1. Navigate to a request using `j/k`
-2. Press `enter` to execute
+2. Press `ctrl+r` to execute
 3. View the response in the popup
 4. Use `j/k` to scroll the response
 5. Press `esc` to close
+
+## Editing Requests
+
+1. Navigate to a request and press `e` or use `:edit`
+2. Use `j/k` to navigate between fields (Name, Method, URL, Body)
+3. Press `enter` to edit a field
+4. For multi-line body fields, use `ctrl+enter` to add newlines
+5. Press `enter` to confirm changes to a field
+6. Press `esc` to exit edit mode (changes saved to memory)
+7. Use `:w` to write changes to file
+8. Use `:wq` to write changes and quit
+
+**Managing Unsaved Changes:**
+
+- `:changes` - View all unsaved changes
+- In changes view:
+  - `d` - Discard selected change
+  - `ctrl+d` - Discard all changes
+  - `esc` - Close changes view
 
 ## Environment Variables
 

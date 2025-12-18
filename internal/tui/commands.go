@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"postOffice/internal/postman"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -120,10 +121,18 @@ func (cr *CommandRegistry) registerCommands() {
 		{
 			Name:        "wq",
 			Aliases:     []string{},
-			Description: "Save changes and exit edit mode",
+			Description: "Save changes and quit application",
 			ShortHelp:   ":wq",
 			Handler:     handleWriteQuitCommand,
-			AvailableIn: []ViewMode{ModeEdit},
+			AvailableIn: []ViewMode{ModeEdit, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables},
+		},
+		{
+			Name:        "changes",
+			Aliases:     []string{"ch"},
+			Description: "Show unsaved changes",
+			ShortHelp:   ":changes",
+			Handler:     handleChangesCommand,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables},
 		},
 		{
 			Name:        "duplicate",
@@ -217,28 +226,42 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges},
 		},
 		{
 			Keys:        []string{"up", "k"},
 			Description: "Navigate up",
 			ShortHelp:   "j/k",
 			Handler:     handleUpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeResponse, ModeEnvironments, ModeVariables},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
 		},
 		{
 			Keys:        []string{"down", "j"},
 			Description: "Scroll/Navigate",
 			ShortHelp:   "j/k",
 			Handler:     handleDownKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeResponse, ModeEnvironments, ModeVariables},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
 		},
 		{
-			Keys:        []string{"d", "ctrl+d"},
+			Keys:        []string{"d"},
 			Description: "Duplicate",
 			ShortHelp:   "d",
 			Handler:     handleDuplicateKey,
 			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"d"},
+			Description: "Discard selected",
+			ShortHelp:   "d",
+			Handler:     handleDiscardSelectedKey,
+			AvailableIn: []ViewMode{ModeChanges},
+		},
+		{
+			Keys:        []string{"ctrl+d"},
+			Description: "Discard all",
+			ShortHelp:   "ctrl+d",
+			Handler:     handleDiscardAllKey,
+			AvailableIn: []ViewMode{ModeChanges},
 		},
 	}
 }
@@ -445,7 +468,7 @@ func handleWriteCommand(m Model, args []string) (Model, tea.Cmd) {
 	if m.mode == ModeEdit {
 		m = m.saveEdit()
 	} else {
-		m.statusMessage = "Not in edit mode. Use :edit to edit an item first."
+		m = m.saveAllModifiedRequests()
 	}
 	return m, nil
 }
@@ -454,16 +477,34 @@ func handleWriteQuitCommand(m Model, args []string) (Model, tea.Cmd) {
 	if m.mode == ModeEdit {
 		m = m.saveEdit()
 		if !strings.Contains(m.statusMessage, "Failed") && !strings.Contains(m.statusMessage, "Error") {
-			m.mode = m.previousMode
-			m.editType = EditTypeNone
-			m.editFieldMode = false
-			if m.mode == ModeRequests {
-				m = m.refreshCurrentView()
-			}
+			return m, tea.Quit
 		}
 	} else {
-		m.statusMessage = "Not in edit mode"
+		m = m.saveAllModifiedRequests()
+		if !strings.Contains(m.statusMessage, "error") {
+			return m, tea.Quit
+		}
 	}
+	return m, nil
+}
+
+func handleChangesCommand(m Model, args []string) (Model, tea.Cmd) {
+	m.previousMode = m.mode
+	m.mode = ModeChanges
+	m.cursor = 0
+	m.items = []string{}
+
+	for itemID := range m.modifiedRequests {
+		m.items = append(m.items, itemID)
+	}
+
+	if len(m.items) == 0 {
+		m.statusMessage = "No unsaved changes"
+		m.mode = m.previousMode
+	} else {
+		m.statusMessage = fmt.Sprintf("%d unsaved change(s) - <d> discard selected, <ctrl+d> discard all, <esc> close", len(m.items))
+	}
+
 	return m, nil
 }
 
@@ -581,6 +622,11 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Closed info view"
 		return m, nil
 	}
+	if m.mode == ModeChanges {
+		m.mode = m.previousMode
+		m.statusMessage = "Closed changes view"
+		return m, nil
+	}
 	if m.searchActive {
 		m.searchActive = false
 		m.searchQuery = ""
@@ -638,6 +684,39 @@ func handleDuplicateKey(m Model) (Model, tea.Cmd) {
 		}
 	} else {
 		m.statusMessage = "No request selected to duplicate"
+	}
+	return m, nil
+}
+
+func handleDiscardSelectedKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeChanges && m.cursor < len(m.items) {
+		itemID := m.items[m.cursor]
+		delete(m.modifiedRequests, itemID)
+		delete(m.modifiedItems, itemID)
+
+		m.items = append(m.items[:m.cursor], m.items[m.cursor+1:]...)
+
+		if len(m.items) == 0 {
+			m.mode = m.previousMode
+			m.statusMessage = "All changes discarded"
+			m.modifiedCollections = make(map[string]bool)
+		} else {
+			if m.cursor >= len(m.items) {
+				m.cursor = len(m.items) - 1
+			}
+			m.statusMessage = fmt.Sprintf("Discarded changes to %s", itemID)
+		}
+	}
+	return m, nil
+}
+
+func handleDiscardAllKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeChanges {
+		m.modifiedRequests = make(map[string]*postman.Request)
+		m.modifiedItems = make(map[string]bool)
+		m.modifiedCollections = make(map[string]bool)
+		m.mode = m.previousMode
+		m.statusMessage = "Discarded all changes"
 	}
 	return m, nil
 }
