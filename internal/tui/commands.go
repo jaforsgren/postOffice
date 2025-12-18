@@ -198,7 +198,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Select",
 			ShortHelp:   "enter",
 			Handler:     handleEnterKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments, ModeChanges},
 		},
 		{
 			Keys:        []string{"ctrl+r"},
@@ -212,7 +212,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Info",
 			ShortHelp:   "i",
 			Handler:     handleInfoKey,
-			AvailableIn: []ViewMode{ModeRequests, ModeEnvironments},
+			AvailableIn: []ViewMode{ModeRequests, ModeEnvironments, ModeChanges},
 		},
 		{
 			Keys:        []string{"/"},
@@ -569,6 +569,13 @@ func handleEnterKey(m Model) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.mode == ModeChanges {
+		if m.cursor < len(m.items) {
+			itemID := m.items[m.cursor]
+			m = m.navigateToChangedRequest(itemID)
+		}
+		return m, nil
+	}
 	return m.handleSelection(), nil
 }
 
@@ -589,6 +596,9 @@ func handleInfoKey(m Model) (Model, tea.Cmd) {
 		m.previousMode = m.mode
 		m.mode = ModeInfo
 		m.statusMessage = "Showing environment info"
+	} else if m.mode == ModeChanges && m.cursor < len(m.items) {
+		itemID := m.items[m.cursor]
+		m = m.showChangeDiff(itemID)
 	}
 	return m, nil
 }

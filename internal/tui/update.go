@@ -817,6 +817,112 @@ func (m Model) getEditFieldCount() int {
 	return 0
 }
 
+func (m Model) navigateToChangedRequest(itemID string) Model {
+	parts := strings.Split(itemID, "/")
+	if len(parts) < 2 {
+		m.statusMessage = "Invalid request ID"
+		return m
+	}
+
+	collectionName := parts[0]
+	requestName := parts[len(parts)-1]
+	folderPath := parts[1 : len(parts)-1]
+
+	if m.collection == nil || m.collection.Info.Name != collectionName {
+		if collection, exists := m.parser.GetCollection(collectionName); exists {
+			m.collection = collection
+		} else {
+			m.statusMessage = fmt.Sprintf("Collection not found: %s", collectionName)
+			return m
+		}
+	}
+
+	m.mode = ModeRequests
+	m.breadcrumb = folderPath
+	m = m.loadRequestsList()
+
+	for i, item := range m.currentItems {
+		if item.Name == requestName {
+			m.cursor = i
+			m.statusMessage = fmt.Sprintf("Navigated to: %s", requestName)
+			return m
+		}
+	}
+
+	m.statusMessage = fmt.Sprintf("Request not found: %s", requestName)
+	return m
+}
+
+func (m Model) showChangeDiff(itemID string) Model {
+	modifiedReq, hasModified := m.modifiedRequests[itemID]
+	if !hasModified {
+		m.statusMessage = "No modified request found"
+		return m
+	}
+
+	parts := strings.Split(itemID, "/")
+	if len(parts) < 2 {
+		m.statusMessage = "Invalid request ID"
+		return m
+	}
+
+	collectionName := parts[0]
+	requestName := parts[len(parts)-1]
+	folderPath := parts[1 : len(parts)-1]
+
+	if m.collection == nil || m.collection.Info.Name != collectionName {
+		if collection, exists := m.parser.GetCollection(collectionName); exists {
+			m.collection = collection
+		} else {
+			m.statusMessage = "Collection not found"
+			return m
+		}
+	}
+
+	originalReq := m.findOriginalRequest(m.collection.Items, folderPath, requestName)
+	if originalReq == nil {
+		m.statusMessage = "Original request not found"
+		return m
+	}
+
+	m.previousMode = ModeChanges
+	m.mode = ModeInfo
+	m.scrollOffset = 0
+	m.currentInfoItem = &postman.Item{
+		Name:    "Diff: " + requestName,
+		Request: modifiedReq,
+	}
+	m.statusMessage = "Showing diff (original → modified)"
+
+	return m
+}
+
+func (m Model) findOriginalRequest(items []postman.Item, folderPath []string, requestName string) *postman.Request {
+	currentItems := items
+
+	for _, folderName := range folderPath {
+		found := false
+		for _, item := range currentItems {
+			if item.IsFolder() && item.Name == folderName {
+				currentItems = item.Items
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+	}
+
+	for _, item := range currentItems {
+		if item.IsRequest() && item.Name == requestName {
+			return item.Request
+		}
+	}
+
+	return nil
+}
+
 func (m Model) getCurrentFieldValue() string {
 	if m.editType == EditTypeRequest && m.editRequest != nil {
 		switch m.editFieldCursor {

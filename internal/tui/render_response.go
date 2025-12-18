@@ -56,7 +56,7 @@ func (m Model) buildRequestSection() []string {
 		lines = append(lines, "")
 		lines = append(lines, folderStyle.Render("Request Body:"))
 		bodyLines := strings.Split(m.lastResponse.RequestBody, "\n")
-		maxPreviewLines := 8
+		maxPreviewLines := 666
 		for i, line := range bodyLines {
 			if i >= maxPreviewLines {
 				lines = append(lines, "  ...")
