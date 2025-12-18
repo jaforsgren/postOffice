@@ -298,3 +298,24 @@ func (m Model) buildDescriptionSection() []string {
 
 	return lines
 }
+
+func (m Model) renderJSONPopup(availableHeight int) string {
+	if m.jsonContent == "" {
+		return m.renderEmptyPopup("No JSON available", availableHeight)
+	}
+
+	lines := strings.Split(m.jsonContent, "\n")
+	visibleContent := sliceContent(lines, m.scrollOffset, availableHeight-2)
+	content := strings.Join(visibleContent, "\n")
+
+	title := lipgloss.NewStyle().Bold(true).Render("JSON View (press Esc to close)")
+	fullContent := title + "\n\n" + content
+
+	return lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("5")).
+		Height(availableHeight).
+		Width(m.width-4).
+		Padding(1, 2).
+		Render(fullContent)
+}

@@ -41,6 +41,15 @@ func (m Model) renderContent() []string {
 		}
 		return []string{m.renderMainWindow()}
 
+	case ModeJSON:
+		if m.jsonContent != "" {
+			return []string{
+				m.renderItemsList(metrics.mainHeight),
+				m.renderJSONPopup(metrics.popupHeight),
+			}
+		}
+		return []string{m.renderMainWindow()}
+
 	case ModeEdit:
 		metrics := m.calculateLayout()
 		return []string{m.renderEditPopup(metrics.contentHeight)}

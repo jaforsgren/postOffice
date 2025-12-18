@@ -144,6 +144,8 @@ func (m Model) getModeString() string {
 		return "Edit (*)"
 	case ModeChanges:
 		return "Changes"
+	case ModeJSON:
+		return "JSON"
 	default:
 		return ""
 	}

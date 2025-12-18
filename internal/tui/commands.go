@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"postOffice/internal/postman"
 	"strings"
@@ -215,6 +216,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests, ModeEnvironments, ModeChanges},
 		},
 		{
+			Keys:        []string{"J"},
+			Description: "View JSON",
+			ShortHelp:   "J",
+			Handler:     handleJSONKey,
+			AvailableIn: []ViewMode{ModeRequests, ModeEnvironments},
+		},
+		{
 			Keys:        []string{"/"},
 			Description: "Search",
 			ShortHelp:   "/",
@@ -233,21 +241,21 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges},
 		},
 		{
 			Keys:        []string{"up", "k"},
 			Description: "Navigate up",
 			ShortHelp:   "j/k",
 			Handler:     handleUpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
 		},
 		{
 			Keys:        []string{"down", "j"},
 			Description: "Scroll/Navigate",
 			ShortHelp:   "j/k",
 			Handler:     handleDownKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
 		},
 		{
 			Keys:        []string{"d"},
@@ -612,6 +620,37 @@ func handleInfoKey(m Model) (Model, tea.Cmd) {
 	return m, nil
 }
 
+func handleJSONKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
+		item := m.currentItems[m.cursor]
+		jsonData, err := json.MarshalIndent(item, "", "  ")
+		if err != nil {
+			m.statusMessage = fmt.Sprintf("Failed to generate JSON: %v", err)
+			return m, nil
+		}
+		m.jsonContent = string(jsonData)
+		m.scrollOffset = 0
+		m.previousMode = m.mode
+		m.mode = ModeJSON
+		m.statusMessage = "Showing JSON view (press Esc to close)"
+	} else if m.mode == ModeEnvironments && m.cursor < len(m.items) {
+		envName := m.items[m.cursor]
+		if env, exists := m.parser.GetEnvironment(envName); exists {
+			jsonData, err := json.MarshalIndent(env, "", "  ")
+			if err != nil {
+				m.statusMessage = fmt.Sprintf("Failed to generate JSON: %v", err)
+				return m, nil
+			}
+			m.jsonContent = string(jsonData)
+			m.scrollOffset = 0
+			m.previousMode = m.mode
+			m.mode = ModeJSON
+			m.statusMessage = "Showing JSON view (press Esc to close)"
+		}
+	}
+	return m, nil
+}
+
 func handleSearchKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeCollections || m.mode == ModeRequests || m.mode == ModeEnvironments {
 		m.searchMode = true
@@ -648,6 +687,17 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Closed info view"
 		return m, nil
 	}
+	if m.mode == ModeJSON {
+		if m.previousMode != 0 {
+			m.mode = m.previousMode
+		} else {
+			m.mode = ModeRequests
+		}
+		m.jsonContent = ""
+		m.scrollOffset = 0
+		m.statusMessage = "Closed JSON view"
+		return m, nil
+	}
 	if m.mode == ModeChanges {
 		m.mode = m.previousMode
 		m.statusMessage = "Closed changes view"
@@ -673,7 +723,7 @@ func handleUpKey(m Model) (Model, tea.Cmd) {
 		if m.envVarCursor > 0 {
 			m.envVarCursor--
 		}
-	} else if m.mode == ModeInfo || m.mode == ModeResponse {
+	} else if m.mode == ModeInfo || m.mode == ModeResponse || m.mode == ModeJSON {
 		if m.scrollOffset > 0 {
 			m.scrollOffset--
 		}
@@ -690,7 +740,7 @@ func handleDownKey(m Model) (Model, tea.Cmd) {
 		if m.envVarCursor < len(m.environment.Values)-1 {
 			m.envVarCursor++
 		}
-	} else if m.mode == ModeInfo || m.mode == ModeResponse {
+	} else if m.mode == ModeInfo || m.mode == ModeResponse || m.mode == ModeJSON {
 		m.scrollOffset++
 	} else {
 		if m.cursor < len(m.items)-1 {

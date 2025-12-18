@@ -18,6 +18,7 @@ const (
 	ModeVariables
 	ModeEdit
 	ModeChanges
+	ModeJSON
 )
 
 type EditType int
@@ -50,6 +51,7 @@ type Model struct {
 	statusMessage   string
 	lastResponse    *http.Response
 	currentInfoItem *postman.Item
+	jsonContent     string
 	scrollOffset    int
 	searchMode      bool
 	searchQuery     string
