@@ -708,7 +708,7 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.editFieldMode = true
 		m.editFieldInput = m.getCurrentFieldValue()
 		m.editCursorPos = len(m.editFieldInput)
-		m.statusMessage = "Editing field... (Enter to confirm, Esc to cancel, Alt+Enter for newline in body)"
+		m.statusMessage = "Editing field... (Enter to confirm, Esc to cancel, Ctrl+J or \\n for newline)"
 		return m, nil
 	}
 
@@ -724,6 +724,13 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.editFieldInput = ""
 		m.editCursorPos = 0
 		m.statusMessage = "Field edit cancelled"
+		return m, nil
+
+	case tea.KeyCtrlJ:
+		if isBodyField {
+			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + "\n" + m.editFieldInput[m.editCursorPos:]
+			m.editCursorPos++
+		}
 		return m, nil
 
 	case tea.KeyEnter:
@@ -779,8 +786,16 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	default:
 		if msg.Type == tea.KeyRunes {
-			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + string(msg.Runes) + m.editFieldInput[m.editCursorPos:]
+			text := string(msg.Runes)
+			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + text + m.editFieldInput[m.editCursorPos:]
 			m.editCursorPos += len(msg.Runes)
+
+			if isBodyField && len(m.editFieldInput) >= 2 && m.editCursorPos >= 2 {
+				if m.editFieldInput[m.editCursorPos-2:m.editCursorPos] == "\\n" {
+					m.editFieldInput = m.editFieldInput[:m.editCursorPos-2] + "\n" + m.editFieldInput[m.editCursorPos:]
+					m.editCursorPos--
+				}
+			}
 		}
 		return m, nil
 	}
