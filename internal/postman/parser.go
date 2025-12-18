@@ -67,6 +67,11 @@ func (p *Parser) GetCollection(name string) (*Collection, bool) {
 	return collection, exists
 }
 
+func (p *Parser) GetCollectionPath(name string) (string, bool) {
+	path, exists := p.pathMap[name]
+	return path, exists
+}
+
 func (p *Parser) ListCollections() []string {
 	names := make([]string, 0, len(p.collections))
 	for name := range p.collections {

@@ -691,20 +691,35 @@ func handleDuplicateKey(m Model) (Model, tea.Cmd) {
 func handleDiscardSelectedKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeChanges && m.cursor < len(m.items) {
 		itemID := m.items[m.cursor]
-		delete(m.modifiedRequests, itemID)
-		delete(m.modifiedItems, itemID)
+		parts := strings.Split(itemID, "/")
+		if len(parts) > 0 {
+			collectionName := parts[0]
 
-		m.items = append(m.items[:m.cursor], m.items[m.cursor+1:]...)
+			delete(m.modifiedRequests, itemID)
+			delete(m.modifiedItems, itemID)
 
-		if len(m.items) == 0 {
-			m.mode = m.previousMode
-			m.statusMessage = "All changes discarded"
-			m.modifiedCollections = make(map[string]bool)
-		} else {
-			if m.cursor >= len(m.items) {
-				m.cursor = len(m.items) - 1
+			if path, exists := m.parser.GetCollectionPath(collectionName); exists {
+				m.parser.LoadCollection(path)
+				if m.collection != nil && m.collection.Info.Name == collectionName {
+					if newCollection, exists := m.parser.GetCollection(collectionName); exists {
+						m.collection = newCollection
+					}
+				}
 			}
-			m.statusMessage = fmt.Sprintf("Discarded changes to %s", itemID)
+
+			m.items = append(m.items[:m.cursor], m.items[m.cursor+1:]...)
+
+			if len(m.items) == 0 {
+				m.mode = m.previousMode
+				m.modifiedCollections = make(map[string]bool)
+				m = m.refreshCurrentView()
+				m.statusMessage = "All changes discarded and reloaded from file"
+			} else {
+				if m.cursor >= len(m.items) {
+					m.cursor = len(m.items) - 1
+				}
+				m.statusMessage = fmt.Sprintf("Discarded changes to %s and reloaded from file", itemID)
+			}
 		}
 	}
 	return m, nil
@@ -712,11 +727,30 @@ func handleDiscardSelectedKey(m Model) (Model, tea.Cmd) {
 
 func handleDiscardAllKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeChanges {
+		collectionsToReload := make(map[string]bool)
+		for collectionName := range m.modifiedCollections {
+			collectionsToReload[collectionName] = true
+		}
+
 		m.modifiedRequests = make(map[string]*postman.Request)
 		m.modifiedItems = make(map[string]bool)
 		m.modifiedCollections = make(map[string]bool)
+
+		for collectionName := range collectionsToReload {
+			if path, exists := m.parser.GetCollectionPath(collectionName); exists {
+				m.parser.LoadCollection(path)
+			}
+		}
+
+		if m.collection != nil {
+			if newCollection, exists := m.parser.GetCollection(m.collection.Info.Name); exists {
+				m.collection = newCollection
+			}
+		}
+
 		m.mode = m.previousMode
-		m.statusMessage = "Discarded all changes"
+		m = m.refreshCurrentView()
+		m.statusMessage = "Discarded all changes and reloaded from file"
 	}
 	return m, nil
 }

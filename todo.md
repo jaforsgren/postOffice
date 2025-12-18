@@ -7,4 +7,5 @@
 - [ ] edit request!
 - [ ] scripts...
 - [x] history
+- [ ] sessions
 - [x] debug mode

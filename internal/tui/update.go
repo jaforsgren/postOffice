@@ -670,8 +670,14 @@ func (m Model) saveAllModifiedRequests() Model {
 func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
+		if !m.updateRequestInCollection(m.editItemPath, m.editOriginalName, m.editItemName, m.editRequest) {
+			m.statusMessage = "Error: Failed to update request in collection"
+			return m, nil
+		}
+
 		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
 		m.modifiedRequests[itemID] = m.editRequest
+		m.modifiedItems[itemID] = true
 		m.modifiedCollections[m.editCollectionName] = true
 		m.mode = m.previousMode
 		m.editType = EditTypeNone
