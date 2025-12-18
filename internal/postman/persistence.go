@@ -8,10 +8,19 @@ import (
 )
 
 const configFileName = ".postoffice_collections.json"
+const sessionFileName = ".postoffice_session.json"
 
 type PersistenceConfig struct {
 	CollectionPaths  []string `json:"collection_paths"`
 	EnvironmentPaths []string `json:"environment_paths"`
+}
+
+type Session struct {
+	CollectionName  string   `json:"collection_name"`
+	EnvironmentName string   `json:"environment_name"`
+	Mode            int      `json:"mode"`
+	Breadcrumb      []string `json:"breadcrumb"`
+	Cursor          int      `json:"cursor"`
 }
 
 func (p *Parser) SaveState() error {
@@ -91,4 +100,56 @@ func (p *Parser) LoadState() error {
 	}
 
 	return nil
+}
+
+func (p *Parser) SaveSession(session *Session) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		logger.LogError("SaveSession", "UserHomeDir", err)
+		return err
+	}
+
+	sessionPath := filepath.Join(homeDir, sessionFileName)
+
+	data, err := json.MarshalIndent(session, "", "  ")
+	if err != nil {
+		logger.LogError("SaveSession", sessionPath, err)
+		return err
+	}
+
+	logger.LogFileWrite(sessionPath)
+	if err := os.WriteFile(sessionPath, data, 0644); err != nil {
+		logger.LogError("SaveSession", sessionPath, err)
+		return err
+	}
+
+	return nil
+}
+
+func (p *Parser) LoadSession() (*Session, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		logger.LogError("LoadSession", "UserHomeDir", err)
+		return nil, err
+	}
+
+	sessionPath := filepath.Join(homeDir, sessionFileName)
+
+	logger.LogFileOpen(sessionPath)
+	data, err := os.ReadFile(sessionPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		logger.LogError("LoadSession", sessionPath, err)
+		return nil, err
+	}
+
+	var session Session
+	if err := json.Unmarshal(data, &session); err != nil {
+		logger.LogError("LoadSession", sessionPath, err)
+		return nil, err
+	}
+
+	return &session, nil
 }

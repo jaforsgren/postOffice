@@ -1134,3 +1134,82 @@ func (m Model) deleteRequest(item postman.Item) Model {
 
 	return m
 }
+
+func (m Model) saveSession() {
+	collectionName := ""
+	if m.collection != nil {
+		collectionName = m.collection.Info.Name
+	}
+
+	environmentName := ""
+	if m.environment != nil {
+		environmentName = m.environment.Name
+	}
+
+	session := &postman.Session{
+		CollectionName:  collectionName,
+		EnvironmentName: environmentName,
+		Mode:            int(m.mode),
+		Breadcrumb:      m.breadcrumb,
+		Cursor:          m.cursor,
+	}
+
+	_ = m.parser.SaveSession(session)
+}
+
+func (m Model) restoreSession() Model {
+	session, err := m.parser.LoadSession()
+	if err != nil || session == nil {
+		m.statusMessage = "No previous session found"
+		return m
+	}
+
+	if session.CollectionName != "" {
+		if collection, exists := m.parser.GetCollection(session.CollectionName); exists {
+			m.collection = collection
+		} else {
+			m.statusMessage = "Previous session's collection not found"
+			return m
+		}
+	}
+
+	if session.EnvironmentName != "" {
+		if environment, exists := m.parser.GetEnvironment(session.EnvironmentName); exists {
+			m.environment = environment
+		}
+	}
+
+	m.mode = ViewMode(session.Mode)
+	m.breadcrumb = session.Breadcrumb
+	m.cursor = session.Cursor
+
+	switch m.mode {
+	case ModeCollections:
+		m = m.loadCollectionsList()
+	case ModeRequests:
+		if m.collection != nil {
+			m = m.loadRequestsList()
+			if len(m.breadcrumb) > 0 {
+				current := m.collection.Items
+				for _, crumb := range m.breadcrumb {
+					for _, item := range current {
+						if item.Name == crumb {
+							m = m.navigateInto(item)
+							break
+						}
+					}
+				}
+			}
+			if m.cursor >= len(m.currentItems) {
+				m.cursor = 0
+			}
+		}
+	case ModeEnvironments:
+		m = m.loadEnvironmentsList()
+	case ModeVariables:
+		m = m.loadVariablesList()
+	}
+
+	m.statusMessage = "Session restored"
+	return m
+}

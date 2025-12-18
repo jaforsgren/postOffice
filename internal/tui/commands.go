@@ -222,6 +222,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments},
 		},
 		{
+			Keys:        []string{"s"},
+			Description: "Restore session",
+			ShortHelp:   "s",
+			Handler:     handleRestoreSessionKey,
+			AvailableIn: []ViewMode{ModeCollections},
+		},
+		{
 			Keys:        []string{"esc", "left", "backspace", "h"},
 			Description: "Close/Back",
 			ShortHelp:   "esc",
@@ -537,6 +544,7 @@ func handleDeleteCommand(m Model, args []string) (Model, tea.Cmd) {
 }
 
 func handleQuitCommand(m Model, args []string) (Model, tea.Cmd) {
+	m.saveSession()
 	return m, tea.Quit
 }
 
@@ -556,6 +564,7 @@ func handleDebugCommand(m Model, args []string) (Model, tea.Cmd) {
 }
 
 func handleQuitKey(m Model) (Model, tea.Cmd) {
+	m.saveSession()
 	return m, tea.Quit
 }
 
@@ -610,6 +619,13 @@ func handleSearchKey(m Model) (Model, tea.Cmd) {
 		m.allItems = m.items
 		m.allCurrentItems = m.currentItems
 		m.statusMessage = "Enter search query (Esc to cancel, Enter to confirm)"
+	}
+	return m, nil
+}
+
+func handleRestoreSessionKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeCollections {
+		m = m.restoreSession()
 	}
 	return m, nil
 }
