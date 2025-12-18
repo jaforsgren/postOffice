@@ -1188,20 +1188,46 @@ func (m Model) restoreSession() Model {
 		m = m.loadCollectionsList()
 	case ModeRequests:
 		if m.collection != nil {
-			m = m.loadRequestsList()
-			if len(m.breadcrumb) > 0 {
+			if len(session.Breadcrumb) == 0 {
+				m = m.loadRequestsList()
+			} else {
 				current := m.collection.Items
-				for _, crumb := range m.breadcrumb {
+				for _, crumb := range session.Breadcrumb {
+					found := false
 					for _, item := range current {
-						if item.Name == crumb {
-							m = m.navigateInto(item)
+						if item.IsFolder() && item.Name == crumb {
+							current = item.Items
+							found = true
 							break
 						}
 					}
+					if !found {
+						m.statusMessage = "Could not restore folder path"
+						m = m.loadRequestsList()
+						return m
+					}
+				}
+
+				m.breadcrumb = session.Breadcrumb
+				m.currentItems = current
+				m.items = []string{}
+				for _, item := range current {
+					prefix := ""
+					if item.IsFolder() {
+						prefix = "[DIR] "
+					} else if item.IsRequest() {
+						prefix = fmt.Sprintf("[%s] ", item.Request.Method)
+					} else {
+						prefix = "[???] "
+					}
+					m.items = append(m.items, prefix+item.Name)
 				}
 			}
-			if m.cursor >= len(m.currentItems) {
+
+			if session.Cursor >= len(m.currentItems) {
 				m.cursor = 0
+			} else {
+				m.cursor = session.Cursor
 			}
 		}
 	case ModeEnvironments:
