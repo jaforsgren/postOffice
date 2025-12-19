@@ -12,10 +12,6 @@ func (m Model) renderResponsePopup(availableHeight int) string {
 		return m.renderEmptyPopup("No response available", availableHeight)
 	}
 
-	lines := m.buildResponseLines()
-	visibleContent := sliceContent(lines, m.scrollOffset, availableHeight-2)
-	content := strings.Join(visibleContent, "\n")
-
 	borderColor := lipgloss.Color("5")
 	if m.lastResponse.StatusCode < 200 || m.lastResponse.StatusCode >= 300 {
 		borderColor = lipgloss.Color("1")
@@ -27,7 +23,7 @@ func (m Model) renderResponsePopup(availableHeight int) string {
 		Height(availableHeight).
 		Width(m.width-4).
 		Padding(1, 2).
-		Render(content)
+		Render(m.responseViewport.View())
 }
 
 func (m Model) buildResponseLines() []string {

@@ -82,16 +82,16 @@ func (m Model) buildContextInfo() []string {
 		}
 	}
 	lines = append(lines,
-		collectionEmoji + " " +
-		titleOrangeStyle.Render("Collection: ") +
-		valueWhiteStyle.Render(collectionName))
+		collectionEmoji+" "+
+			titleOrangeStyle.Render("Collection: ")+
+			valueWhiteStyle.Render(collectionName))
 
 	totalRequests := m.countTotalRequests()
 	loadedEmoji := "📚"
 	lines = append(lines,
-		loadedEmoji + " " +
-		titleOrangeStyle.Render("Loaded: ") +
-		valueWhiteStyle.Render(fmt.Sprintf("%d", totalRequests)))
+		loadedEmoji+" "+
+			titleOrangeStyle.Render("Loaded: ")+
+			valueWhiteStyle.Render(fmt.Sprintf("%d", totalRequests)))
 
 	envName := "none"
 	envEmoji := "🌍"
@@ -103,9 +103,9 @@ func (m Model) buildContextInfo() []string {
 		}
 	}
 	lines = append(lines,
-		envEmoji + " " +
-		titleOrangeStyle.Render("Environment: ") +
-		valueWhiteStyle.Render(fmt.Sprintf("%s <%d>", envName, totalEnvs)))
+		envEmoji+" "+
+			titleOrangeStyle.Render("Environment: ")+
+			valueWhiteStyle.Render(fmt.Sprintf("%s <%d>", envName, totalEnvs)))
 
 	unsavedCount := len(m.modifiedCollections) + len(m.modifiedEnvironments)
 	unsavedEmoji := "💾"
@@ -113,15 +113,15 @@ func (m Model) buildContextInfo() []string {
 		unsavedEmoji = "⚠️"
 	}
 	lines = append(lines,
-		unsavedEmoji + " " +
-		titleOrangeStyle.Render("Unsaved: ") +
-		valueWhiteStyle.Render(fmt.Sprintf("%d", unsavedCount)))
+		unsavedEmoji+" "+
+			titleOrangeStyle.Render("Unsaved: ")+
+			valueWhiteStyle.Render(fmt.Sprintf("%d", unsavedCount)))
 
 	modeEmoji := "📍"
 	lines = append(lines,
-		modeEmoji + " " +
-		titleOrangeStyle.Render("Mode: ") +
-		valueWhiteStyle.Render(m.getModeString()))
+		modeEmoji+" "+
+			titleOrangeStyle.Render("Mode: ")+
+			valueWhiteStyle.Render(m.getModeString()))
 
 	return lines
 }
@@ -156,9 +156,9 @@ func (m Model) getPathString() string {
 	if len(m.breadcrumb) > 0 {
 		path = "/" + strings.Join(m.breadcrumb, "/")
 	}
-	if m.searchActive && m.searchQuery != "" {
+	if m.searchActive && m.searchInput.Value() != "" {
 		searchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-		path += searchStyle.Render(fmt.Sprintf(" [search: %s]", m.searchQuery))
+		path += searchStyle.Render(fmt.Sprintf(" [search: %s]", m.searchInput.Value()))
 	}
 	return path
 }
@@ -229,16 +229,16 @@ func (m Model) getContextualShortcuts() string {
 
 func (m Model) renderCommandBar() string {
 	if m.commandMode {
-		display := ":" + m.commandInput
-		if m.commandSuggestion != "" && len(m.commandInput) > 0 {
+		display := ":" + m.commandInput.View()
+		if m.commandSuggestion != "" && len(m.commandInput.Value()) > 0 {
 			fadedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-			remaining := m.commandSuggestion[len(m.commandInput):]
+			remaining := m.commandSuggestion[len(m.commandInput.Value()):]
 			display += fadedStyle.Render(remaining)
 		}
 		return commandBarStyle.Width(m.width).Render(display)
 	}
 	if m.searchMode {
-		return commandBarStyle.Width(m.width).Render("/" + m.searchQuery)
+		return commandBarStyle.Width(m.width).Render("/" + m.searchInput.View())
 	}
 	return commandBarStyle.Width(m.width).Render("")
 }

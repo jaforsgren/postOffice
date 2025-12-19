@@ -13,25 +13,13 @@ func (m Model) renderInfoPopup(availableHeight int) string {
 		return m.renderEmptyPopup("No item selected", availableHeight)
 	}
 
-	var lines []string
-	var content string
-
-	if m.environment != nil && m.previousMode == ModeEnvironments {
-		lines = m.buildEnvironmentInfoLines()
-		content = strings.Join(lines, "\n")
-	} else if m.currentInfoItem != nil {
-		lines = m.buildItemInfoLines()
-		visibleContent := sliceContent(lines, m.scrollOffset, availableHeight-2)
-		content = strings.Join(visibleContent, "\n")
-	}
-
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("5")).
 		Height(availableHeight).
 		Width(m.width-4).
 		Padding(1, 2).
-		Render(content)
+		Render(m.infoViewport.View())
 }
 
 func (m Model) buildEnvironmentInfoLines() []string {
@@ -304,18 +292,11 @@ func (m Model) renderJSONPopup(availableHeight int) string {
 		return m.renderEmptyPopup("No JSON available", availableHeight)
 	}
 
-	lines := strings.Split(m.jsonContent, "\n")
-	visibleContent := sliceContent(lines, m.scrollOffset, availableHeight-2)
-	content := strings.Join(visibleContent, "\n")
-
-	title := lipgloss.NewStyle().Bold(true).Render("JSON View (press Esc to close)")
-	fullContent := title + "\n\n" + content
-
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("5")).
 		Height(availableHeight).
 		Width(m.width-4).
 		Padding(1, 2).
-		Render(fullContent)
+		Render(m.jsonViewport.View())
 }

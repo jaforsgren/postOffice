@@ -9,10 +9,16 @@ import (
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.responseViewport.Width = msg.Width - 8
+		m.infoViewport.Width = msg.Width - 8
+		m.jsonViewport.Width = msg.Width - 8
 		return m, nil
 
 	case tea.KeyMsg:
@@ -28,24 +34,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.handleEditModeKeys(msg)
 		}
+
+		if m.mode == ModeResponse || m.mode == ModeInfo || m.mode == ModeJSON {
+			key := msg.String()
+			if key == "esc" || key == "h" || key == "backspace" || key == "q" {
+				return m.handleNormalMode(msg)
+			}
+
+			if m.mode == ModeResponse {
+				m.responseViewport, cmd = m.responseViewport.Update(msg)
+				return m, cmd
+			} else if m.mode == ModeInfo {
+				m.infoViewport, cmd = m.infoViewport.Update(msg)
+				return m, cmd
+			} else if m.mode == ModeJSON {
+				m.jsonViewport, cmd = m.jsonViewport.Update(msg)
+				return m, cmd
+			}
+		}
+
 		return m.handleNormalMode(msg)
 	}
 
-	return m, nil
+	return m, tea.Batch(cmds...)
 }
 
 func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
 	switch msg.Type {
 	case tea.KeyEsc:
 		m.commandMode = false
-		m.commandInput = ""
+		m.commandInput.SetValue("")
+		m.commandInput.Blur()
 		m.commandSuggestion = ""
 		m.historyIndex = -1
 		return m, nil
 
 	case tea.KeyEnter:
-		var cmd tea.Cmd
-		input := strings.TrimSpace(m.commandInput)
+		input := strings.TrimSpace(m.commandInput.Value())
 		if input != "" {
 			if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != input {
 				m.commandHistory = append(m.commandHistory, input)
@@ -53,7 +80,8 @@ func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m, cmd = m.executeCommand()
 		m.commandMode = false
-		m.commandInput = ""
+		m.commandInput.SetValue("")
+		m.commandInput.Blur()
 		m.commandSuggestion = ""
 		m.historyIndex = -1
 		return m, cmd
@@ -65,7 +93,7 @@ func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			} else if m.historyIndex > 0 {
 				m.historyIndex--
 			}
-			m.commandInput = m.commandHistory[m.historyIndex]
+			m.commandInput.SetValue(m.commandHistory[m.historyIndex])
 			m.commandSuggestion = ""
 		}
 		return m, nil
@@ -74,10 +102,10 @@ func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.historyIndex >= 0 {
 			if m.historyIndex < len(m.commandHistory)-1 {
 				m.historyIndex++
-				m.commandInput = m.commandHistory[m.historyIndex]
+				m.commandInput.SetValue(m.commandHistory[m.historyIndex])
 			} else {
 				m.historyIndex = -1
-				m.commandInput = ""
+				m.commandInput.SetValue("")
 			}
 			m.commandSuggestion = ""
 		}
@@ -85,37 +113,26 @@ func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyTab:
 		if m.commandSuggestion != "" {
-			m.commandInput = m.commandSuggestion
+			m.commandInput.SetValue(m.commandSuggestion)
 			m.commandSuggestion = ""
 		}
 		return m, nil
 
-	case tea.KeyBackspace:
-		if len(m.commandInput) > 0 {
-			m.commandInput = m.commandInput[:len(m.commandInput)-1]
-			m.commandSuggestion = m.getCommandSuggestion()
-		}
-		return m, nil
-
-	case tea.KeySpace:
-		m.commandInput += " "
-		m.commandSuggestion = ""
-		return m, nil
-
 	default:
-		if msg.Type == tea.KeyRunes {
-			m.commandInput += string(msg.Runes)
-			m.commandSuggestion = m.getCommandSuggestion()
-		}
-		return m, nil
+		m.commandInput, cmd = m.commandInput.Update(msg)
+		m.commandSuggestion = m.getCommandSuggestion()
+		return m, cmd
 	}
 }
 
 func (m Model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
 	switch msg.Type {
 	case tea.KeyEsc:
 		m.searchMode = false
-		m.searchQuery = ""
+		m.searchInput.SetValue("")
+		m.searchInput.Blur()
 		m.searchActive = false
 		m.items = m.allItems
 		m.currentItems = m.allCurrentItems
@@ -125,7 +142,8 @@ func (m Model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyEnter:
 		m.searchMode = false
-		m.searchActive = len(m.items) > 0 && m.searchQuery != ""
+		m.searchInput.Blur()
+		m.searchActive = len(m.items) > 0 && m.searchInput.Value() != ""
 		if len(m.items) > 0 {
 			m.statusMessage = fmt.Sprintf("Found %d results (press Esc to clear search)", len(m.items))
 		} else {
@@ -133,24 +151,10 @@ func (m Model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tea.KeyBackspace:
-		if len(m.searchQuery) > 0 {
-			m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
-			m = m.filterItems()
-		}
-		return m, nil
-
-	case tea.KeySpace:
-		m.searchQuery += " "
-		m = m.filterItems()
-		return m, nil
-
 	default:
-		if msg.Type == tea.KeyRunes {
-			m.searchQuery += string(msg.Runes)
-			m = m.filterItems()
-		}
-		return m, nil
+		m.searchInput, cmd = m.searchInput.Update(msg)
+		m = m.filterItems()
+		return m, cmd
 	}
 }
 
@@ -159,8 +163,9 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if key == ":" {
 		m.commandMode = true
-		m.commandInput = ""
-		return m, nil
+		m.commandInput.SetValue("")
+		m.commandInput.Focus()
+		return m, m.commandInput.Focus()
 	}
 
 	newModel, cmd, handled := m.commandRegistry.HandleKey(m, key)
@@ -172,7 +177,7 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) executeCommand() (Model, tea.Cmd) {
-	cmd := strings.TrimSpace(m.commandInput)
+	cmd := strings.TrimSpace(m.commandInput.Value())
 	parts := strings.Fields(cmd)
 
 	if len(parts) == 0 {
@@ -193,7 +198,7 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 }
 
 func (m Model) getCommandSuggestion() string {
-	input := strings.TrimSpace(m.commandInput)
+	input := strings.TrimSpace(m.commandInput.Value())
 	if input == "" || strings.Contains(input, " ") {
 		return ""
 	}
@@ -317,6 +322,14 @@ func (m Model) handleSelection() Model {
 				m.lastResponse = m.executor.Execute(requestToExecute, variables)
 				m.scrollOffset = 0
 				m.mode = ModeResponse
+
+				metrics := m.calculateSplitLayout()
+				m.responseViewport.Width = m.width - 8
+				m.responseViewport.Height = metrics.popupHeight - 4
+				lines := m.buildResponseLines()
+				content := strings.Join(lines, "\n")
+				m.responseViewport.SetContent(content)
+
 				if m.lastResponse.Error != nil {
 					m.statusMessage = fmt.Sprintf("Request failed: %v", m.lastResponse.Error)
 				} else {
@@ -342,6 +355,14 @@ func (m Model) handleSelection() Model {
 				m.envVarCursor = 0
 				m.previousMode = m.mode
 				m.mode = ModeInfo
+
+				metrics := m.calculateSplitLayout()
+				m.infoViewport.Width = m.width - 8
+				m.infoViewport.Height = metrics.popupHeight - 4
+				lines := m.buildEnvironmentInfoLines()
+				content := strings.Join(lines, "\n")
+				m.infoViewport.SetContent(content)
+
 				m.statusMessage = fmt.Sprintf("Showing environment: %s", envName)
 			} else {
 				m.statusMessage = fmt.Sprintf("Environment not found: %s", envName)
@@ -369,7 +390,7 @@ func (m Model) navigateInto(item postman.Item) Model {
 	}
 	m.cursor = 0
 	m.searchActive = false
-	m.searchQuery = ""
+	m.searchInput.SetValue("")
 	return m
 }
 
@@ -409,7 +430,7 @@ func (m Model) navigateUp() Model {
 	}
 
 	m.searchActive = false
-	m.searchQuery = ""
+	m.searchInput.SetValue("")
 	return m
 }
 
@@ -492,7 +513,8 @@ func (m Model) searchItemsRecursive(items []postman.Item, query string, parentPa
 }
 
 func (m Model) filterItems() Model {
-	if m.searchQuery == "" {
+	searchQuery := m.searchInput.Value()
+	if searchQuery == "" {
 		m.items = m.allItems
 		m.currentItems = m.allCurrentItems
 		m.filteredItems = []string{}
@@ -501,7 +523,7 @@ func (m Model) filterItems() Model {
 		return m
 	}
 
-	query := strings.ToLower(m.searchQuery)
+	query := strings.ToLower(searchQuery)
 
 	if m.mode == ModeCollections || m.mode == ModeEnvironments {
 		m.filteredItems = []string{}
@@ -515,7 +537,7 @@ func (m Model) filterItems() Model {
 		m.items = m.filteredItems
 	} else if m.mode == ModeRequests {
 		if m.collection != nil {
-			displayItems, foundItems, indices := m.searchItemsRecursive(m.collection.Items, m.searchQuery, "")
+			displayItems, foundItems, indices := m.searchItemsRecursive(m.collection.Items, searchQuery, "")
 			m.filteredItems = displayItems
 			m.currentItems = foundItems
 			m.filteredIndices = indices
@@ -688,8 +710,9 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case ":":
 		m.commandMode = true
-		m.commandInput = ""
-		return m, nil
+		m.commandInput.SetValue("")
+		m.commandInput.Focus()
+		return m, m.commandInput.Focus()
 
 	case "j", "down":
 		fieldCount := m.getEditFieldCount()
@@ -706,119 +729,89 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "enter":
 		m.editFieldMode = true
-		m.editFieldInput = m.getCurrentFieldValue()
-		m.editCursorPos = len(m.editFieldInput)
+		fieldValue := m.getCurrentFieldValue()
 		fieldName := []string{"Name", "Method", "URL", "Headers", "Body"}[m.editFieldCursor]
+
 		if m.editFieldCursor >= 3 {
-			m.statusMessage = fmt.Sprintf("Editing %s... (Enter to confirm, Esc to cancel, Ctrl+J or \\n for newline)", fieldName)
+			m.editFieldTextArea.SetValue(fieldValue)
+			m.editFieldTextArea.Focus()
+			m.statusMessage = fmt.Sprintf("Editing %s... (Ctrl+S to save, Esc to cancel)", fieldName)
+			return m, m.editFieldTextArea.Focus()
 		} else {
-			m.statusMessage = fmt.Sprintf("Editing %s... (Enter to confirm, Esc to cancel)", fieldName)
+			m.editFieldInput.SetValue(fieldValue)
+			m.editFieldInput.Focus()
+			m.statusMessage = fmt.Sprintf("Editing %s... (Enter to save, Esc to cancel)", fieldName)
+			return m, m.editFieldInput.Focus()
 		}
-		return m, nil
 	}
 
 	return m, nil
 }
 
 func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	isMultiLineField := m.editFieldCursor == 3 || m.editFieldCursor == 4
 
 	switch msg.Type {
 	case tea.KeyEsc:
 		m.editFieldMode = false
-		m.editFieldInput = ""
-		m.editCursorPos = 0
+		if isMultiLineField {
+			m.editFieldTextArea.Blur()
+			m.editFieldTextArea.SetValue("")
+		} else {
+			m.editFieldInput.Blur()
+			m.editFieldInput.SetValue("")
+		}
 		m.statusMessage = "Field edit cancelled"
 		return m, nil
 
-	case tea.KeyCtrlJ:
+	case tea.KeyCtrlS:
 		if isMultiLineField {
-			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + "\n" + m.editFieldInput[m.editCursorPos:]
-			m.editCursorPos++
-		}
-		return m, nil
-
-	case tea.KeyEnter:
-		if isMultiLineField && msg.Alt {
-			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + "\n" + m.editFieldInput[m.editCursorPos:]
-			m.editCursorPos++
-		} else {
 			if m.editType == EditTypeRequest && m.editRequest != nil {
 				switch m.editFieldCursor {
-				case 0:
-					m.editItemName = m.editFieldInput
-				case 1:
-					m.editRequest.Method = m.editFieldInput
-				case 2:
-					m.editRequest.URL.Raw = m.editFieldInput
 				case 3:
-					m.editRequest.Header = m.parseHeaders(m.editFieldInput)
+					m.editRequest.Header = m.parseHeaders(m.editFieldTextArea.Value())
 				case 4:
 					if m.editRequest.Body == nil {
 						m.editRequest.Body = &postman.Body{}
 					}
-					m.editRequest.Body.Raw = m.editFieldInput
+					m.editRequest.Body.Raw = m.editFieldTextArea.Value()
 				}
 			}
 			m.editFieldMode = false
-			m.editFieldInput = ""
-			m.editCursorPos = 0
-			m.statusMessage = "Field updated (use :w to save)"
+			m.editFieldTextArea.Blur()
+			m.statusMessage = "Field updated (use :w to save to file)"
+			return m, nil
 		}
 		return m, nil
 
-	case tea.KeyLeft:
-		if m.editCursorPos > 0 {
-			m.editCursorPos--
-		}
-		return m, nil
-
-	case tea.KeyRight:
-		if m.editCursorPos < len(m.editFieldInput) {
-			m.editCursorPos++
-		}
-		return m, nil
-
-	case tea.KeyHome:
-		m.editCursorPos = 0
-		return m, nil
-
-	case tea.KeyEnd:
-		m.editCursorPos = len(m.editFieldInput)
-		return m, nil
-
-	case tea.KeyBackspace:
-		if m.editCursorPos > 0 && len(m.editFieldInput) > 0 {
-			m.editFieldInput = m.editFieldInput[:m.editCursorPos-1] + m.editFieldInput[m.editCursorPos:]
-			m.editCursorPos--
-		}
-		return m, nil
-
-	case tea.KeyDelete:
-		if m.editCursorPos < len(m.editFieldInput) {
-			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + m.editFieldInput[m.editCursorPos+1:]
-		}
-		return m, nil
-
-	case tea.KeySpace:
-		m.editFieldInput = m.editFieldInput[:m.editCursorPos] + " " + m.editFieldInput[m.editCursorPos:]
-		m.editCursorPos++
-		return m, nil
-
-	default:
-		if msg.Type == tea.KeyRunes {
-			text := string(msg.Runes)
-			m.editFieldInput = m.editFieldInput[:m.editCursorPos] + text + m.editFieldInput[m.editCursorPos:]
-			m.editCursorPos += len(msg.Runes)
-
-			if isMultiLineField && len(m.editFieldInput) >= 2 && m.editCursorPos >= 2 {
-				if m.editFieldInput[m.editCursorPos-2:m.editCursorPos] == "\\n" {
-					m.editFieldInput = m.editFieldInput[:m.editCursorPos-2] + "\n" + m.editFieldInput[m.editCursorPos:]
-					m.editCursorPos--
+	case tea.KeyEnter:
+		if !isMultiLineField {
+			if m.editType == EditTypeRequest && m.editRequest != nil {
+				switch m.editFieldCursor {
+				case 0:
+					m.editItemName = m.editFieldInput.Value()
+				case 1:
+					m.editRequest.Method = m.editFieldInput.Value()
+				case 2:
+					m.editRequest.URL.Raw = m.editFieldInput.Value()
 				}
 			}
+			m.editFieldMode = false
+			m.editFieldInput.Blur()
+			m.statusMessage = "Field updated (use :w to save to file)"
+			return m, nil
 		}
-		return m, nil
+		m.editFieldTextArea, cmd = m.editFieldTextArea.Update(msg)
+		return m, cmd
+
+	default:
+		if isMultiLineField {
+			m.editFieldTextArea, cmd = m.editFieldTextArea.Update(msg)
+		} else {
+			m.editFieldInput, cmd = m.editFieldInput.Update(msg)
+		}
+		return m, cmd
 	}
 }
 
@@ -961,6 +954,14 @@ func (m Model) showChangeDiff(itemID string) Model {
 		Name:    "Diff: " + requestName,
 		Request: modifiedReq,
 	}
+
+	metrics := m.calculateSplitLayout()
+	m.infoViewport.Width = m.width - 8
+	m.infoViewport.Height = metrics.popupHeight - 4
+	lines := m.buildItemInfoLines()
+	content := strings.Join(lines, "\n")
+	m.infoViewport.SetContent(content)
+
 	m.statusMessage = "Showing diff (original → modified)"
 
 	return m

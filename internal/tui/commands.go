@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type CommandHandler func(Model, []string) (Model, tea.Cmd)
@@ -456,6 +457,14 @@ func handleInfoCommand(m Model, args []string) (Model, tea.Cmd) {
 		m.scrollOffset = 0
 		m.previousMode = m.mode
 		m.mode = ModeInfo
+
+		metrics := m.calculateSplitLayout()
+		m.infoViewport.Width = m.width - 8
+		m.infoViewport.Height = metrics.popupHeight - 4
+		lines := m.buildItemInfoLines()
+		content := strings.Join(lines, "\n")
+		m.infoViewport.SetContent(content)
+
 		m.statusMessage = "Showing item info"
 	} else if m.mode == ModeCollections {
 		m.statusMessage = "Info command is only available in requests mode"
@@ -606,12 +615,28 @@ func handleInfoKey(m Model) (Model, tea.Cmd) {
 		m.scrollOffset = 0
 		m.previousMode = m.mode
 		m.mode = ModeInfo
+
+		metrics := m.calculateSplitLayout()
+		m.infoViewport.Width = m.width - 8
+		m.infoViewport.Height = metrics.popupHeight - 4
+		lines := m.buildItemInfoLines()
+		content := strings.Join(lines, "\n")
+		m.infoViewport.SetContent(content)
+
 		m.statusMessage = "Showing item info"
 	} else if m.mode == ModeEnvironments && m.environment != nil {
 		m.scrollOffset = 0
 		m.envVarCursor = 0
 		m.previousMode = m.mode
 		m.mode = ModeInfo
+
+		metrics := m.calculateSplitLayout()
+		m.infoViewport.Width = m.width - 8
+		m.infoViewport.Height = metrics.popupHeight - 4
+		lines := m.buildEnvironmentInfoLines()
+		content := strings.Join(lines, "\n")
+		m.infoViewport.SetContent(content)
+
 		m.statusMessage = "Showing environment info"
 	} else if m.mode == ModeChanges && m.cursor < len(m.items) {
 		itemID := m.items[m.cursor]
@@ -632,6 +657,14 @@ func handleJSONKey(m Model) (Model, tea.Cmd) {
 		m.scrollOffset = 0
 		m.previousMode = m.mode
 		m.mode = ModeJSON
+
+		metrics := m.calculateSplitLayout()
+		m.jsonViewport.Width = m.width - 8
+		m.jsonViewport.Height = metrics.popupHeight - 4
+		title := lipgloss.NewStyle().Bold(true).Render("JSON View (press Esc to close)")
+		fullContent := title + "\n\n" + m.jsonContent
+		m.jsonViewport.SetContent(fullContent)
+
 		m.statusMessage = "Showing JSON view (press Esc to close)"
 	} else if m.mode == ModeEnvironments && m.cursor < len(m.items) {
 		envName := m.items[m.cursor]
@@ -645,6 +678,14 @@ func handleJSONKey(m Model) (Model, tea.Cmd) {
 			m.scrollOffset = 0
 			m.previousMode = m.mode
 			m.mode = ModeJSON
+
+			metrics := m.calculateSplitLayout()
+			m.jsonViewport.Width = m.width - 8
+			m.jsonViewport.Height = metrics.popupHeight - 4
+			title := lipgloss.NewStyle().Bold(true).Render("JSON View (press Esc to close)")
+			fullContent := title + "\n\n" + m.jsonContent
+			m.jsonViewport.SetContent(fullContent)
+
 			m.statusMessage = "Showing JSON view (press Esc to close)"
 		}
 	}
@@ -654,10 +695,12 @@ func handleJSONKey(m Model) (Model, tea.Cmd) {
 func handleSearchKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeCollections || m.mode == ModeRequests || m.mode == ModeEnvironments {
 		m.searchMode = true
-		m.searchQuery = ""
+		m.searchInput.SetValue("")
+		m.searchInput.Focus()
 		m.allItems = m.items
 		m.allCurrentItems = m.currentItems
 		m.statusMessage = "Enter search query (Esc to cancel, Enter to confirm)"
+		return m, m.searchInput.Focus()
 	}
 	return m, nil
 }
@@ -705,7 +748,7 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 	}
 	if m.searchActive {
 		m.searchActive = false
-		m.searchQuery = ""
+		m.searchInput.SetValue("")
 		m.items = m.allItems
 		m.currentItems = m.allCurrentItems
 		m.cursor = 0

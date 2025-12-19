@@ -4,6 +4,9 @@ import (
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
 
+	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -32,38 +35,38 @@ const (
 )
 
 type Model struct {
-	parser          *postman.Parser
-	executor        *http.Executor
-	commandRegistry *CommandRegistry
-	mode            ViewMode
-	commandMode     bool
-	commandInput    string
-	commandHistory  []string
-	historyIndex    int
+	parser            *postman.Parser
+	executor          *http.Executor
+	commandRegistry   *CommandRegistry
+	mode              ViewMode
+	commandMode       bool
+	commandInput      textinput.Model
+	commandHistory    []string
+	historyIndex      int
 	commandSuggestion string
-	cursor          int
-	items           []string
-	currentItems    []postman.Item
-	collection      *postman.Collection
-	breadcrumb      []string
-	width           int
-	height          int
-	statusMessage   string
-	lastResponse    *http.Response
-	currentInfoItem *postman.Item
-	jsonContent     string
-	scrollOffset    int
-	searchMode      bool
-	searchQuery     string
-	searchActive    bool
-	filteredItems   []string
-	filteredIndices []int
-	allItems        []string
-	allCurrentItems []postman.Item
-	environment     *postman.Environment
-	previousMode    ViewMode
-	variables       []postman.VariableSource
-	envVarCursor    int
+	cursor            int
+	items             []string
+	currentItems      []postman.Item
+	collection        *postman.Collection
+	breadcrumb        []string
+	width             int
+	height            int
+	statusMessage     string
+	lastResponse      *http.Response
+	currentInfoItem   *postman.Item
+	jsonContent       string
+	scrollOffset      int
+	searchMode        bool
+	searchInput       textinput.Model
+	searchActive      bool
+	filteredItems     []string
+	filteredIndices   []int
+	allItems          []string
+	allCurrentItems   []postman.Item
+	environment       *postman.Environment
+	previousMode      ViewMode
+	variables         []postman.VariableSource
+	envVarCursor      int
 
 	editType             EditType
 	editRequest          *postman.Request
@@ -72,9 +75,9 @@ type Model struct {
 	editItemName         string
 	editOriginalName     string
 	editFieldCursor      int
-	editFieldInput       string
+	editFieldInput       textinput.Model
+	editFieldTextArea    textarea.Model
 	editFieldMode        bool
-	editCursorPos        int
 	modifiedItems        map[string]bool
 	modifiedCollections  map[string]bool
 	modifiedEnvironments map[string]bool
@@ -82,16 +85,34 @@ type Model struct {
 	editItemPath         []string
 	editCollectionName   string
 	editEnvironmentName  string
+
+	responseViewport viewport.Model
+	infoViewport     viewport.Model
+	jsonViewport     viewport.Model
 }
 
 func NewModel(parser *postman.Parser) Model {
+	cmdInput := textinput.New()
+	cmdInput.Placeholder = "Enter command..."
+	cmdInput.CharLimit = 500
+
+	searchInput := textinput.New()
+	searchInput.Placeholder = "Search..."
+	searchInput.CharLimit = 100
+
+	editFieldInput := textinput.New()
+	editFieldInput.CharLimit = 1000
+
+	editFieldTextArea := textarea.New()
+	editFieldTextArea.CharLimit = 50000
+
 	return Model{
 		parser:               parser,
 		executor:             http.NewExecutor(),
 		commandRegistry:      NewCommandRegistry(),
 		mode:                 ModeCollections,
 		commandMode:          false,
-		commandInput:         "",
+		commandInput:         cmdInput,
 		commandHistory:       []string{},
 		historyIndex:         -1,
 		commandSuggestion:    "",
@@ -100,10 +121,16 @@ func NewModel(parser *postman.Parser) Model {
 		currentItems:         []postman.Item{},
 		breadcrumb:           []string{},
 		statusMessage:        "Press : to enter command mode",
+		searchInput:          searchInput,
+		editFieldInput:       editFieldInput,
+		editFieldTextArea:    editFieldTextArea,
 		modifiedItems:        make(map[string]bool),
 		modifiedCollections:  make(map[string]bool),
 		modifiedEnvironments: make(map[string]bool),
 		modifiedRequests:     make(map[string]*postman.Request),
+		responseViewport:     viewport.New(0, 0),
+		infoViewport:         viewport.New(0, 0),
+		jsonViewport:         viewport.New(0, 0),
 	}
 }
 

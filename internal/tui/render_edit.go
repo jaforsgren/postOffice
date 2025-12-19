@@ -94,12 +94,14 @@ func (m Model) buildEditFields() []string {
 
 		displayValue := field.value
 		if i == m.editFieldCursor && m.editFieldMode {
-			before := m.editFieldInput[:m.editCursorPos]
-			after := m.editFieldInput[m.editCursorPos:]
-			displayValue = before + "|" + after
+			if i >= 3 {
+				displayValue = m.editFieldTextArea.View()
+			} else {
+				displayValue = m.editFieldInput.View()
+			}
 		}
 
-		if displayValue == "" {
+		if displayValue == "" && !m.editFieldMode {
 			displayValue = "(empty)"
 		}
 
