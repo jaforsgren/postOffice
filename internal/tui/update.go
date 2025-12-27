@@ -319,7 +319,7 @@ func (m Model) handleSelection() Model {
 				}
 
 				variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
-				m.lastResponse = m.executor.Execute(requestToExecute, variables)
+				m.lastResponse, m.lastTestResult = m.executor.Execute(requestToExecute, &item, m.collection, m.environment, variables)
 				m.scrollOffset = 0
 				m.mode = ModeResponse
 

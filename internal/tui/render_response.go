@@ -36,6 +36,11 @@ func (m Model) buildResponseLines() []string {
 	lines = append(lines, "")
 	lines = append(lines, m.buildResponseSection()...)
 
+	if m.lastTestResult != nil && (len(m.lastTestResult.Tests) > 0 || len(m.lastTestResult.Errors) > 0) {
+		lines = append(lines, "")
+		lines = append(lines, m.buildTestResultsSection()...)
+	}
+
 	return lines
 }
 
@@ -157,6 +162,59 @@ func (m Model) renderResponse(availableHeight int) string {
 		Height(availableHeight).
 		Width(m.width - 4).
 		Render(content)
+}
+
+func (m Model) buildTestResultsSection() []string {
+	var lines []string
+
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).Render("TEST RESULTS"))
+	lines = append(lines, "")
+
+	passedCount := 0
+	failedCount := 0
+	for _, test := range m.lastTestResult.Tests {
+		if test.Passed {
+			passedCount++
+		} else {
+			failedCount++
+		}
+	}
+
+	summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	if failedCount > 0 {
+		summaryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	}
+	lines = append(lines, summaryStyle.Render(fmt.Sprintf("Tests: %d passed, %d failed, %d total", passedCount, failedCount, len(m.lastTestResult.Tests))))
+	lines = append(lines, "")
+
+	for _, test := range m.lastTestResult.Tests {
+		icon := "✓"
+		testStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+		if !test.Passed {
+			icon = "✗"
+			testStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+		}
+
+		lines = append(lines, testStyle.Render(fmt.Sprintf("  %s %s", icon, test.Name)))
+		if test.Error != "" {
+			errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+			errorLines := strings.Split(test.Error, "\n")
+			for _, errLine := range errorLines {
+				lines = append(lines, errorStyle.Render("      "+errLine))
+			}
+		}
+	}
+
+	if len(m.lastTestResult.Errors) > 0 {
+		lines = append(lines, "")
+		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+		lines = append(lines, errorStyle.Render("Script Errors:"))
+		for _, err := range m.lastTestResult.Errors {
+			lines = append(lines, errorStyle.Render("  • "+err))
+		}
+	}
+
+	return lines
 }
 
 func (m Model) renderEmptyPopup(message string, availableHeight int) string {

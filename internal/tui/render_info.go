@@ -172,6 +172,7 @@ func (m Model) buildRequestInfoLines() []string {
 	lines = append(lines, m.buildURLSection(req, variables)...)
 	lines = append(lines, m.buildHeadersSection(req, variables)...)
 	lines = append(lines, m.buildBodySection(req, variables)...)
+	lines = append(lines, m.buildScriptsSection()...)
 	lines = append(lines, m.buildDescriptionSection()...)
 
 	return lines
@@ -270,6 +271,29 @@ func (m Model) formatBodyLines(body string, maxLines int) []string {
 		}
 		lines = append(lines, "    "+line)
 	}
+	return lines
+}
+
+func (m Model) buildScriptsSection() []string {
+	var lines []string
+
+	if len(m.currentInfoItem.Events) == 0 {
+		return lines
+	}
+
+	for _, event := range m.currentInfoItem.Events {
+		if event.Listen == "test" && len(event.Script.Exec) > 0 {
+			lines = append(lines, requestStyle.Render("Test Scripts:"))
+			scriptCode := strings.Join(event.Script.Exec, "\n")
+			scriptLines := strings.Split(scriptCode, "\n")
+			for i, line := range scriptLines {
+				lineNum := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("%3d", i+1))
+				lines = append(lines, fmt.Sprintf("  %s │ %s", lineNum, line))
+			}
+			lines = append(lines, "")
+		}
+	}
+
 	return lines
 }
 

@@ -3,6 +3,7 @@ package tui
 import (
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
+	"postOffice/internal/script"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -53,6 +54,7 @@ type Model struct {
 	height            int
 	statusMessage     string
 	lastResponse      *http.Response
+	lastTestResult    *script.TestResult
 	currentInfoItem   *postman.Item
 	jsonContent       string
 	scrollOffset      int

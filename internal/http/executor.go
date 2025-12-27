@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"postOffice/internal/postman"
+	"postOffice/internal/script"
 	"strings"
 	"time"
 )
@@ -35,7 +36,13 @@ func NewExecutor() *Executor {
 	}
 }
 
-func (e *Executor) Execute(req *postman.Request, variables []postman.VariableSource) *Response {
+func (e *Executor) Execute(
+	req *postman.Request,
+	item *postman.Item,
+	collection *postman.Collection,
+	environment *postman.Environment,
+	variables []postman.VariableSource,
+) (*Response, *script.TestResult) {
 	start := time.Now()
 	resp := &Response{}
 
@@ -43,7 +50,7 @@ func (e *Executor) Execute(req *postman.Request, variables []postman.VariableSou
 	if err != nil {
 		resp.Error = err
 		resp.Duration = time.Since(start)
-		return resp
+		return resp, nil
 	}
 
 	resp.RequestMethod = httpReq.Method
@@ -64,7 +71,7 @@ func (e *Executor) Execute(req *postman.Request, variables []postman.VariableSou
 	if err != nil {
 		resp.Error = fmt.Errorf("request failed: %w", err)
 		resp.Duration = time.Since(start)
-		return resp
+		return resp, nil
 	}
 	defer httpResp.Body.Close()
 
@@ -76,13 +83,55 @@ func (e *Executor) Execute(req *postman.Request, variables []postman.VariableSou
 	if err != nil {
 		resp.Error = fmt.Errorf("failed to read response body: %w", err)
 		resp.Duration = time.Since(start)
-		return resp
+		return resp, nil
 	}
 
 	resp.Body = string(body)
 	resp.Duration = time.Since(start)
 
-	return resp
+	testResult := e.executeTestScripts(item, collection, environment, resp)
+
+	return resp, testResult
+}
+
+func (e *Executor) executeTestScripts(
+	item *postman.Item,
+	collection *postman.Collection,
+	environment *postman.Environment,
+	resp *Response,
+) *script.TestResult {
+	if item == nil {
+		return nil
+	}
+
+	responseData := &script.ResponseData{
+		StatusCode: resp.StatusCode,
+		Body:       resp.Body,
+	}
+
+	ctx := &script.ExecutionContext{
+		Response: responseData,
+	}
+
+	if collection != nil {
+		ctx.CollectionVars = collection.Variables
+	}
+
+	if environment != nil {
+		ctx.EnvironmentVars = environment.Values
+	}
+
+	result := script.ExecuteTestScripts(item.Events, ctx)
+
+	if collection != nil {
+		collection.Variables = ctx.CollectionVars
+	}
+
+	if environment != nil {
+		environment.Values = ctx.EnvironmentVars
+	}
+
+	return result
 }
 
 func (e *Executor) buildRequest(req *postman.Request, variables []postman.VariableSource) (*http.Request, error) {

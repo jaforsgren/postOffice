@@ -42,7 +42,7 @@ func TestExecute_Success(t *testing.T) {
 		},
 	}
 
-	resp := executor.Execute(req, nil)
+	resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 	if resp == nil {
 		t.Fatal("Expected response")
@@ -97,7 +97,7 @@ func TestExecute_POST_WithBody(t *testing.T) {
 		},
 	}
 
-	resp := executor.Execute(req, nil)
+	resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 	if resp.Error != nil {
 		t.Errorf("Expected no error, got %v", resp.Error)
@@ -133,7 +133,7 @@ func TestExecute_WithHeaders(t *testing.T) {
 		},
 	}
 
-	resp := executor.Execute(req, nil)
+	resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 	if resp.Error != nil {
 		t.Errorf("Expected no error, got %v", resp.Error)
@@ -176,7 +176,7 @@ func TestExecute_WithVariables(t *testing.T) {
 		{Key: "value", Value: "resolved", Source: "test"},
 	}
 
-	resp := executor.Execute(req, variables)
+	resp, _ := executor.Execute(req, nil, nil, nil, variables)
 
 	if resp.Error != nil {
 		t.Errorf("Expected no error, got %v", resp.Error)
@@ -201,7 +201,7 @@ func TestExecute_InvalidURL(t *testing.T) {
 		},
 	}
 
-	resp := executor.Execute(req, nil)
+	resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 	if resp.Error == nil {
 		t.Error("Expected error for invalid URL")
@@ -220,7 +220,7 @@ func TestExecute_NetworkError(t *testing.T) {
 		},
 	}
 
-	resp := executor.Execute(req, nil)
+	resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 	if resp.Error == nil {
 		t.Error("Expected network error")
@@ -250,7 +250,7 @@ func TestExecute_DifferentMethods(t *testing.T) {
 				},
 			}
 
-			resp := executor.Execute(req, nil)
+			resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 			if resp.Error != nil {
 				t.Errorf("Expected no error, got %v", resp.Error)
@@ -283,7 +283,7 @@ func TestExecute_ResponseHeaders(t *testing.T) {
 		},
 	}
 
-	resp := executor.Execute(req, nil)
+	resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 	if resp.Error != nil {
 		t.Errorf("Expected no error, got %v", resp.Error)
@@ -332,7 +332,7 @@ func TestExecute_DifferentStatusCodes(t *testing.T) {
 				},
 			}
 
-			resp := executor.Execute(req, nil)
+			resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 			if resp.Error != nil {
 				t.Errorf("Expected no error, got %v", resp.Error)
@@ -558,7 +558,7 @@ func TestExecute_Timeout(t *testing.T) {
 		},
 	}
 
-	resp := executor.Execute(req, nil)
+	resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 	if resp.Error == nil {
 		t.Error("Expected timeout error")
@@ -581,7 +581,7 @@ func TestExecute_LargeResponse(t *testing.T) {
 		},
 	}
 
-	resp := executor.Execute(req, nil)
+	resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 	if resp.Error != nil {
 		t.Errorf("Expected no error, got %v", resp.Error)
@@ -636,7 +636,7 @@ func TestExecute_EmptyResponse(t *testing.T) {
 		},
 	}
 
-	resp := executor.Execute(req, nil)
+	resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 	if resp.Error != nil {
 		t.Errorf("Expected no error, got %v", resp.Error)
@@ -672,7 +672,7 @@ func TestResponse_Fields(t *testing.T) {
 		},
 	}
 
-	resp := executor.Execute(req, nil)
+	resp, _ := executor.Execute(req, nil, nil, nil, nil)
 
 	if resp.StatusCode != 200 {
 		t.Errorf("Expected StatusCode 200, got %d", resp.StatusCode)
