@@ -3,6 +3,7 @@ package script
 import (
 	"postOffice/internal/postman"
 	"testing"
+	"time"
 )
 
 func TestNewRuntime(t *testing.T) {
@@ -726,5 +727,124 @@ func TestExecuteTestScript_VariablesSet(t *testing.T) {
 	}
 	if ctx.CollectionVars[0].Value != "newValue" {
 		t.Errorf("Expected value 'newValue', got '%s'", ctx.CollectionVars[0].Value)
+	}
+}
+
+func TestExecuteTestScript_Timeout_InfiniteLoop(t *testing.T) {
+	runtime := NewRuntimeWithTimeout(100 * time.Millisecond)
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"while(true) {}",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		Response: &ResponseData{
+			StatusCode: 200,
+			Body:       "",
+		},
+	}
+
+	start := time.Now()
+	result := runtime.ExecuteTestScript(script, ctx)
+	duration := time.Since(start)
+
+	if len(result.Errors) == 0 {
+		t.Error("Expected timeout error")
+	}
+
+	if !contains(result.Errors[0], "timeout") {
+		t.Errorf("Expected timeout error, got: %s", result.Errors[0])
+	}
+
+	if duration > 200*time.Millisecond {
+		t.Errorf("Timeout took too long: %v (expected ~100ms)", duration)
+	}
+}
+
+func TestExecuteTestScript_Timeout_LongRunningScript(t *testing.T) {
+	runtime := NewRuntimeWithTimeout(50 * time.Millisecond)
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"var sum = 0;",
+			"for (var i = 0; i < 100000000; i++) { sum += i; }",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		Response: &ResponseData{
+			StatusCode: 200,
+			Body:       "",
+		},
+	}
+
+	result := runtime.ExecuteTestScript(script, ctx)
+
+	if len(result.Errors) == 0 {
+		t.Error("Expected timeout error for long-running script")
+	}
+
+	if !contains(result.Errors[0], "timeout") {
+		t.Errorf("Expected timeout error, got: %s", result.Errors[0])
+	}
+}
+
+func TestExecutePreRequestScript_Timeout(t *testing.T) {
+	runtime := NewRuntimeWithTimeout(100 * time.Millisecond)
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"while(true) {}",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		CollectionVars:  []postman.Variable{},
+		EnvironmentVars: []postman.EnvVariable{},
+	}
+
+	result := runtime.ExecutePreRequestScript(script, ctx)
+
+	if len(result.Errors) == 0 {
+		t.Error("Expected timeout error")
+	}
+
+	if !contains(result.Errors[0], "timeout") {
+		t.Errorf("Expected timeout error, got: %s", result.Errors[0])
+	}
+}
+
+func TestExecuteTestScript_NoTimeout_FastScript(t *testing.T) {
+	runtime := NewRuntimeWithTimeout(1 * time.Second)
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"pm.test('fast test', () => {",
+			"    pm.response.to.have.status(200);",
+			"});",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		Response: &ResponseData{
+			StatusCode: 200,
+			Body:       "",
+		},
+	}
+
+	result := runtime.ExecuteTestScript(script, ctx)
+
+	if len(result.Errors) > 0 {
+		t.Errorf("Expected no errors, got: %v", result.Errors)
+	}
+
+	if len(result.Tests) != 1 {
+		t.Fatalf("Expected 1 test, got %d", len(result.Tests))
+	}
+
+	if !result.Tests[0].Passed {
+		t.Errorf("Expected test to pass, error: %s", result.Tests[0].Error)
 	}
 }

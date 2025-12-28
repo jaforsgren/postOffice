@@ -3,18 +3,30 @@ package script
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dop251/goja"
 	"postOffice/internal/postman"
 )
 
+const DefaultScriptTimeout = 5 * time.Second
+
 type Runtime struct {
-	vm *goja.Runtime
+	vm      *goja.Runtime
+	timeout time.Duration
 }
 
 func NewRuntime() *Runtime {
 	return &Runtime{
-		vm: goja.New(),
+		vm:      goja.New(),
+		timeout: DefaultScriptTimeout,
+	}
+}
+
+func NewRuntimeWithTimeout(timeout time.Duration) *Runtime {
+	return &Runtime{
+		vm:      goja.New(),
+		timeout: timeout,
 	}
 }
 
@@ -35,9 +47,27 @@ func (r *Runtime) ExecuteTestScript(script postman.Script, ctx *ExecutionContext
 
 	scriptCode := strings.Join(script.Exec, "\n")
 
+	timeoutChan := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-time.After(r.timeout):
+			r.vm.Interrupt("timeout")
+			close(timeoutChan)
+		case <-done:
+		}
+	}()
+
 	_, err := r.vm.RunString(scriptCode)
-	if err != nil {
-		result.AddError(fmt.Sprintf("script execution failed: %v", err))
+	close(done)
+
+	select {
+	case <-timeoutChan:
+		result.AddError(fmt.Sprintf("script execution timeout after %v", r.timeout))
+	default:
+		if err != nil {
+			result.AddError(fmt.Sprintf("script execution failed: %v", err))
+		}
 	}
 
 	return result
@@ -93,9 +123,27 @@ func (r *Runtime) ExecutePreRequestScript(script postman.Script, ctx *ExecutionC
 
 	scriptCode := strings.Join(script.Exec, "\n")
 
+	timeoutChan := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-time.After(r.timeout):
+			r.vm.Interrupt("timeout")
+			close(timeoutChan)
+		case <-done:
+		}
+	}()
+
 	_, err := r.vm.RunString(scriptCode)
-	if err != nil {
-		result.AddError(fmt.Sprintf("script execution failed: %v", err))
+	close(done)
+
+	select {
+	case <-timeoutChan:
+		result.AddError(fmt.Sprintf("script execution timeout after %v", r.timeout))
+	default:
+		if err != nil {
+			result.AddError(fmt.Sprintf("script execution failed: %v", err))
+		}
 	}
 
 	return result

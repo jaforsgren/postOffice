@@ -21,6 +21,7 @@
   - [x] Script inspection in Info mode (both pre-request and test)
   - [x] Test results display in Response mode
   - [x] pm.response.json() for parsing JSON responses
+  - [x] Script timeouts (5 second default, configurable)
   - [ ] Variable persistence (SaveCollection/SaveEnvironment) (future)
   - [ ] Script editing in TUI (future)
 - [ ] ingest openapi
