@@ -1,0 +1,287 @@
+{
+  "info": {
+    "name": "Test Scripts Collection",
+    "description": "Collection for testing JavaScript test scripts",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Status Code Test",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://httpbin.org/status/200"
+        },
+        "header": []
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"response is ok\", () => {",
+              "    pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "JSON Response Test",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://httpbin.org/json"
+        },
+        "header": []
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status code is 200\", () => {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const jsonData = pm.response.json();",
+              "",
+              "pm.test(\"response has slideshow property\", () => {",
+              "    if (!jsonData.slideshow) {",
+              "        throw new Error('Missing slideshow property');",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"slideshow has author\", () => {",
+              "    if (!jsonData.slideshow.author) {",
+              "        throw new Error('Missing author');",
+              "    }",
+              "});",
+              "",
+              "pm.collectionVariables.set(\"lastResponse\", responseBody);",
+              "pm.collectionVariables.set(\"slideTitle\", jsonData.slideshow.title);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Multiple Tests",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://httpbin.org/get"
+        },
+        "header": [
+          {
+            "key": "User-Agent",
+            "value": "PostOffice"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"successful GET request\", () => {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"response has body\", () => {",
+              "    if (responseBody.length === 0) {",
+              "        throw new Error(\"Response body is empty\");",
+              "    }",
+              "});",
+              "",
+              "pm.environmentVariables.set(\"testToken\", \"abc123\");"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Failing Test Example",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://httpbin.org/status/404"
+        },
+        "header": []
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"should fail - expects 200 but gets 404\", () => {",
+              "    pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pre-Request Script Example",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://httpbin.org/headers"
+        },
+        "header": [
+          {
+            "key": "X-Custom-Header",
+            "value": "{{dynamicValue}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('dynamicValue', 'GeneratedValue123');",
+              "pm.environmentVariables.set('timestamp', Date.now().toString());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status is 200\", () => {",
+              "    pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Both Pre-Request and Test Scripts",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "https://httpbin.org/post"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"requestId\": \"{{requestId}}\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('authToken', 'token_' + Date.now());",
+              "pm.collectionVariables.set('requestId', 'req_' + Math.random());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"POST successful\", () => {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"response has data\", () => {",
+              "    if (responseBody.length === 0) {",
+              "        throw new Error('Empty response');",
+              "    }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Variable Getters Demo",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://httpbin.org/get"
+        },
+        "header": []
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('requestTime', Date.now().toString());",
+              "pm.environmentVariables.set('envFlag', 'enabled');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"can get collection variable\", () => {",
+              "    const requestTime = pm.collectionVariables.get('requestTime');",
+              "    if (!requestTime) {",
+              "        throw new Error('requestTime not found');",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"can get environment variable\", () => {",
+              "    const envFlag = pm.environmentVariables.get('envFlag');",
+              "    if (envFlag !== 'enabled') {",
+              "        throw new Error('Expected enabled, got ' + envFlag);",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"pm.variables.get() follows precedence\", () => {",
+              "    const envValue = pm.variables.get('envFlag');",
+              "    if (envValue !== 'enabled') {",
+              "        throw new Error('Expected env value');",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"pm.variables.get() falls back to collection\", () => {",
+              "    const baseUrl = pm.variables.get('baseUrl');",
+              "    if (baseUrl !== 'https://httpbin.org') {",
+              "        throw new Error('Expected baseUrl from collection');",
+              "    }",
+              "});",
+              "",
+              "pm.variables.set('computedValue', 'result_' + Date.now());"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://httpbin.org",
+      "type": "string"
+    }
+  ]
+}

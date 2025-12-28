@@ -40,6 +40,7 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) err
 
 	collectionVarsObj := vm.NewObject()
 	collectionVarSetter := makeVariableSetter(&ctx.CollectionVars)
+	collectionVarGetter := makeVariableGetter(&ctx.CollectionVars)
 	if err := collectionVarsObj.Set("set", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 2 {
 			return goja.Undefined()
@@ -52,8 +53,22 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) err
 		return fmt.Errorf("failed to set collectionVariables.set: %w", err)
 	}
 
+	if err := collectionVarsObj.Set("get", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			return goja.Undefined()
+		}
+		key := call.Arguments[0].String()
+		if value, ok := collectionVarGetter(key); ok {
+			return vm.ToValue(value)
+		}
+		return goja.Undefined()
+	}); err != nil {
+		return fmt.Errorf("failed to set collectionVariables.get: %w", err)
+	}
+
 	envVarsObj := vm.NewObject()
 	envVarSetter := makeEnvVariableSetter(&ctx.EnvironmentVars)
+	envVarGetter := makeEnvVariableGetter(&ctx.EnvironmentVars)
 	if err := envVarsObj.Set("set", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 2 {
 			return goja.Undefined()
@@ -66,12 +81,58 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) err
 		return fmt.Errorf("failed to set environmentVariables.set: %w", err)
 	}
 
+	if err := envVarsObj.Set("get", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			return goja.Undefined()
+		}
+		key := call.Arguments[0].String()
+		if value, ok := envVarGetter(key); ok {
+			return vm.ToValue(value)
+		}
+		return goja.Undefined()
+	}); err != nil {
+		return fmt.Errorf("failed to set environmentVariables.get: %w", err)
+	}
+
 	if err := pmObj.Set("collectionVariables", collectionVarsObj); err != nil {
 		return fmt.Errorf("failed to set pm.collectionVariables: %w", err)
 	}
 
 	if err := pmObj.Set("environmentVariables", envVarsObj); err != nil {
 		return fmt.Errorf("failed to set pm.environmentVariables: %w", err)
+	}
+
+	variablesObj := vm.NewObject()
+	if err := variablesObj.Set("get", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			return goja.Undefined()
+		}
+		key := call.Arguments[0].String()
+		if value, ok := envVarGetter(key); ok {
+			return vm.ToValue(value)
+		}
+		if value, ok := collectionVarGetter(key); ok {
+			return vm.ToValue(value)
+		}
+		return goja.Undefined()
+	}); err != nil {
+		return fmt.Errorf("failed to set pm.variables.get: %w", err)
+	}
+
+	if err := variablesObj.Set("set", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 2 {
+			return goja.Undefined()
+		}
+		key := call.Arguments[0].String()
+		value := call.Arguments[1].String()
+		collectionVarSetter(key, value)
+		return goja.Undefined()
+	}); err != nil {
+		return fmt.Errorf("failed to set pm.variables.set: %w", err)
+	}
+
+	if err := pmObj.Set("variables", variablesObj); err != nil {
+		return fmt.Errorf("failed to set pm.variables: %w", err)
 	}
 
 	if ctx.Response != nil {

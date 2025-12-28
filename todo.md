@@ -13,6 +13,8 @@
   - [x] pm.test() for defining tests
   - [x] pm.response.to.have.status() for status assertions
   - [x] pm.collectionVariables.set() and pm.environmentVariables.set()
+  - [x] pm.collectionVariables.get() and pm.environmentVariables.get()
+  - [x] pm.variables.get() and pm.variables.set() with precedence (env > collection)
   - [x] responseBody global variable
   - [x] Pre-request scripts (executed before HTTP request)
   - [x] Test scripts (executed after HTTP response)

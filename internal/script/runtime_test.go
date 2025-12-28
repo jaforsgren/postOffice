@@ -543,3 +543,188 @@ func findSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+func TestExecuteTestScript_CollectionVariableGet(t *testing.T) {
+	runtime := NewRuntime()
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"const value = pm.collectionVariables.get('existingKey');",
+			"pm.test('can retrieve existing variable', () => {",
+			"    if (value !== 'existingValue') {",
+			"        throw new Error('Expected existingValue, got ' + value);",
+			"    }",
+			"});",
+			"const missing = pm.collectionVariables.get('nonExistent');",
+			"pm.test('missing variable returns undefined', () => {",
+			"    if (missing !== undefined) {",
+			"        throw new Error('Expected undefined, got ' + missing);",
+			"    }",
+			"});",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		Response: &ResponseData{
+			StatusCode: 200,
+			Body:       "",
+		},
+		CollectionVars: []postman.Variable{
+			{Key: "existingKey", Value: "existingValue"},
+		},
+	}
+
+	result := runtime.ExecuteTestScript(script, ctx)
+
+	if len(result.Errors) > 0 {
+		t.Errorf("Expected no errors, got: %v", result.Errors)
+	}
+	if len(result.Tests) != 2 {
+		t.Fatalf("Expected 2 tests, got %d", len(result.Tests))
+	}
+	if !result.Tests[0].Passed {
+		t.Errorf("Expected first test to pass, error: %s", result.Tests[0].Error)
+	}
+	if !result.Tests[1].Passed {
+		t.Errorf("Expected second test to pass, error: %s", result.Tests[1].Error)
+	}
+}
+
+func TestExecuteTestScript_EnvironmentVariableGet(t *testing.T) {
+	runtime := NewRuntime()
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"const token = pm.environmentVariables.get('apiToken');",
+			"pm.test('can retrieve environment variable', () => {",
+			"    if (token !== 'secret123') {",
+			"        throw new Error('Expected secret123, got ' + token);",
+			"    }",
+			"});",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		Response: &ResponseData{
+			StatusCode: 200,
+			Body:       "",
+		},
+		EnvironmentVars: []postman.EnvVariable{
+			{Key: "apiToken", Value: "secret123", Enabled: true},
+		},
+	}
+
+	result := runtime.ExecuteTestScript(script, ctx)
+
+	if len(result.Errors) > 0 {
+		t.Errorf("Expected no errors, got: %v", result.Errors)
+	}
+	if len(result.Tests) != 1 {
+		t.Fatalf("Expected 1 test, got %d", len(result.Tests))
+	}
+	if !result.Tests[0].Passed {
+		t.Errorf("Expected test to pass, error: %s", result.Tests[0].Error)
+	}
+}
+
+func TestExecuteTestScript_VariablesGetPrecedence(t *testing.T) {
+	runtime := NewRuntime()
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"const envOverride = pm.variables.get('sharedKey');",
+			"pm.test('env variable takes precedence', () => {",
+			"    if (envOverride !== 'envValue') {",
+			"        throw new Error('Expected envValue, got ' + envOverride);",
+			"    }",
+			"});",
+			"const collectionOnly = pm.variables.get('collectionKey');",
+			"pm.test('falls back to collection variable', () => {",
+			"    if (collectionOnly !== 'collectionValue') {",
+			"        throw new Error('Expected collectionValue, got ' + collectionOnly);",
+			"    }",
+			"});",
+			"const envOnly = pm.variables.get('envKey');",
+			"pm.test('can get env-only variable', () => {",
+			"    if (envOnly !== 'envOnlyValue') {",
+			"        throw new Error('Expected envOnlyValue, got ' + envOnly);",
+			"    }",
+			"});",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		Response: &ResponseData{
+			StatusCode: 200,
+			Body:       "",
+		},
+		CollectionVars: []postman.Variable{
+			{Key: "sharedKey", Value: "collectionValue"},
+			{Key: "collectionKey", Value: "collectionValue"},
+		},
+		EnvironmentVars: []postman.EnvVariable{
+			{Key: "sharedKey", Value: "envValue", Enabled: true},
+			{Key: "envKey", Value: "envOnlyValue", Enabled: true},
+		},
+	}
+
+	result := runtime.ExecuteTestScript(script, ctx)
+
+	if len(result.Errors) > 0 {
+		t.Errorf("Expected no errors, got: %v", result.Errors)
+	}
+	if len(result.Tests) != 3 {
+		t.Fatalf("Expected 3 tests, got %d", len(result.Tests))
+	}
+	for i, test := range result.Tests {
+		if !test.Passed {
+			t.Errorf("Test %d (%s) failed: %s", i, test.Name, test.Error)
+		}
+	}
+}
+
+func TestExecuteTestScript_VariablesSet(t *testing.T) {
+	runtime := NewRuntime()
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"pm.variables.set('newVar', 'newValue');",
+			"const retrieved = pm.collectionVariables.get('newVar');",
+			"pm.test('pm.variables.set() sets in collection scope', () => {",
+			"    if (retrieved !== 'newValue') {",
+			"        throw new Error('Expected newValue, got ' + retrieved);",
+			"    }",
+			"});",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		Response: &ResponseData{
+			StatusCode: 200,
+			Body:       "",
+		},
+		CollectionVars:  []postman.Variable{},
+		EnvironmentVars: []postman.EnvVariable{},
+	}
+
+	result := runtime.ExecuteTestScript(script, ctx)
+
+	if len(result.Errors) > 0 {
+		t.Errorf("Expected no errors, got: %v", result.Errors)
+	}
+	if len(result.Tests) != 1 {
+		t.Fatalf("Expected 1 test, got %d", len(result.Tests))
+	}
+	if !result.Tests[0].Passed {
+		t.Errorf("Expected test to pass, error: %s", result.Tests[0].Error)
+	}
+	if len(ctx.CollectionVars) != 1 {
+		t.Fatalf("Expected 1 collection variable, got %d", len(ctx.CollectionVars))
+	}
+	if ctx.CollectionVars[0].Key != "newVar" {
+		t.Errorf("Expected key 'newVar', got '%s'", ctx.CollectionVars[0].Key)
+	}
+	if ctx.CollectionVars[0].Value != "newValue" {
+		t.Errorf("Expected value 'newValue', got '%s'", ctx.CollectionVars[0].Value)
+	}
+}
