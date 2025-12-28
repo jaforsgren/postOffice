@@ -113,6 +113,14 @@ func (cr *CommandRegistry) registerCommands() {
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
+			Name:        "edit-script",
+			Aliases:     []string{"es"},
+			Description: "Edit scripts for selected request",
+			ShortHelp:   ":es",
+			Handler:     handleEditScriptCommand,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Name:        "write",
 			Aliases:     []string{"w"},
 			Description: "Save changes",
@@ -263,6 +271,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Duplicate",
 			ShortHelp:   "d",
 			Handler:     handleDuplicateKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"E"},
+			Description: "Edit scripts",
+			ShortHelp:   "E",
+			Handler:     handleEditScriptKey,
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
@@ -807,6 +822,20 @@ func handleDuplicateKey(m Model) (Model, tea.Cmd) {
 	return m, nil
 }
 
+func handleEditScriptKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
+		item := m.currentItems[m.cursor]
+		if item.IsRequest() {
+			m = m.enterScriptSelectionMode(item)
+		} else {
+			m.statusMessage = "Can only edit scripts for requests, not folders"
+		}
+	} else {
+		m.statusMessage = "No request selected"
+	}
+	return m, nil
+}
+
 func handleDiscardSelectedKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeChanges && m.cursor < len(m.items) {
 		itemID := m.items[m.cursor]
@@ -870,6 +899,20 @@ func handleDiscardAllKey(m Model) (Model, tea.Cmd) {
 		m.mode = m.previousMode
 		m = m.refreshCurrentView()
 		m.statusMessage = "Discarded all changes and reloaded from file"
+	}
+	return m, nil
+}
+
+func handleEditScriptCommand(m Model, args []string) (Model, tea.Cmd) {
+	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
+		item := m.currentItems[m.cursor]
+		if item.IsRequest() {
+			m = m.enterScriptSelectionMode(item)
+		} else {
+			m.statusMessage = "Can only edit scripts for requests, not folders"
+		}
+	} else {
+		m.statusMessage = "No request selected"
 	}
 	return m, nil
 }

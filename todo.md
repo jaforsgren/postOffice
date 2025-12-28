@@ -28,4 +28,5 @@
 - [ ] workflow files
 - [ ] define amount of requests sent? + maybe other stuff
 - [ ] rethinking hotkeys (ctrl e for editing, maye edit json)
+- [ ] file browsing and completion
 -

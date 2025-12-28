@@ -318,7 +318,6 @@ func makeVariableSetter(vars *[]postman.Variable) func(string, string) {
 		for i := range *vars {
 			if (*vars)[i].Key == key {
 				(*vars)[i].Value = value
-				fmt.Printf("[DEBUG] Updated collection variable: %s=%s (slice len=%d, ptr=%p)\n", key, value, len(*vars), vars)
 				return
 			}
 		}
@@ -326,7 +325,6 @@ func makeVariableSetter(vars *[]postman.Variable) func(string, string) {
 			Key:   key,
 			Value: value,
 		})
-		fmt.Printf("[DEBUG] Added new collection variable: %s=%s (slice len=%d, ptr=%p)\n", key, value, len(*vars), vars)
 	}
 }
 

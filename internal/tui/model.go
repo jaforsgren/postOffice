@@ -33,6 +33,14 @@ const (
 	EditTypeEnvVariable
 	EditTypeCollectionVariable
 	EditTypeFolderVariable
+	EditTypeScript
+)
+
+type ScriptType int
+
+const (
+	ScriptTypePreRequest ScriptType = iota
+	ScriptTypeTest
 )
 
 type Model struct {
@@ -87,6 +95,11 @@ type Model struct {
 	editItemPath         []string
 	editCollectionName   string
 	editEnvironmentName  string
+
+	editScript           *postman.Script
+	editScriptType       ScriptType
+	editScriptItemName   string
+	scriptSelectionMode  bool
 
 	responseViewport viewport.Model
 	infoViewport     viewport.Model
