@@ -275,12 +275,73 @@
           }
         }
       ]
+    },
+    {
+      "name": "Full Lifecycle Example (Pre-request + Test + Persistence)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://httpbin.org/uuid"
+        },
+        "header": []
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('requestTimestamp', Date.now().toString());",
+              "pm.collectionVariables.set('requestCounter', (parseInt(pm.collectionVariables.get('requestCounter') || '0') + 1).toString());",
+              "pm.environmentVariables.set('lastRequestTime', new Date().toISOString());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('pre-request variables are available', () => {",
+              "    const timestamp = pm.collectionVariables.get('requestTimestamp');",
+              "    const counter = pm.collectionVariables.get('requestCounter');",
+              "    if (!timestamp || !counter) {",
+              "        throw new Error('Pre-request variables not set');",
+              "    }",
+              "});",
+              "",
+              "pm.test('response is valid UUID', () => {",
+              "    const data = pm.response.json();",
+              "    if (!data.uuid) {",
+              "        throw new Error('No UUID in response');",
+              "    }",
+              "});",
+              "",
+              "const responseData = pm.response.json();",
+              "pm.collectionVariables.set('lastUUID', responseData.uuid);",
+              "pm.environmentVariables.set('uuidCount', (parseInt(pm.environmentVariables.get('uuidCount') || '0') + 1).toString());",
+              "",
+              "pm.test('variables persist across requests', () => {",
+              "    const counter = parseInt(pm.collectionVariables.get('requestCounter'));",
+              "    if (counter < 1) {",
+              "        throw new Error('Counter should be at least 1');",
+              "    }",
+              "});"
+            ]
+          }
+        }
+      ]
     }
   ],
   "variable": [
     {
       "key": "baseUrl",
       "value": "https://httpbin.org",
+      "type": "string"
+    },
+    {
+      "key": "requestCounter",
+      "value": "0",
       "type": "string"
     }
   ]
