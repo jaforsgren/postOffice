@@ -166,7 +166,14 @@ func (e *Executor) executeTestScripts(
 	result := script.ExecuteTestScripts(item.Events, ctx)
 
 	if collection != nil {
+		fmt.Printf("[DEBUG EXECUTOR] Before assigning back - collection.Variables ptr=%p, len=%d\n", &collection.Variables, len(collection.Variables))
+		fmt.Printf("[DEBUG EXECUTOR] ctx.CollectionVars ptr=%p, len=%d\n", &ctx.CollectionVars, len(ctx.CollectionVars))
 		collection.Variables = ctx.CollectionVars
+		fmt.Printf("[DEBUG EXECUTOR] After assigning back - collection.Variables ptr=%p, len=%d\n", &collection.Variables, len(collection.Variables))
+		fmt.Printf("[DEBUG EXECUTOR] Collection variables after test scripts:\n")
+		for i, v := range collection.Variables {
+			fmt.Printf("[DEBUG EXECUTOR]   [%d] %s = %s\n", i, v.Key, v.Value)
+		}
 	}
 
 	if environment != nil {

@@ -25,3 +25,7 @@
   - [x] Variable persistence (auto-save collection/environment after script execution)
   - [ ] Script editing in TUI (future)
 - [ ] ingest openapi
+- [ ] workflow files
+- [ ] define amount of requests sent? + maybe other stuff
+- [ ] rethinking hotkeys (ctrl e for editing, maye edit json)
+-

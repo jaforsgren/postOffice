@@ -595,7 +595,22 @@ func (m Model) loadEnvironment(path string) Model {
 }
 
 func (m Model) loadVariablesList() Model {
+	fmt.Printf("[DEBUG TUI] loadVariablesList called\n")
+	if m.collection != nil {
+		fmt.Printf("[DEBUG TUI] Collection ptr=%p, Variables ptr=%p, len=%d\n", m.collection, &m.collection.Variables, len(m.collection.Variables))
+		for i, v := range m.collection.Variables {
+			fmt.Printf("[DEBUG TUI]   Collection var [%d]: %s = %s\n", i, v.Key, v.Value)
+		}
+	} else {
+		fmt.Printf("[DEBUG TUI] Collection is nil\n")
+	}
+
 	m.variables = m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+
+	fmt.Printf("[DEBUG TUI] GetAllVariables returned %d variables\n", len(m.variables))
+	for i, v := range m.variables {
+		fmt.Printf("[DEBUG TUI]   Variable [%d]: %s = %s (from %s)\n", i, v.Key, v.Value, v.Source)
+	}
 
 	m.items = []string{}
 	for _, variable := range m.variables {
