@@ -22,6 +22,6 @@
   - [x] Test results display in Response mode
   - [x] pm.response.json() for parsing JSON responses
   - [x] Script timeouts (5 second default, configurable)
-  - [ ] Variable persistence (SaveCollection/SaveEnvironment) (future)
+  - [x] Variable persistence (auto-save collection/environment after script execution)
   - [ ] Script editing in TUI (future)
 - [ ] ingest openapi

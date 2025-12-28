@@ -320,6 +320,19 @@ func (m Model) handleSelection() Model {
 
 				variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
 				m.lastResponse, m.lastTestResult = m.executor.Execute(requestToExecute, &item, m.collection, m.environment, variables)
+
+				if m.collection != nil && len(item.Events) > 0 {
+					if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {
+						m.statusMessage = fmt.Sprintf("Warning: failed to save collection variables: %v", err)
+					}
+				}
+
+				if m.environment != nil && len(item.Events) > 0 {
+					if err := m.parser.SaveEnvironment(m.environment.Name); err != nil {
+						m.statusMessage = fmt.Sprintf("Warning: failed to save environment variables: %v", err)
+					}
+				}
+
 				m.scrollOffset = 0
 				m.mode = ModeResponse
 
