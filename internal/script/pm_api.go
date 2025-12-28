@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/dop251/goja"
+	"github.com/tidwall/gjson"
 	"postOffice/internal/postman"
 )
 
@@ -137,7 +138,11 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) err
 
 	if ctx.Response != nil {
 		responseObj := vm.NewObject()
-		if err := responseObj.Set("text", ctx.Response.Body); err != nil {
+
+		textFunc := func(call goja.FunctionCall) goja.Value {
+			return vm.ToValue(ctx.Response.Body)
+		}
+		if err := responseObj.Set("text", textFunc); err != nil {
 			return fmt.Errorf("failed to set pm.response.text: %w", err)
 		}
 
@@ -148,13 +153,29 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) err
 			}
 			return vm.ToValue(data)
 		}
-
 		if err := responseObj.Set("json", jsonFunc); err != nil {
 			return fmt.Errorf("failed to set pm.response.json: %w", err)
 		}
 
+		if err := responseObj.Set("code", ctx.Response.StatusCode); err != nil {
+			return fmt.Errorf("failed to set pm.response.code: %w", err)
+		}
+
+		if err := responseObj.Set("status", ctx.Response.Status); err != nil {
+			return fmt.Errorf("failed to set pm.response.status: %w", err)
+		}
+
+		if err := responseObj.Set("responseTime", ctx.Response.ResponseTime); err != nil {
+			return fmt.Errorf("failed to set pm.response.responseTime: %w", err)
+		}
+
+		if err := responseObj.Set("headers", ctx.Response.Headers); err != nil {
+			return fmt.Errorf("failed to set pm.response.headers: %w", err)
+		}
+
 		toObj := vm.NewObject()
 		haveObj := vm.NewObject()
+		beObj := vm.NewObject()
 
 		statusFunc := func(call goja.FunctionCall) goja.Value {
 			if len(call.Arguments) < 1 {
@@ -170,13 +191,81 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) err
 
 			return goja.Undefined()
 		}
-
 		if err := haveObj.Set("status", statusFunc); err != nil {
 			return fmt.Errorf("failed to set status: %w", err)
 		}
 
+		headerFunc := func(call goja.FunctionCall) goja.Value {
+			if len(call.Arguments) < 1 {
+				panic(vm.NewGoError(fmt.Errorf("header() requires header name")))
+			}
+
+			headerName := call.Arguments[0].String()
+			headerValues, exists := ctx.Response.Headers[headerName]
+
+			if !exists {
+				panic(vm.NewGoError(fmt.Errorf("header '%s' not found in response", headerName)))
+			}
+
+			if len(call.Arguments) >= 2 {
+				expectedValue := call.Arguments[1].String()
+				found := false
+				for _, v := range headerValues {
+					if v == expectedValue {
+						found = true
+						break
+					}
+				}
+				if !found {
+					panic(vm.NewGoError(fmt.Errorf("header '%s' expected value '%s' but got %v", headerName, expectedValue, headerValues)))
+				}
+			}
+
+			return goja.Undefined()
+		}
+		if err := haveObj.Set("header", headerFunc); err != nil {
+			return fmt.Errorf("failed to set header: %w", err)
+		}
+
+		jsonBodyFunc := func(call goja.FunctionCall) goja.Value {
+			if len(call.Arguments) < 1 {
+				panic(vm.NewGoError(fmt.Errorf("jsonBody() requires JSONPath")))
+			}
+
+			path := call.Arguments[0].String()
+			result := gjson.Get(ctx.Response.Body, path)
+
+			if !result.Exists() {
+				panic(vm.NewGoError(fmt.Errorf("JSONPath '%s' not found in response", path)))
+			}
+
+			if len(call.Arguments) >= 2 {
+				var expected interface{}
+				if err := json.Unmarshal([]byte(call.Arguments[1].String()), &expected); err != nil {
+					expectedStr := call.Arguments[1].String()
+					actualStr := result.String()
+					if actualStr != expectedStr {
+						panic(vm.NewGoError(fmt.Errorf("JSONPath '%s' expected '%v' but got '%v'", path, expectedStr, actualStr)))
+					}
+				} else {
+					if result.Value() != expected {
+						panic(vm.NewGoError(fmt.Errorf("JSONPath '%s' expected '%v' but got '%v'", path, expected, result.Value())))
+					}
+				}
+			}
+
+			return goja.Undefined()
+		}
+		if err := haveObj.Set("jsonBody", jsonBodyFunc); err != nil {
+			return fmt.Errorf("failed to set jsonBody: %w", err)
+		}
+
 		if err := toObj.Set("have", haveObj); err != nil {
 			return fmt.Errorf("failed to set have: %w", err)
+		}
+
+		if err := toObj.Set("be", beObj); err != nil {
+			return fmt.Errorf("failed to set be: %w", err)
 		}
 
 		if err := responseObj.Set("to", toObj); err != nil {
@@ -194,6 +283,31 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) err
 
 	if err := vm.Set("pm", pmObj); err != nil {
 		return fmt.Errorf("failed to set pm global: %w", err)
+	}
+
+	// Define ok and error as getters if response context is present
+	if ctx.Response != nil {
+		_, err := vm.RunString(fmt.Sprintf(`
+			(function() {
+				Object.defineProperty(pm.response.to.be, 'ok', {
+					get: function() {
+						if (%d < 200 || %d >= 300) {
+							throw new Error('expected 2xx status but got %d');
+						}
+					}
+				});
+				Object.defineProperty(pm.response.to.be, 'error', {
+					get: function() {
+						if (%d < 400) {
+							throw new Error('expected 4xx/5xx status but got %d');
+						}
+					}
+				});
+			})();
+		`, ctx.Response.StatusCode, ctx.Response.StatusCode, ctx.Response.StatusCode, ctx.Response.StatusCode, ctx.Response.StatusCode))
+		if err != nil {
+			return fmt.Errorf("failed to define be.ok and be.error getters: %w", err)
+		}
 	}
 
 	return nil

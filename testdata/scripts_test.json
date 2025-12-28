@@ -9,10 +9,10 @@
       "name": "Status Code Test",
       "request": {
         "method": "GET",
+        "header": [],
         "url": {
           "raw": "https://httpbin.org/status/200"
-        },
-        "header": []
+        }
       },
       "event": [
         {
@@ -20,7 +20,7 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test(\"response is ok\", () => {",
+              "pm.test(\"response is ok\", () =\u003e {",
               "    pm.response.to.have.status(200);",
               "});"
             ]
@@ -32,10 +32,10 @@
       "name": "JSON Response Test",
       "request": {
         "method": "GET",
+        "header": [],
         "url": {
           "raw": "https://httpbin.org/json"
-        },
-        "header": []
+        }
       },
       "event": [
         {
@@ -43,19 +43,19 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test(\"status code is 200\", () => {",
+              "pm.test(\"status code is 200\", () =\u003e {",
               "    pm.response.to.have.status(200);",
               "});",
               "",
               "const jsonData = pm.response.json();",
               "",
-              "pm.test(\"response has slideshow property\", () => {",
+              "pm.test(\"response has slideshow property\", () =\u003e {",
               "    if (!jsonData.slideshow) {",
               "        throw new Error('Missing slideshow property');",
               "    }",
               "});",
               "",
-              "pm.test(\"slideshow has author\", () => {",
+              "pm.test(\"slideshow has author\", () =\u003e {",
               "    if (!jsonData.slideshow.author) {",
               "        throw new Error('Missing author');",
               "    }",
@@ -72,15 +72,15 @@
       "name": "Multiple Tests",
       "request": {
         "method": "GET",
-        "url": {
-          "raw": "https://httpbin.org/get"
-        },
         "header": [
           {
             "key": "User-Agent",
             "value": "PostOffice"
           }
-        ]
+        ],
+        "url": {
+          "raw": "https://httpbin.org/get"
+        }
       },
       "event": [
         {
@@ -88,11 +88,11 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test(\"successful GET request\", () => {",
+              "pm.test(\"successful GET request\", () =\u003e {",
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"response has body\", () => {",
+              "pm.test(\"response has body\", () =\u003e {",
               "    if (responseBody.length === 0) {",
               "        throw new Error(\"Response body is empty\");",
               "    }",
@@ -108,10 +108,10 @@
       "name": "Failing Test Example",
       "request": {
         "method": "GET",
+        "header": [],
         "url": {
           "raw": "https://httpbin.org/status/404"
-        },
-        "header": []
+        }
       },
       "event": [
         {
@@ -119,7 +119,7 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test(\"should fail - expects 200 but gets 404\", () => {",
+              "pm.test(\"should fail - expects 200 but gets 404\", () =\u003e {",
               "    pm.response.to.have.status(200);",
               "});"
             ]
@@ -131,15 +131,15 @@
       "name": "Pre-Request Script Example",
       "request": {
         "method": "GET",
-        "url": {
-          "raw": "https://httpbin.org/headers"
-        },
         "header": [
           {
             "key": "X-Custom-Header",
             "value": "{{dynamicValue}}"
           }
-        ]
+        ],
+        "url": {
+          "raw": "https://httpbin.org/headers"
+        }
       },
       "event": [
         {
@@ -157,7 +157,7 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test(\"status is 200\", () => {",
+              "pm.test(\"status is 200\", () =\u003e {",
               "    pm.response.to.have.status(200);",
               "});"
             ]
@@ -169,9 +169,6 @@
       "name": "Both Pre-Request and Test Scripts",
       "request": {
         "method": "POST",
-        "url": {
-          "raw": "https://httpbin.org/post"
-        },
         "header": [
           {
             "key": "Content-Type",
@@ -185,6 +182,9 @@
         "body": {
           "mode": "raw",
           "raw": "{\"requestId\": \"{{requestId}}\"}"
+        },
+        "url": {
+          "raw": "https://httpbin.org/post"
         }
       },
       "event": [
@@ -203,11 +203,11 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test(\"POST successful\", () => {",
+              "pm.test(\"POST successful\", () =\u003e {",
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"response has data\", () => {",
+              "pm.test(\"response has data\", () =\u003e {",
               "    if (responseBody.length === 0) {",
               "        throw new Error('Empty response');",
               "    }",
@@ -221,10 +221,10 @@
       "name": "Variable Getters Demo",
       "request": {
         "method": "GET",
+        "header": [],
         "url": {
           "raw": "https://httpbin.org/get"
-        },
-        "header": []
+        }
       },
       "event": [
         {
@@ -242,28 +242,28 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test(\"can get collection variable\", () => {",
+              "pm.test(\"can get collection variable\", () =\u003e {",
               "    const requestTime = pm.collectionVariables.get('requestTime');",
               "    if (!requestTime) {",
               "        throw new Error('requestTime not found');",
               "    }",
               "});",
               "",
-              "pm.test(\"can get environment variable\", () => {",
+              "pm.test(\"can get environment variable\", () =\u003e {",
               "    const envFlag = pm.environmentVariables.get('envFlag');",
               "    if (envFlag !== 'enabled') {",
               "        throw new Error('Expected enabled, got ' + envFlag);",
               "    }",
               "});",
               "",
-              "pm.test(\"pm.variables.get() follows precedence\", () => {",
+              "pm.test(\"pm.variables.get() follows precedence\", () =\u003e {",
               "    const envValue = pm.variables.get('envFlag');",
               "    if (envValue !== 'enabled') {",
               "        throw new Error('Expected env value');",
               "    }",
               "});",
               "",
-              "pm.test(\"pm.variables.get() falls back to collection\", () => {",
+              "pm.test(\"pm.variables.get() falls back to collection\", () =\u003e {",
               "    const baseUrl = pm.variables.get('baseUrl');",
               "    if (baseUrl !== 'https://httpbin.org') {",
               "        throw new Error('Expected baseUrl from collection');",
@@ -280,10 +280,10 @@
       "name": "Full Lifecycle Example (Pre-request + Test + Persistence)",
       "request": {
         "method": "GET",
+        "header": [],
         "url": {
           "raw": "https://httpbin.org/uuid"
-        },
-        "header": []
+        }
       },
       "event": [
         {
@@ -302,7 +302,7 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('pre-request variables are available', () => {",
+              "pm.test('pre-request variables are available', () =\u003e {",
               "    const timestamp = pm.collectionVariables.get('requestTimestamp');",
               "    const counter = pm.collectionVariables.get('requestCounter');",
               "    if (!timestamp || !counter) {",
@@ -310,7 +310,7 @@
               "    }",
               "});",
               "",
-              "pm.test('response is valid UUID', () => {",
+              "pm.test('response is valid UUID', () =\u003e {",
               "    const data = pm.response.json();",
               "    if (!data.uuid) {",
               "        throw new Error('No UUID in response');",
@@ -321,9 +321,9 @@
               "pm.collectionVariables.set('lastUUID', responseData.uuid);",
               "pm.environmentVariables.set('uuidCount', (parseInt(pm.environmentVariables.get('uuidCount') || '0') + 1).toString());",
               "",
-              "pm.test('variables persist across requests', () => {",
+              "pm.test('variables persist across requests', () =\u003e {",
               "    const counter = parseInt(pm.collectionVariables.get('requestCounter'));",
-              "    if (counter < 1) {",
+              "    if (counter \u003c 1) {",
               "        throw new Error('Counter should be at least 1');",
               "    }",
               "});"

@@ -144,8 +144,11 @@ func (e *Executor) executeTestScripts(
 	}
 
 	responseData := &script.ResponseData{
-		StatusCode: resp.StatusCode,
-		Body:       resp.Body,
+		StatusCode:   resp.StatusCode,
+		Status:       resp.Status,
+		Body:         resp.Body,
+		Headers:      resp.Headers,
+		ResponseTime: resp.Duration.Milliseconds(),
 	}
 
 	ctx := &script.ExecutionContext{

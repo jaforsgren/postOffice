@@ -5,8 +5,11 @@ import (
 )
 
 type ResponseData struct {
-	StatusCode int
-	Body       string
+	StatusCode   int
+	Status       string
+	Body         string
+	Headers      map[string][]string
+	ResponseTime int64
 }
 
 type ExecutionContext struct {
