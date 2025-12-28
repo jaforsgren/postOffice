@@ -61,3 +61,42 @@ func ExecuteTestScripts(events []postman.Event, ctx *ExecutionContext) *TestResu
 
 	return combinedResult
 }
+
+func ExecutePreRequestScripts(events []postman.Event, ctx *ExecutionContext) []string {
+	var errors []string
+
+	for _, event := range events {
+		if event.Listen == "prerequest" {
+			runtime := NewRuntime()
+			result := runtime.ExecutePreRequestScript(event.Script, ctx)
+			errors = append(errors, result.Errors...)
+		}
+	}
+
+	return errors
+}
+
+func (r *Runtime) ExecutePreRequestScript(script postman.Script, ctx *ExecutionContext) *TestResult {
+	result := &TestResult{
+		Tests:  []Test{},
+		Errors: []string{},
+	}
+
+	if len(script.Exec) == 0 {
+		return result
+	}
+
+	if err := setupPmAPI(r.vm, ctx, result); err != nil {
+		result.AddError(fmt.Sprintf("failed to setup pm API: %v", err))
+		return result
+	}
+
+	scriptCode := strings.Join(script.Exec, "\n")
+
+	_, err := r.vm.RunString(scriptCode)
+	if err != nil {
+		result.AddError(fmt.Sprintf("script execution failed: %v", err))
+	}
+
+	return result
+}

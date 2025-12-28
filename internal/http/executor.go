@@ -46,7 +46,18 @@ func (e *Executor) Execute(
 	start := time.Now()
 	resp := &Response{}
 
-	httpReq, err := e.buildRequest(req, variables)
+	updatedVariables := variables
+	if item != nil {
+		preReqErrors := e.executePreRequestScripts(item, collection, environment)
+		if len(preReqErrors) > 0 {
+			resp.Error = fmt.Errorf("pre-request script errors: %v", preReqErrors)
+			resp.Duration = time.Since(start)
+			return resp, nil
+		}
+		updatedVariables = rebuildVariables(collection, environment)
+	}
+
+	httpReq, err := e.buildRequest(req, updatedVariables)
 	if err != nil {
 		resp.Error = err
 		resp.Duration = time.Since(start)
@@ -94,6 +105,34 @@ func (e *Executor) Execute(
 	return resp, testResult
 }
 
+func (e *Executor) executePreRequestScripts(
+	item *postman.Item,
+	collection *postman.Collection,
+	environment *postman.Environment,
+) []string {
+	ctx := &script.ExecutionContext{}
+
+	if collection != nil {
+		ctx.CollectionVars = collection.Variables
+	}
+
+	if environment != nil {
+		ctx.EnvironmentVars = environment.Values
+	}
+
+	errors := script.ExecutePreRequestScripts(item.Events, ctx)
+
+	if collection != nil {
+		collection.Variables = ctx.CollectionVars
+	}
+
+	if environment != nil {
+		environment.Values = ctx.EnvironmentVars
+	}
+
+	return errors
+}
+
 func (e *Executor) executeTestScripts(
 	item *postman.Item,
 	collection *postman.Collection,
@@ -132,6 +171,39 @@ func (e *Executor) executeTestScripts(
 	}
 
 	return result
+}
+
+func rebuildVariables(collection *postman.Collection, environment *postman.Environment) []postman.VariableSource {
+	var variables []postman.VariableSource
+	seen := make(map[string]bool)
+
+	if environment != nil {
+		for _, envVar := range environment.Values {
+			if envVar.Enabled && !seen[envVar.Key] {
+				variables = append(variables, postman.VariableSource{
+					Key:    envVar.Key,
+					Value:  envVar.Value,
+					Source: "Environment: " + environment.Name,
+				})
+				seen[envVar.Key] = true
+			}
+		}
+	}
+
+	if collection != nil {
+		for _, collVar := range collection.Variables {
+			if !seen[collVar.Key] {
+				variables = append(variables, postman.VariableSource{
+					Key:    collVar.Key,
+					Value:  collVar.Value,
+					Source: "Collection: " + collection.Info.Name,
+				})
+				seen[collVar.Key] = true
+			}
+		}
+	}
+
+	return variables
 }
 
 func (e *Executor) buildRequest(req *postman.Request, variables []postman.VariableSource) (*http.Request, error) {

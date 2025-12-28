@@ -5,7 +5,20 @@
 - [x] better serach
 - [x] better topbar , one right collum with context clues, loaded collection , loaded env etc . middle bar with help stuff. working right bar with functioning logo
 - [x] edit request!
-- [ ] scripts...
 - [x] history
 - [x] sessions
 - [x] debug mode
+- [x] scripts (pre-request and test scripts with barebones pm API)
+  - [x] goja JavaScript runtime integration
+  - [x] pm.test() for defining tests
+  - [x] pm.response.to.have.status() for status assertions
+  - [x] pm.collectionVariables.set() and pm.environmentVariables.set()
+  - [x] responseBody global variable
+  - [x] Pre-request scripts (executed before HTTP request)
+  - [x] Test scripts (executed after HTTP response)
+  - [x] Script inspection in Info mode (both pre-request and test)
+  - [x] Test results display in Response mode
+  - [x] pm.response.json() for parsing JSON responses
+  - [ ] Variable persistence (SaveCollection/SaveEnvironment) (future)
+  - [ ] Script editing in TUI (future)
+- [ ] ingest openapi

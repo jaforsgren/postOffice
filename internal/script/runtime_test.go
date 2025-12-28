@@ -313,3 +313,233 @@ func TestExecuteTestScripts_IgnoreNonTestEvents(t *testing.T) {
 		t.Fatalf("Expected 1 test (pre-request should be ignored), got %d", len(result.Tests))
 	}
 }
+
+func TestExecutePreRequestScripts_Simple(t *testing.T) {
+	runtime := NewRuntime()
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"pm.collectionVariables.set('preReqVar', 'setValue');",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		CollectionVars: []postman.Variable{},
+	}
+
+	result := runtime.ExecutePreRequestScript(script, ctx)
+
+	if len(result.Errors) > 0 {
+		t.Errorf("Expected no errors, got: %v", result.Errors)
+	}
+	if len(ctx.CollectionVars) != 1 {
+		t.Fatalf("Expected 1 collection variable, got %d", len(ctx.CollectionVars))
+	}
+	if ctx.CollectionVars[0].Key != "preReqVar" {
+		t.Errorf("Expected key 'preReqVar', got '%s'", ctx.CollectionVars[0].Key)
+	}
+	if ctx.CollectionVars[0].Value != "setValue" {
+		t.Errorf("Expected value 'setValue', got '%s'", ctx.CollectionVars[0].Value)
+	}
+}
+
+func TestExecutePreRequestScripts_Multiple(t *testing.T) {
+	events := []postman.Event{
+		{
+			Listen: "prerequest",
+			Script: postman.Script{
+				Type: "text/javascript",
+				Exec: []string{
+					"pm.environmentVariables.set('token', 'abc123');",
+				},
+			},
+		},
+		{
+			Listen: "prerequest",
+			Script: postman.Script{
+				Type: "text/javascript",
+				Exec: []string{
+					"pm.collectionVariables.set('requestId', '456');",
+				},
+			},
+		},
+		{
+			Listen: "test",
+			Script: postman.Script{
+				Type: "text/javascript",
+				Exec: []string{
+					"pm.test('should be ignored', () => {});",
+				},
+			},
+		},
+	}
+
+	ctx := &ExecutionContext{
+		CollectionVars:  []postman.Variable{},
+		EnvironmentVars: []postman.EnvVariable{},
+	}
+
+	errors := ExecutePreRequestScripts(events, ctx)
+
+	if len(errors) > 0 {
+		t.Errorf("Expected no errors, got: %v", errors)
+	}
+	if len(ctx.EnvironmentVars) != 1 {
+		t.Fatalf("Expected 1 environment variable, got %d", len(ctx.EnvironmentVars))
+	}
+	if len(ctx.CollectionVars) != 1 {
+		t.Fatalf("Expected 1 collection variable, got %d", len(ctx.CollectionVars))
+	}
+}
+
+func TestExecutePreRequestScripts_Empty(t *testing.T) {
+	events := []postman.Event{}
+	ctx := &ExecutionContext{}
+
+	errors := ExecutePreRequestScripts(events, ctx)
+
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors, got: %v", errors)
+	}
+}
+
+func TestExecuteTestScript_ResponseJSON(t *testing.T) {
+	runtime := NewRuntime()
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"const data = pm.response.json();",
+			"pm.test('has id property', () => {",
+			"    if (!data.id) {",
+			"        throw new Error('Missing id property');",
+			"    }",
+			"});",
+			"pm.test('id is 123', () => {",
+			"    if (data.id !== 123) {",
+			"        throw new Error('Expected id 123, got ' + data.id);",
+			"    }",
+			"});",
+			"pm.collectionVariables.set('userId', data.id.toString());",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		Response: &ResponseData{
+			StatusCode: 200,
+			Body:       `{"id": 123, "name": "test user", "active": true}`,
+		},
+		CollectionVars: []postman.Variable{},
+	}
+
+	result := runtime.ExecuteTestScript(script, ctx)
+
+	if len(result.Errors) > 0 {
+		t.Errorf("Expected no errors, got: %v", result.Errors)
+	}
+	if len(result.Tests) != 2 {
+		t.Fatalf("Expected 2 tests, got %d", len(result.Tests))
+	}
+	if !result.Tests[0].Passed {
+		t.Errorf("Expected first test to pass, error: %s", result.Tests[0].Error)
+	}
+	if !result.Tests[1].Passed {
+		t.Errorf("Expected second test to pass, error: %s", result.Tests[1].Error)
+	}
+	if len(ctx.CollectionVars) != 1 {
+		t.Fatalf("Expected 1 collection variable, got %d", len(ctx.CollectionVars))
+	}
+	if ctx.CollectionVars[0].Key != "userId" {
+		t.Errorf("Expected key 'userId', got '%s'", ctx.CollectionVars[0].Key)
+	}
+	if ctx.CollectionVars[0].Value != "123" {
+		t.Errorf("Expected value '123', got '%s'", ctx.CollectionVars[0].Value)
+	}
+}
+
+func TestExecuteTestScript_ResponseJSON_Invalid(t *testing.T) {
+	runtime := NewRuntime()
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"const data = pm.response.json();",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		Response: &ResponseData{
+			StatusCode: 200,
+			Body:       `not valid json`,
+		},
+	}
+
+	result := runtime.ExecuteTestScript(script, ctx)
+
+	if len(result.Errors) == 0 {
+		t.Error("Expected error for invalid JSON")
+	}
+	if len(result.Errors) > 0 && !contains(result.Errors[0], "failed to parse JSON") {
+		t.Errorf("Expected 'failed to parse JSON' error, got: %s", result.Errors[0])
+	}
+}
+
+func TestExecuteTestScript_ResponseJSON_NestedObjects(t *testing.T) {
+	runtime := NewRuntime()
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			"const data = pm.response.json();",
+			"pm.test('can access nested properties', () => {",
+			"    if (data.user.name !== 'Alice') {",
+			"        throw new Error('Expected name Alice');",
+			"    }",
+			"    if (data.user.address.city !== 'NYC') {",
+			"        throw new Error('Expected city NYC');",
+			"    }",
+			"    if (data.tags[0] !== 'admin') {",
+			"        throw new Error('Expected first tag admin');",
+			"    }",
+			"});",
+		},
+	}
+
+	ctx := &ExecutionContext{
+		Response: &ResponseData{
+			StatusCode: 200,
+			Body: `{
+				"user": {
+					"name": "Alice",
+					"address": {
+						"city": "NYC",
+						"zip": "10001"
+					}
+				},
+				"tags": ["admin", "user"]
+			}`,
+		},
+	}
+
+	result := runtime.ExecuteTestScript(script, ctx)
+
+	if len(result.Errors) > 0 {
+		t.Errorf("Expected no errors, got: %v", result.Errors)
+	}
+	if len(result.Tests) != 1 {
+		t.Fatalf("Expected 1 test, got %d", len(result.Tests))
+	}
+	if !result.Tests[0].Passed {
+		t.Errorf("Expected test to pass, error: %s", result.Tests[0].Error)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || findSubstring(s, substr)))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

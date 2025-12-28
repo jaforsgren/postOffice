@@ -282,6 +282,19 @@ func (m Model) buildScriptsSection() []string {
 	}
 
 	for _, event := range m.currentInfoItem.Events {
+		if event.Listen == "prerequest" && len(event.Script.Exec) > 0 {
+			lines = append(lines, requestStyle.Render("Pre-Request Scripts:"))
+			scriptCode := strings.Join(event.Script.Exec, "\n")
+			scriptLines := strings.Split(scriptCode, "\n")
+			for i, line := range scriptLines {
+				lineNum := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("%3d", i+1))
+				lines = append(lines, fmt.Sprintf("  %s │ %s", lineNum, line))
+			}
+			lines = append(lines, "")
+		}
+	}
+
+	for _, event := range m.currentInfoItem.Events {
 		if event.Listen == "test" && len(event.Script.Exec) > 0 {
 			lines = append(lines, requestStyle.Render("Test Scripts:"))
 			scriptCode := strings.Join(event.Script.Exec, "\n")
