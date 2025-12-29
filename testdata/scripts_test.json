@@ -341,8 +341,32 @@
     },
     {
       "key": "requestCounter",
-      "value": "0",
+      "value": "1",
       "type": "string"
+    },
+    {
+      "key": "requestTime",
+      "value": "1766997746956"
+    },
+    {
+      "key": "computedValue",
+      "value": "result_1766997747577"
+    },
+    {
+      "key": "requestTimestamp",
+      "value": "1766997757382"
+    },
+    {
+      "key": "lastUUID",
+      "value": "146a608a-fd30-4d7e-8bfa-1dc151b706f9"
+    },
+    {
+      "key": "lastResponse",
+      "value": "{\n  \"slideshow\": {\n    \"author\": \"Yours Truly\", \n    \"date\": \"date of publication\", \n    \"slides\": [\n      {\n        \"title\": \"Wake up to WonderWidgets!\", \n        \"type\": \"all\"\n      }, \n      {\n        \"items\": [\n          \"Why \u003cem\u003eWonderWidgets\u003c/em\u003e are great\", \n          \"Who \u003cem\u003ebuys\u003c/em\u003e WonderWidgets\"\n        ], \n        \"title\": \"Overview\", \n        \"type\": \"all\"\n      }\n    ], \n    \"title\": \"Sample Slide Show\"\n  }\n}\n"
+    },
+    {
+      "key": "slideTitle",
+      "value": "Sample Slide Show"
     }
   ]
 }
