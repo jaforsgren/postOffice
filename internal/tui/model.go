@@ -3,6 +3,7 @@ package tui
 import (
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
+	"postOffice/internal/script"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -32,6 +33,14 @@ const (
 	EditTypeEnvVariable
 	EditTypeCollectionVariable
 	EditTypeFolderVariable
+	EditTypeScript
+)
+
+type ScriptType int
+
+const (
+	ScriptTypePreRequest ScriptType = iota
+	ScriptTypeTest
 )
 
 type Model struct {
@@ -53,6 +62,7 @@ type Model struct {
 	height            int
 	statusMessage     string
 	lastResponse      *http.Response
+	lastTestResult    *script.TestResult
 	currentInfoItem   *postman.Item
 	jsonContent       string
 	scrollOffset      int
@@ -85,6 +95,11 @@ type Model struct {
 	editItemPath         []string
 	editCollectionName   string
 	editEnvironmentName  string
+
+	editScript           *postman.Script
+	editScriptType       ScriptType
+	editScriptItemName   string
+	scriptSelectionMode  bool
 
 	responseViewport viewport.Model
 	infoViewport     viewport.Model

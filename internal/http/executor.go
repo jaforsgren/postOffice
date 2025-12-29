@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"postOffice/internal/postman"
+	"postOffice/internal/script"
 	"strings"
 	"time"
 )
@@ -35,15 +36,32 @@ func NewExecutor() *Executor {
 	}
 }
 
-func (e *Executor) Execute(req *postman.Request, variables []postman.VariableSource) *Response {
+func (e *Executor) Execute(
+	req *postman.Request,
+	item *postman.Item,
+	collection *postman.Collection,
+	environment *postman.Environment,
+	variables []postman.VariableSource,
+) (*Response, *script.TestResult) {
 	start := time.Now()
 	resp := &Response{}
 
-	httpReq, err := e.buildRequest(req, variables)
+	updatedVariables := variables
+	if item != nil {
+		preReqErrors := e.executePreRequestScripts(item, collection, environment)
+		if len(preReqErrors) > 0 {
+			resp.Error = fmt.Errorf("pre-request script errors: %v", preReqErrors)
+			resp.Duration = time.Since(start)
+			return resp, nil
+		}
+		updatedVariables = rebuildVariables(collection, environment)
+	}
+
+	httpReq, err := e.buildRequest(req, updatedVariables)
 	if err != nil {
 		resp.Error = err
 		resp.Duration = time.Since(start)
-		return resp
+		return resp, nil
 	}
 
 	resp.RequestMethod = httpReq.Method
@@ -64,7 +82,7 @@ func (e *Executor) Execute(req *postman.Request, variables []postman.VariableSou
 	if err != nil {
 		resp.Error = fmt.Errorf("request failed: %w", err)
 		resp.Duration = time.Since(start)
-		return resp
+		return resp, nil
 	}
 	defer httpResp.Body.Close()
 
@@ -76,13 +94,119 @@ func (e *Executor) Execute(req *postman.Request, variables []postman.VariableSou
 	if err != nil {
 		resp.Error = fmt.Errorf("failed to read response body: %w", err)
 		resp.Duration = time.Since(start)
-		return resp
+		return resp, nil
 	}
 
 	resp.Body = string(body)
 	resp.Duration = time.Since(start)
 
-	return resp
+	testResult := e.executeTestScripts(item, collection, environment, resp)
+
+	return resp, testResult
+}
+
+func (e *Executor) executePreRequestScripts(
+	item *postman.Item,
+	collection *postman.Collection,
+	environment *postman.Environment,
+) []string {
+	ctx := &script.ExecutionContext{}
+
+	if collection != nil {
+		ctx.CollectionVars = collection.Variables
+	}
+
+	if environment != nil {
+		ctx.EnvironmentVars = environment.Values
+	}
+
+	errors := script.ExecutePreRequestScripts(item.Events, ctx)
+
+	if collection != nil {
+		collection.Variables = ctx.CollectionVars
+	}
+
+	if environment != nil {
+		environment.Values = ctx.EnvironmentVars
+	}
+
+	return errors
+}
+
+func (e *Executor) executeTestScripts(
+	item *postman.Item,
+	collection *postman.Collection,
+	environment *postman.Environment,
+	resp *Response,
+) *script.TestResult {
+	if item == nil {
+		return nil
+	}
+
+	responseData := &script.ResponseData{
+		StatusCode:   resp.StatusCode,
+		Status:       resp.Status,
+		Body:         resp.Body,
+		Headers:      resp.Headers,
+		ResponseTime: resp.Duration.Milliseconds(),
+	}
+
+	ctx := &script.ExecutionContext{
+		Response: responseData,
+	}
+
+	if collection != nil {
+		ctx.CollectionVars = collection.Variables
+	}
+
+	if environment != nil {
+		ctx.EnvironmentVars = environment.Values
+	}
+
+	result := script.ExecuteTestScripts(item.Events, ctx)
+
+	if collection != nil {
+		collection.Variables = ctx.CollectionVars
+	}
+
+	if environment != nil {
+		environment.Values = ctx.EnvironmentVars
+	}
+
+	return result
+}
+
+func rebuildVariables(collection *postman.Collection, environment *postman.Environment) []postman.VariableSource {
+	var variables []postman.VariableSource
+	seen := make(map[string]bool)
+
+	if environment != nil {
+		for _, envVar := range environment.Values {
+			if envVar.Enabled && !seen[envVar.Key] {
+				variables = append(variables, postman.VariableSource{
+					Key:    envVar.Key,
+					Value:  envVar.Value,
+					Source: "Environment: " + environment.Name,
+				})
+				seen[envVar.Key] = true
+			}
+		}
+	}
+
+	if collection != nil {
+		for _, collVar := range collection.Variables {
+			if !seen[collVar.Key] {
+				variables = append(variables, postman.VariableSource{
+					Key:    collVar.Key,
+					Value:  collVar.Value,
+					Source: "Collection: " + collection.Info.Name,
+				})
+				seen[collVar.Key] = true
+			}
+		}
+	}
+
+	return variables
 }
 
 func (e *Executor) buildRequest(req *postman.Request, variables []postman.VariableSource) (*http.Request, error) {

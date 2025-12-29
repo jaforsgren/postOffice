@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -26,6 +27,22 @@ func (m Model) buildEditLines() []string {
 	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11")).Render(title))
 	lines = append(lines, "")
 
+	if m.scriptSelectionMode {
+		lines = append(lines, m.buildScriptSelectionList()...)
+		shortcuts := "<Enter> Select  <j/k> Navigate  <Esc> Cancel"
+		lines = append(lines, "")
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(shortcuts))
+		return lines
+	}
+
+	if m.editType == EditTypeScript {
+		lines = append(lines, m.buildScriptEditor()...)
+		shortcuts := "<:w> Save  <:wq> Save & Exit  <Esc> Cancel"
+		lines = append(lines, "")
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(shortcuts))
+		return lines
+	}
+
 	if m.editType == EditTypeRequest && m.editRequest != nil {
 		lines = append(lines, m.buildEditFields()...)
 	}
@@ -48,6 +65,16 @@ func (m Model) buildEditTitle() string {
 		title += "Environment Variable"
 	case EditTypeCollectionVariable:
 		title += "Collection Variable"
+	case EditTypeScript:
+		if m.scriptSelectionMode {
+			title = "Select Script Type - " + m.editScriptItemName
+		} else {
+			scriptTypeName := "Pre-request"
+			if m.editScriptType == ScriptTypeTest {
+				scriptTypeName = "Test"
+			}
+			title = scriptTypeName + " Script - " + m.editScriptItemName
+		}
 	}
 	return title
 }
@@ -111,6 +138,35 @@ func (m Model) buildEditFields() []string {
 		}
 		lines = append(lines, "")
 	}
+
+	return lines
+}
+
+func (m Model) buildScriptSelectionList() []string {
+	var lines []string
+
+	for i, option := range m.items {
+		prefix := "  "
+		style := lipgloss.NewStyle()
+
+		if i == m.cursor {
+			prefix = "> "
+			style = style.Bold(true).Foreground(lipgloss.Color("10"))
+		}
+
+		lines = append(lines, prefix+style.Render(option))
+	}
+
+	return lines
+}
+
+func (m Model) buildScriptEditor() []string {
+	var lines []string
+
+	lineCount := strings.Count(m.editFieldTextArea.Value(), "\n") + 1
+	lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("Lines: %d", lineCount)))
+	lines = append(lines, "")
+	lines = append(lines, m.editFieldTextArea.View())
 
 	return lines
 }

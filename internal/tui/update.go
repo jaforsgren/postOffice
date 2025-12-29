@@ -319,7 +319,20 @@ func (m Model) handleSelection() Model {
 				}
 
 				variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
-				m.lastResponse = m.executor.Execute(requestToExecute, variables)
+				m.lastResponse, m.lastTestResult = m.executor.Execute(requestToExecute, &item, m.collection, m.environment, variables)
+
+				if m.collection != nil && len(item.Events) > 0 {
+					if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {
+						m.statusMessage = fmt.Sprintf("Warning: failed to save collection variables: %v", err)
+					}
+				}
+
+				if m.environment != nil && len(item.Events) > 0 {
+					if err := m.parser.SaveEnvironment(m.environment.Name); err != nil {
+						m.statusMessage = fmt.Sprintf("Warning: failed to save environment variables: %v", err)
+					}
+				}
+
 				m.scrollOffset = 0
 				m.mode = ModeResponse
 
@@ -656,6 +669,17 @@ func (m Model) saveEdit() Model {
 		if len(m.modifiedItems) == 0 {
 			delete(m.modifiedCollections, m.editCollectionName)
 		}
+	case EditTypeScript:
+		m = m.saveScript()
+		if err := m.parser.SaveCollection(m.editCollectionName); err != nil {
+			m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
+			return m
+		}
+		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editScriptItemName)
+		delete(m.modifiedItems, itemID)
+		if len(m.modifiedItems) == 0 {
+			delete(m.modifiedCollections, m.editCollectionName)
+		}
 	}
 
 	return m
@@ -690,6 +714,14 @@ func (m Model) saveAllModifiedRequests() Model {
 }
 
 func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.scriptSelectionMode {
+		return m.handleScriptSelectionKeys(msg)
+	}
+
+	if m.editType == EditTypeScript {
+		return m.handleScriptEditKeys(msg)
+	}
+
 	switch msg.String() {
 	case "esc":
 		if !m.updateRequestInCollection(m.editItemPath, m.editOriginalName, m.editItemName, m.editRequest) {
@@ -746,6 +778,87 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m Model) handleScriptSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.mode = m.previousMode
+		m.editType = EditTypeNone
+		m.scriptSelectionMode = false
+		m = m.refreshCurrentView()
+		m.statusMessage = "Cancelled script editing"
+		return m, nil
+
+	case "j", "down":
+		if m.cursor < len(m.items)-1 {
+			m.cursor++
+		}
+		return m, nil
+
+	case "k", "up":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+		return m, nil
+
+	case "enter":
+		if m.cursor >= len(m.items) {
+			return m, nil
+		}
+
+		selection := m.items[m.cursor]
+		var scriptType ScriptType
+
+		if selection == "Pre-request Script" || selection == "Create Pre-request Script" {
+			scriptType = ScriptTypePreRequest
+		} else if selection == "Test Script" || selection == "Create Test Script" {
+			scriptType = ScriptTypeTest
+		} else {
+			m.statusMessage = "Unknown script type selected"
+			return m, nil
+		}
+
+		item := m.findItemByPath(m.editItemPath, m.editScriptItemName)
+		if item == nil {
+			m.statusMessage = "Error: Could not find request"
+			return m, nil
+		}
+
+		m = m.selectScriptType(*item, scriptType)
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m Model) handleScriptEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.mode = m.previousMode
+		m.editType = EditTypeNone
+		m.editScript = nil
+		m.scriptSelectionMode = false
+		m.editFieldTextArea.Blur()
+		m.editFieldTextArea.SetValue("")
+		m = m.refreshCurrentView()
+		m.statusMessage = "Cancelled script editing"
+		return m, nil
+
+	case tea.KeyRunes:
+		if msg.String() == ":" {
+			m.commandMode = true
+			m.commandInput.SetValue("")
+			m.commandInput.Focus()
+			m.editFieldTextArea.Blur()
+			return m, m.commandInput.Focus()
+		}
+	}
+
+	m.editFieldTextArea, cmd = m.editFieldTextArea.Update(msg)
+	return m, cmd
 }
 
 func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1279,4 +1392,227 @@ func (m Model) restoreSession() Model {
 
 	m.statusMessage = "Session restored"
 	return m
+}
+
+func (m Model) enterScriptSelectionMode(item postman.Item) Model {
+	if !item.IsRequest() {
+		m.statusMessage = "Can only edit scripts for requests"
+		return m
+	}
+
+	preReqCount := 0
+	testCount := 0
+	for _, event := range item.Events {
+		if event.Listen == "prerequest" {
+			preReqCount++
+		} else if event.Listen == "test" {
+			testCount++
+		}
+	}
+
+	if preReqCount == 0 && testCount == 0 {
+		m.editScript = &postman.Script{
+			Type: "text/javascript",
+			Exec: []string{},
+		}
+		m.editScriptType = ScriptTypeTest
+		m.editScriptItemName = item.Name
+		m.editItemPath = append([]string{}, m.breadcrumb...)
+		m.editCollectionName = m.collection.Info.Name
+		m.editType = EditTypeScript
+		m.previousMode = m.mode
+		m.mode = ModeEdit
+		m.scriptSelectionMode = false
+		m.editFieldTextArea.SetValue("")
+		m.editFieldTextArea.Focus()
+		m.statusMessage = "Creating new test script (no existing scripts found)"
+		return m
+	}
+
+	m.scriptSelectionMode = true
+	m.editScriptItemName = item.Name
+	m.editItemPath = append([]string{}, m.breadcrumb...)
+	m.editCollectionName = m.collection.Info.Name
+	m.previousMode = m.mode
+	m.mode = ModeEdit
+	m.cursor = 0
+
+	options := []string{}
+	if preReqCount > 0 {
+		options = append(options, "Pre-request Script")
+	}
+	if testCount > 0 {
+		options = append(options, "Test Script")
+	}
+	if preReqCount == 0 {
+		options = append(options, "Create Pre-request Script")
+	}
+	if testCount == 0 {
+		options = append(options, "Create Test Script")
+	}
+
+	m.items = options
+	m.statusMessage = "Select script type to edit (j/k to navigate, Enter to select, Esc to cancel)"
+	return m
+}
+
+func (m Model) selectScriptType(item postman.Item, scriptType ScriptType) Model {
+	var foundScript *postman.Script
+	listenType := "prerequest"
+	if scriptType == ScriptTypeTest {
+		listenType = "test"
+	}
+
+	for i := range item.Events {
+		if item.Events[i].Listen == listenType {
+			foundScript = &item.Events[i].Script
+			break
+		}
+	}
+
+	if foundScript == nil {
+		foundScript = &postman.Script{
+			Type: "text/javascript",
+			Exec: []string{},
+		}
+	}
+
+	m.editScript = foundScript
+	m.editScriptType = scriptType
+	m.editType = EditTypeScript
+	m.scriptSelectionMode = false
+
+	scriptContent := ""
+	if len(foundScript.Exec) > 0 {
+		for i, line := range foundScript.Exec {
+			scriptContent += line
+			if i < len(foundScript.Exec)-1 {
+				scriptContent += "\n"
+			}
+		}
+	}
+
+	m.editFieldTextArea.SetValue(scriptContent)
+	m.editFieldTextArea.Focus()
+
+	scriptTypeName := "pre-request"
+	if scriptType == ScriptTypeTest {
+		scriptTypeName = "test"
+	}
+	m.statusMessage = fmt.Sprintf("Editing %s script - :w to save, :wq to save & exit, Esc to cancel", scriptTypeName)
+	return m
+}
+
+func (m Model) saveScript() Model {
+	if m.editScript == nil || m.collection == nil {
+		m.statusMessage = "Error: No script to save"
+		return m
+	}
+
+	scriptContent := m.editFieldTextArea.Value()
+	lines := []string{}
+	if scriptContent != "" {
+		for _, line := range splitLines(scriptContent) {
+			lines = append(lines, line)
+		}
+	}
+
+	m.editScript.Type = "text/javascript"
+	m.editScript.Exec = lines
+
+	item := m.findItemByPath(m.editItemPath, m.editScriptItemName)
+	if item == nil {
+		m.statusMessage = "Error: Could not find request item"
+		return m
+	}
+
+	listenType := "prerequest"
+	if m.editScriptType == ScriptTypeTest {
+		listenType = "test"
+	}
+
+	eventFound := false
+	for i := range item.Events {
+		if item.Events[i].Listen == listenType {
+			item.Events[i].Script = *m.editScript
+			eventFound = true
+			break
+		}
+	}
+
+	if !eventFound {
+		newEvent := postman.Event{
+			Listen: listenType,
+			Script: *m.editScript,
+		}
+		item.Events = append(item.Events, newEvent)
+	}
+
+	m.modifiedCollections[m.editCollectionName] = true
+	itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editScriptItemName)
+	m.modifiedItems[itemID] = true
+
+	scriptTypeName := "pre-request"
+	if m.editScriptType == ScriptTypeTest {
+		scriptTypeName = "test"
+	}
+
+	m.statusMessage = fmt.Sprintf("Saved %s script for '%s'", scriptTypeName, m.editScriptItemName)
+	return m
+}
+
+func (m Model) findItemByPath(path []string, itemName string) *postman.Item {
+	if m.collection == nil {
+		return nil
+	}
+
+	current := m.collection.Items
+	for _, folderName := range path {
+		found := false
+		for i := range current {
+			if current[i].Name == folderName && current[i].IsFolder() {
+				current = current[i].Items
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+	}
+
+	for i := range current {
+		if current[i].Name == itemName {
+			return &current[i]
+		}
+	}
+	return nil
+}
+
+func joinPath(parts []string) string {
+	result := ""
+	for i, part := range parts {
+		result += part
+		if i < len(parts)-1 {
+			result += "/"
+		}
+	}
+	return result
+}
+
+func splitLines(text string) []string {
+	lines := []string{}
+	currentLine := ""
+	for _, ch := range text {
+		if ch == '\n' {
+			lines = append(lines, currentLine)
+			currentLine = ""
+		} else if ch != '\r' {
+			currentLine += string(ch)
+		}
+	}
+	if currentLine != "" || len(lines) == 0 {
+		lines = append(lines, currentLine)
+	}
+	return lines
 }

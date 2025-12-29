@@ -4,6 +4,7 @@ type Collection struct {
 	Info      Info       `json:"info"`
 	Items     []Item     `json:"item"`
 	Variables []Variable `json:"variable,omitempty"`
+	Events    []Event    `json:"event,omitempty"`
 }
 
 type Info struct {
@@ -18,6 +19,7 @@ type Item struct {
 	Items       []Item     `json:"item,omitempty"`
 	Description string     `json:"description,omitempty"`
 	Variables   []Variable `json:"variable,omitempty"`
+	Events      []Event    `json:"event,omitempty"`
 }
 
 type Request struct {
@@ -70,4 +72,14 @@ type Variable struct {
 	Value   string `json:"value"`
 	Type    string `json:"type,omitempty"`
 	Enabled bool   `json:"enabled,omitempty"`
+}
+
+type Event struct {
+	Listen string `json:"listen"`
+	Script Script `json:"script"`
+}
+
+type Script struct {
+	Type string   `json:"type"`
+	Exec []string `json:"exec"`
 }
