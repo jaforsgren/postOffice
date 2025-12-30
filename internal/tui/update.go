@@ -50,6 +50,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.mode == ModeJSON {
 				m.jsonViewport, cmd = m.jsonViewport.Update(msg)
 				return m, cmd
+			} else if m.mode == ModeLog {
+				m.logsViewport, cmd = m.logsViewport.Update(msg)
+				return m, cmd
 			}
 		}
 

@@ -57,6 +57,9 @@ func (m Model) renderContent() []string {
 	case ModeVariables:
 		return []string{m.renderVariablesView()}
 
+	case ModeLog:
+		return []string{m.renderLogsView()}
+
 	default:
 		return []string{m.renderMainWindow()}
 	}

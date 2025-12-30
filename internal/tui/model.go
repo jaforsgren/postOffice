@@ -23,6 +23,7 @@ const (
 	ModeEdit
 	ModeChanges
 	ModeJSON
+	ModeLog
 )
 
 type EditType int
@@ -96,14 +97,15 @@ type Model struct {
 	editCollectionName   string
 	editEnvironmentName  string
 
-	editScript           *postman.Script
-	editScriptType       ScriptType
-	editScriptItemName   string
-	scriptSelectionMode  bool
+	editScript          *postman.Script
+	editScriptType      ScriptType
+	editScriptItemName  string
+	scriptSelectionMode bool
 
 	responseViewport viewport.Model
 	infoViewport     viewport.Model
 	jsonViewport     viewport.Model
+	logsViewport     viewport.Model
 }
 
 func NewModel(parser *postman.Parser) Model {
@@ -146,6 +148,7 @@ func NewModel(parser *postman.Parser) Model {
 		responseViewport:     viewport.New(0, 0),
 		infoViewport:         viewport.New(0, 0),
 		jsonViewport:         viewport.New(0, 0),
+		logsViewport:         viewport.New(0, 0),
 	}
 }
 
