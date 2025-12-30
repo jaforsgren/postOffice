@@ -26,6 +26,7 @@
   - [x] Script editing in TUI (future)
 - [x] ingest openapi
 - [x] makefile
+- [ ] ingest openapi
 - [ ] workflow files
 - [ ] rethinking hotkeys (ctrl e for editing, maye edit json)
 - [x] file browsing and completion
