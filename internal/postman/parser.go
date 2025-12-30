@@ -39,15 +39,48 @@ func (p *Parser) LoadCollection(path string) (*Collection, error) {
 		return nil, fmt.Errorf("failed to read collection file: %w", err)
 	}
 
-	var collection Collection
-	if err := json.Unmarshal(data, &collection); err != nil {
+	format := DetectFormat(data)
+
+	var collection *Collection
+	switch format {
+	case FormatPostman:
+		collection, err = parsePostmanCollection(data)
+	case FormatOpenAPI:
+		collection, err = parseOpenAPISpec(data)
+	default:
+		err = fmt.Errorf("unknown collection format")
+	}
+
+	if err != nil {
 		logger.LogError("LoadCollection", expandedPath, err)
 		return nil, fmt.Errorf("failed to parse collection: %w", err)
 	}
 
-	p.collections[collection.Info.Name] = &collection
+	p.collections[collection.Info.Name] = collection
 	p.pathMap[collection.Info.Name] = expandedPath
+	return collection, nil
+}
+
+func parsePostmanCollection(data []byte) (*Collection, error) {
+	var collection Collection
+	if err := json.Unmarshal(data, &collection); err != nil {
+		return nil, err
+	}
 	return &collection, nil
+}
+
+func parseOpenAPISpec(data []byte) (*Collection, error) {
+	var spec OpenAPISpec
+	if err := json.Unmarshal(data, &spec); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal OpenAPI spec: %w", err)
+	}
+
+	collection, err := ConvertOpenAPIToCollection(&spec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert OpenAPI to collection: %w", err)
+	}
+
+	return collection, nil
 }
 
 func expandPath(path string) (string, error) {
