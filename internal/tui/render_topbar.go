@@ -146,6 +146,8 @@ func (m Model) getModeString() string {
 		return "Changes"
 	case ModeJSON:
 		return "JSON"
+	case ModeLog:
+		return "Logs"
 	default:
 		return ""
 	}

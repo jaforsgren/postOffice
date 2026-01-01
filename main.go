@@ -22,12 +22,10 @@ func run() error {
 	logPath := flag.String("log", "", "path to log file for debugging file operations")
 	flag.Parse()
 
-	if *logPath != "" {
-		if err := logger.Init(*logPath); err != nil {
-			return fmt.Errorf("failed to initialize logger: %w", err)
-		}
-		defer logger.Close()
+	if err := logger.Init(*logPath); err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
+	defer logger.Close()
 
 	parser := postman.NewParser()
 	if err := parser.LoadState(); err != nil {

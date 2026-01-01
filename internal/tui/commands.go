@@ -184,6 +184,14 @@ func (cr *CommandRegistry) registerCommands() {
 			Handler:     handleDebugCommand,
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables},
 		},
+		{
+			Name:        "logs",
+			Aliases:     []string{"log"},
+			Description: "Show session logs",
+			ShortHelp:   ":logs",
+			Handler:     handleLogsCommand,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeInfo, ModeJSON},
+		},
 	}
 
 	for _, cmd := range commands {
@@ -250,21 +258,21 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges},
 		},
 		{
 			Keys:        []string{"up", "k"},
 			Description: "Navigate up",
 			ShortHelp:   "j/k",
 			Handler:     handleUpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
 		},
 		{
 			Keys:        []string{"down", "j"},
 			Description: "Scroll/Navigate",
 			ShortHelp:   "j/k",
 			Handler:     handleDownKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
 		},
 		{
 			Keys:        []string{"d"},
@@ -595,6 +603,14 @@ func handleDebugCommand(m Model, args []string) (Model, tea.Cmd) {
 	return m, nil
 }
 
+func handleLogsCommand(m Model, args []string) (Model, tea.Cmd) {
+	m.previousMode = m.mode
+	m.mode = ModeLog
+	m.scrollOffset = 0
+	m.statusMessage = "Showing session logs (j/k to scroll, esc to close)"
+	return m, nil
+}
+
 func handleQuitKey(m Model) (Model, tea.Cmd) {
 	m.saveSession()
 	return m, tea.Quit
@@ -754,6 +770,16 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.jsonContent = ""
 		m.scrollOffset = 0
 		m.statusMessage = "Closed JSON view"
+		return m, nil
+	}
+	if m.mode == ModeLog {
+		if m.previousMode != 0 {
+			m.mode = m.previousMode
+		} else {
+			m.mode = ModeRequests
+		}
+		m.scrollOffset = 0
+		m.statusMessage = "Closed logs view"
 		return m, nil
 	}
 	if m.mode == ModeChanges {
