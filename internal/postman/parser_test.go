@@ -745,3 +745,187 @@ func TestLoadCollection_ComplexStructure(t *testing.T) {
 		t.Error("Expected deep request")
 	}
 }
+
+func TestLoadCollection_OpenAPI(t *testing.T) {
+	openAPISpec := `{
+		"openapi": "3.0.0",
+		"info": {
+			"title": "Test OpenAPI",
+			"description": "Test Description",
+			"version": "1.0.0"
+		},
+		"servers": [
+			{"url": "https://api.example.com"}
+		],
+		"paths": {
+			"/users": {
+				"get": {
+					"operationId": "listUsers",
+					"summary": "List all users",
+					"tags": ["users"]
+				}
+			},
+			"/users/{id}": {
+				"get": {
+					"operationId": "getUser",
+					"summary": "Get user by ID",
+					"tags": ["users"],
+					"parameters": [
+						{
+							"name": "id",
+							"in": "path",
+							"required": true
+						}
+					]
+				}
+			}
+		}
+	}`
+
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "openapi.json")
+	if err := os.WriteFile(filePath, []byte(openAPISpec), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	parser := NewParser()
+	collection, err := parser.LoadCollection(filePath)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if collection.Info.Name != "Test OpenAPI" {
+		t.Errorf("Expected name 'Test OpenAPI', got '%s'", collection.Info.Name)
+	}
+
+	if collection.Info.Description != "Test Description" {
+		t.Errorf("Expected description 'Test Description', got '%s'", collection.Info.Description)
+	}
+
+	stored, exists := parser.GetCollection("Test OpenAPI")
+	if !exists {
+		t.Error("Expected collection to be stored")
+	}
+	if stored == nil {
+		t.Fatal("Expected stored collection to not be nil")
+	}
+}
+
+func TestLoadCollection_OpenAPIWithSecurity(t *testing.T) {
+	openAPISpec := `{
+		"openapi": "3.0.0",
+		"info": {
+			"title": "Secure API",
+			"version": "1.0.0"
+		},
+		"servers": [
+			{"url": "https://secure.api.com"}
+		],
+		"paths": {
+			"/protected": {
+				"get": {
+					"operationId": "getProtected",
+					"security": [{"bearerAuth": []}]
+				}
+			}
+		},
+		"components": {
+			"securitySchemes": {
+				"bearerAuth": {
+					"type": "http",
+					"scheme": "bearer"
+				}
+			}
+		}
+	}`
+
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "secure_api.json")
+	if err := os.WriteFile(filePath, []byte(openAPISpec), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	parser := NewParser()
+	collection, err := parser.LoadCollection(filePath)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(collection.Items) == 0 {
+		t.Fatal("Expected at least one item")
+	}
+
+	var protectedItem *Item
+	for i := range collection.Items {
+		if collection.Items[i].Name == "getProtected" {
+			protectedItem = &collection.Items[i]
+			break
+		}
+	}
+
+	if protectedItem == nil {
+		t.Fatal("Expected to find 'getProtected' item")
+	}
+
+	if protectedItem.Request == nil {
+		t.Fatal("Expected request to be set")
+	}
+
+	authHeaderFound := false
+	for _, header := range protectedItem.Request.Header {
+		if header.Key == "Authorization" && header.Value == "Bearer {{bearerAuth}}" {
+			authHeaderFound = true
+			break
+		}
+	}
+
+	if !authHeaderFound {
+		t.Error("Expected Authorization header with Bearer token template")
+	}
+}
+
+func TestLoadCollection_OpenAPIPetStore(t *testing.T) {
+	parser := NewParser()
+	collection, err := parser.LoadCollection("../../testdata/openapi_petstore.json")
+
+	if err != nil {
+		t.Fatalf("Expected no error loading petstore, got %v", err)
+	}
+
+	if collection.Info.Name != "Pet Store API" {
+		t.Errorf("Expected name 'Pet Store API', got '%s'", collection.Info.Name)
+	}
+
+	if len(collection.Items) == 0 {
+		t.Fatal("Expected items to be loaded")
+	}
+
+	petsFolder := findItemByName(collection.Items, "pets")
+	if petsFolder == nil {
+		t.Fatal("Expected to find 'pets' folder")
+	}
+
+	if len(petsFolder.Items) < 5 {
+		t.Errorf("Expected at least 5 pet operations, got %d", len(petsFolder.Items))
+	}
+
+	healthCheck := findItemByName(collection.Items, "healthCheck")
+	if healthCheck == nil {
+		t.Fatal("Expected to find 'healthCheck' item")
+	}
+
+	if healthCheck.Request == nil {
+		t.Error("Expected healthCheck to be a request")
+	}
+}
+
+func findItemByName(items []Item, name string) *Item {
+	for i := range items {
+		if items[i].Name == name {
+			return &items[i]
+		}
+	}
+	return nil
+}

@@ -23,10 +23,9 @@
   - [x] pm.response.json() for parsing JSON responses
   - [x] Script timeouts (5 second default, configurable)
   - [x] Variable persistence (auto-save collection/environment after script execution)
-  - [ ] Script editing in TUI (future)
-- [ ] ingest openapi
+  - [x] Script editing in TUI (future)
+- [x] ingest openapi
+- [x] makefile
 - [ ] workflow files
-- [ ] define amount of requests sent? + maybe other stuff
 - [ ] rethinking hotkeys (ctrl e for editing, maye edit json)
-- [ ] file browsing and completion
--
+- [x] file browsing and completion
