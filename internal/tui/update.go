@@ -117,7 +117,12 @@ func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyTab:
 		if m.commandSuggestion != "" {
 			m.commandInput.SetValue(m.commandSuggestion)
-			m.commandSuggestion = ""
+			m.commandInput.CursorEnd()
+			if !strings.HasSuffix(m.commandSuggestion, "/") {
+				m.commandSuggestion = ""
+			} else {
+				m.commandSuggestion = ""
+			}
 		}
 		return m, nil
 
@@ -164,6 +169,10 @@ func (m Model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
+	if m.mode == ModeFileBrowser {
+		return m.handleFileBrowserKeys(msg)
+	}
+
 	if key == ":" {
 		m.commandMode = true
 		m.commandInput.SetValue("")
@@ -202,8 +211,12 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 
 func (m Model) getCommandSuggestion() string {
 	input := strings.TrimSpace(m.commandInput.Value())
-	if input == "" || strings.Contains(input, " ") {
+	if input == "" {
 		return ""
+	}
+
+	if strings.Contains(input, " ") {
+		return getPathSuggestion(input)
 	}
 
 	return m.commandRegistry.GetAutocompleteSuggestion(input, m.mode)

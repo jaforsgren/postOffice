@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"postOffice/internal/postman"
 	"strings"
 
@@ -445,7 +446,13 @@ func handleLoadCommand(m Model, args []string) (Model, tea.Cmd) {
 		path := strings.Join(args, " ")
 		m = m.loadCollection(path)
 	} else {
-		m.statusMessage = "Usage: load <path>"
+		cwd, err := os.Getwd()
+		if err != nil {
+			m.statusMessage = fmt.Sprintf("Failed to get working directory: %v", err)
+			return m, nil
+		}
+		m.fileBrowserCwd = cwd
+		m = m.enterFileBrowser("load")
 	}
 	return m, nil
 }
@@ -455,7 +462,13 @@ func handleLoadEnvCommand(m Model, args []string) (Model, tea.Cmd) {
 		path := strings.Join(args, " ")
 		m = m.loadEnvironment(path)
 	} else {
-		m.statusMessage = "Usage: loadenv <path>"
+		cwd, err := os.Getwd()
+		if err != nil {
+			m.statusMessage = fmt.Sprintf("Failed to get working directory: %v", err)
+			return m, nil
+		}
+		m.fileBrowserCwd = cwd
+		m = m.enterFileBrowser("loadenv")
 	}
 	return m, nil
 }

@@ -148,6 +148,8 @@ func (m Model) getModeString() string {
 		return "JSON"
 	case ModeLog:
 		return "Logs"
+	case ModeFileBrowser:
+		return "File Browser"
 	default:
 		return ""
 	}

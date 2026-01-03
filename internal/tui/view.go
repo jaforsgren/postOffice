@@ -59,6 +59,8 @@ func (m Model) renderContent() []string {
 
 	case ModeLog:
 		return []string{m.renderLogsView()}
+	case ModeFileBrowser:
+		return []string{m.renderFileBrowser()}
 
 	default:
 		return []string{m.renderMainWindow()}

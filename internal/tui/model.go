@@ -24,6 +24,7 @@ const (
 	ModeChanges
 	ModeJSON
 	ModeLog
+	ModeFileBrowser
 )
 
 type EditType int
@@ -106,6 +107,11 @@ type Model struct {
 	infoViewport     viewport.Model
 	jsonViewport     viewport.Model
 	logsViewport     viewport.Model
+
+	fileBrowserActive  bool
+	fileBrowserCwd     string
+	fileBrowserPath    []string
+	fileBrowserCommand string
 }
 
 func NewModel(parser *postman.Parser) Model {
