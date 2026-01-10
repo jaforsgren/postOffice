@@ -123,6 +123,31 @@ func (m Model) buildContextInfo() []string {
 			titleOrangeStyle.Render("Mode: ")+
 			valueWhiteStyle.Render(m.getModeString()))
 
+	responseEmoji := "📬"
+	responseValue := "none"
+	if m.lastResponse != nil {
+		if m.lastResponse.Error != nil {
+			responseEmoji = "❌"
+			responseValue = "Error"
+		} else {
+			statusCode := m.lastResponse.Status
+			if strings.HasPrefix(statusCode, "2") {
+				responseEmoji = "✅"
+			} else if strings.HasPrefix(statusCode, "3") {
+				responseEmoji = "↗️"
+			} else if strings.HasPrefix(statusCode, "4") {
+				responseEmoji = "⚠️"
+			} else if strings.HasPrefix(statusCode, "5") {
+				responseEmoji = "🔥"
+			}
+			responseValue = statusCode
+		}
+	}
+	lines = append(lines,
+		responseEmoji+" "+
+			titleOrangeStyle.Render("Response: ")+
+			valueWhiteStyle.Render(responseValue))
+
 	return lines
 }
 

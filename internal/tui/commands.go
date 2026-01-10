@@ -220,11 +220,18 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments, ModeChanges},
 		},
 		{
-			Keys:        []string{"ctrl+r"},
-			Description: "Execute",
-			ShortHelp:   "ctrl+r",
+			Keys:        []string{"ctrl+e"},
+			Description: "Execute request",
+			ShortHelp:   "ctrl+e",
 			Handler:     handleExecuteKey,
 			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"ctrl+r"},
+			Description: "View/Resend response",
+			ShortHelp:   "ctrl+r",
+			Handler:     handleResponseViewKey,
+			AvailableIn: []ViewMode{ModeRequests, ModeResponse},
 		},
 		{
 			Keys:        []string{"i"},
@@ -650,7 +657,43 @@ func handleEnterKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleExecuteKey(m Model) (Model, tea.Cmd) {
-	return m.handleSelection(), nil
+	if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
+		item := m.currentItems[m.cursor]
+		if item.IsRequest() {
+			m = m.executeRequest(item)
+		}
+	}
+	return m, nil
+}
+
+func handleResponseViewKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeResponse {
+		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
+			item := m.currentItems[m.cursor]
+			if item.IsRequest() {
+				m = m.executeRequest(item)
+				lines := m.buildResponseLines()
+				content := strings.Join(lines, "\n")
+				m.responseViewport.SetContent(content)
+			}
+		}
+	} else if m.mode == ModeRequests {
+		if m.lastResponse != nil {
+			m.scrollOffset = 0
+			m.mode = ModeResponse
+
+			m.responseViewport.Width = m.width - 8
+			m.responseViewport.Height = m.height - 8
+			lines := m.buildResponseLines()
+			content := strings.Join(lines, "\n")
+			m.responseViewport.SetContent(content)
+
+			m.statusMessage = "Showing response (ctrl+r to resend, q to close)"
+		} else {
+			m.statusMessage = "No response to show. Execute a request first with ctrl+e"
+		}
+	}
+	return m, nil
 }
 
 func handleInfoKey(m Model) (Model, tea.Cmd) {

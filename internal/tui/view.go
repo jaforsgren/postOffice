@@ -24,13 +24,7 @@ func (m Model) renderContent() []string {
 
 	switch m.mode {
 	case ModeResponse:
-		if m.lastResponse != nil {
-			return []string{
-				m.renderItemsList(metrics.mainHeight),
-				m.renderResponsePopup(metrics.popupHeight),
-			}
-		}
-		return []string{m.renderMainWindow()}
+		return []string{m.renderResponseView()}
 
 	case ModeInfo:
 		if m.currentInfoItem != nil || m.environment != nil {
