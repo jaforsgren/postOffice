@@ -501,14 +501,13 @@ func handleInfoCommand(m Model, args []string) (Model, tea.Cmd) {
 		m.previousMode = m.mode
 		m.mode = ModeInfo
 
-		metrics := m.calculateSplitLayout()
 		m.infoViewport.Width = m.width - 8
-		m.infoViewport.Height = metrics.popupHeight - 4
+		m.infoViewport.Height = m.height - 8
 		lines := m.buildItemInfoLines()
 		content := strings.Join(lines, "\n")
 		m.infoViewport.SetContent(content)
 
-		m.statusMessage = "Showing item info"
+		m.statusMessage = "Showing item info (q to close)"
 	} else if m.mode == ModeCollections {
 		m.statusMessage = "Info command is only available in requests mode"
 	} else {
@@ -703,28 +702,26 @@ func handleInfoKey(m Model) (Model, tea.Cmd) {
 		m.previousMode = m.mode
 		m.mode = ModeInfo
 
-		metrics := m.calculateSplitLayout()
 		m.infoViewport.Width = m.width - 8
-		m.infoViewport.Height = metrics.popupHeight - 4
+		m.infoViewport.Height = m.height - 8
 		lines := m.buildItemInfoLines()
 		content := strings.Join(lines, "\n")
 		m.infoViewport.SetContent(content)
 
-		m.statusMessage = "Showing item info"
+		m.statusMessage = "Showing item info (q to close)"
 	} else if m.mode == ModeEnvironments && m.environment != nil {
 		m.scrollOffset = 0
 		m.envVarCursor = 0
 		m.previousMode = m.mode
 		m.mode = ModeInfo
 
-		metrics := m.calculateSplitLayout()
 		m.infoViewport.Width = m.width - 8
-		m.infoViewport.Height = metrics.popupHeight - 4
+		m.infoViewport.Height = m.height - 8
 		lines := m.buildEnvironmentInfoLines()
 		content := strings.Join(lines, "\n")
 		m.infoViewport.SetContent(content)
 
-		m.statusMessage = "Showing environment info"
+		m.statusMessage = "Showing environment info (q to close)"
 	} else if m.mode == ModeChanges && m.cursor < len(m.items) {
 		itemID := m.items[m.cursor]
 		m = m.showChangeDiff(itemID)

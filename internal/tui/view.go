@@ -27,13 +27,7 @@ func (m Model) renderContent() []string {
 		return []string{m.renderResponseView()}
 
 	case ModeInfo:
-		if m.currentInfoItem != nil || m.environment != nil {
-			return []string{
-				m.renderItemsList(metrics.mainHeight),
-				m.renderInfoPopup(metrics.popupHeight),
-			}
-		}
-		return []string{m.renderMainWindow()}
+		return []string{m.renderInfoView()}
 
 	case ModeJSON:
 		if m.jsonContent != "" {

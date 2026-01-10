@@ -336,14 +336,13 @@ func (m Model) handleSelection() Model {
 				m.previousMode = m.mode
 				m.mode = ModeInfo
 
-				metrics := m.calculateSplitLayout()
 				m.infoViewport.Width = m.width - 8
-				m.infoViewport.Height = metrics.popupHeight - 4
+				m.infoViewport.Height = m.height - 8
 				lines := m.buildEnvironmentInfoLines()
 				content := strings.Join(lines, "\n")
 				m.infoViewport.SetContent(content)
 
-				m.statusMessage = fmt.Sprintf("Showing environment: %s", envName)
+				m.statusMessage = fmt.Sprintf("Showing environment: %s (q to close)", envName)
 			} else {
 				m.statusMessage = fmt.Sprintf("Environment not found: %s", envName)
 			}
@@ -1083,14 +1082,13 @@ func (m Model) showChangeDiff(itemID string) Model {
 		Request: modifiedReq,
 	}
 
-	metrics := m.calculateSplitLayout()
 	m.infoViewport.Width = m.width - 8
-	m.infoViewport.Height = metrics.popupHeight - 4
+	m.infoViewport.Height = m.height - 8
 	lines := m.buildItemInfoLines()
 	content := strings.Join(lines, "\n")
 	m.infoViewport.SetContent(content)
 
-	m.statusMessage = "Showing diff (original → modified)"
+	m.statusMessage = "Showing diff (original → modified) (q to close)"
 
 	return m
 }
