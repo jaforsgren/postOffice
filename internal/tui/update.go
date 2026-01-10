@@ -22,6 +22,55 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.jsonViewport.Width = msg.Width - 8
 		return m, nil
 
+	case RequestCompleteMsg:
+		m.lastResponse = msg.Response
+		m.lastTestResult = msg.TestResult
+		m.lastExecutedItemID = msg.ItemID
+
+		status := "Error"
+		if msg.Response.Error == nil {
+			status = msg.Response.Status
+		}
+		m.requestExecutions[msg.ItemID] = &RequestExecution{
+			Status:     status,
+			Timestamp:  time.Now(),
+			Duration:   msg.Response.Duration,
+			Response:   msg.Response,
+			TestResult: msg.TestResult,
+		}
+
+		if msg.Collection != nil && msg.TestResult != nil {
+			if err := m.parser.SaveCollection(msg.Collection.Info.Name); err != nil {
+				m.statusMessage = fmt.Sprintf("Warning: failed to save collection variables: %v", err)
+			}
+		}
+
+		if msg.Environment != nil && msg.TestResult != nil {
+			if err := m.parser.SaveEnvironment(msg.Environment.Name); err != nil {
+				m.statusMessage = fmt.Sprintf("Warning: failed to save environment variables: %v", err)
+			}
+		}
+
+		if msg.Response.Error != nil {
+			m.statusMessage = fmt.Sprintf("Request failed: %s - %v", msg.ItemName, msg.Response.Error)
+		} else {
+			statusSuffix := ""
+			if msg.IsModified {
+				statusSuffix = " [unsaved changes]"
+			}
+			m.statusMessage = fmt.Sprintf("Response: %s - %s (%v)%s", msg.ItemName, msg.Response.Status, msg.Response.Duration, statusSuffix)
+		}
+
+		if m.mode == ModeResponse {
+			m.responseViewport.Width = m.width - 8
+			m.responseViewport.Height = m.height - 8
+			lines := m.buildResponseLines()
+			content := strings.Join(lines, "\n")
+			m.responseViewport.SetContent(content)
+		}
+
+		return m, nil
+
 	case tea.KeyMsg:
 		if m.commandMode {
 			return m.handleCommandMode(msg)
@@ -353,63 +402,55 @@ func (m Model) handleSelection() Model {
 	return m
 }
 
-func (m Model) executeRequest(item postman.Item) Model {
+func (m Model) executeRequest(item postman.Item) (Model, tea.Cmd) {
 	if !item.IsRequest() || item.Request == nil {
 		m.statusMessage = "Cannot execute: not a request"
-		return m
+		return m, nil
 	}
 
 	itemID := m.getRequestIdentifier(item)
 	requestToExecute := item.Request
+	isModified := m.isItemModified(itemID)
 
-	if m.isItemModified(itemID) {
+	if isModified {
 		if modifiedReq, exists := m.modifiedRequests[itemID]; exists {
 			requestToExecute = modifiedReq
-			m.statusMessage = fmt.Sprintf("Executing (unsaved): %s %s", requestToExecute.Method, item.Name)
+			m.statusMessage = fmt.Sprintf("Sending (unsaved): %s %s", requestToExecute.Method, item.Name)
 		} else {
-			m.statusMessage = fmt.Sprintf("Executing: %s %s", item.Request.Method, item.Name)
+			m.statusMessage = fmt.Sprintf("Sending: %s %s", item.Request.Method, item.Name)
 		}
 	} else {
-		m.statusMessage = fmt.Sprintf("Executing: %s %s", item.Request.Method, item.Name)
+		m.statusMessage = fmt.Sprintf("Sending: %s %s", item.Request.Method, item.Name)
+	}
+
+	m.requestExecutions[itemID] = &RequestExecution{
+		Status:     "Sending...",
+		Timestamp:  time.Now(),
+		Duration:   0,
+		Response:   nil,
+		TestResult: nil,
 	}
 
 	variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
-	m.lastResponse, m.lastTestResult = m.executor.Execute(requestToExecute, &item, m.collection, m.environment, variables)
 
-	status := "Error"
-	if m.lastResponse.Error == nil {
-		status = m.lastResponse.Status
-	}
-	m.requestExecutions[itemID] = &RequestExecution{
-		Status:    status,
-		Timestamp: time.Now(),
-		Duration:  m.lastResponse.Duration,
-	}
-	m.lastExecutedItemID = itemID
+	executor := m.executor
+	collection := m.collection
+	environment := m.environment
+	itemCopy := item
 
-	if m.collection != nil && len(item.Events) > 0 {
-		if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {
-			m.statusMessage = fmt.Sprintf("Warning: failed to save collection variables: %v", err)
+	return m, func() tea.Msg {
+		response, testResult := executor.Execute(requestToExecute, &itemCopy, collection, environment, variables)
+
+		return RequestCompleteMsg{
+			ItemID:      itemID,
+			Response:    response,
+			TestResult:  testResult,
+			Collection:  collection,
+			Environment: environment,
+			ItemName:    item.Name,
+			IsModified:  isModified,
 		}
 	}
-
-	if m.environment != nil && len(item.Events) > 0 {
-		if err := m.parser.SaveEnvironment(m.environment.Name); err != nil {
-			m.statusMessage = fmt.Sprintf("Warning: failed to save environment variables: %v", err)
-		}
-	}
-
-	if m.lastResponse.Error != nil {
-		m.statusMessage = fmt.Sprintf("Request failed: %v", m.lastResponse.Error)
-	} else {
-		statusSuffix := ""
-		if m.isItemModified(itemID) {
-			statusSuffix = " [unsaved changes]"
-		}
-		m.statusMessage = fmt.Sprintf("Response: %s (%v)%s", m.lastResponse.Status, m.lastResponse.Duration, statusSuffix)
-	}
-
-	return m
 }
 
 func (m Model) navigateInto(item postman.Item) Model {

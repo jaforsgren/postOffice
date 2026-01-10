@@ -78,7 +78,9 @@ func (m Model) formatItemLine(index int) string {
 
 			if exec, exists := m.requestExecutions[itemID]; exists {
 				statusColor := "8"
-				if strings.HasPrefix(exec.Status, "2") {
+				if exec.Status == "Sending..." {
+					statusColor = "14"
+				} else if strings.HasPrefix(exec.Status, "2") {
 					statusColor = "10"
 				} else if strings.HasPrefix(exec.Status, "3") {
 					statusColor = "11"

@@ -47,9 +47,21 @@ const (
 )
 
 type RequestExecution struct {
-	Status    string
-	Timestamp time.Time
-	Duration  time.Duration
+	Status     string
+	Timestamp  time.Time
+	Duration   time.Duration
+	Response   *http.Response
+	TestResult *script.TestResult
+}
+
+type RequestCompleteMsg struct {
+	ItemID       string
+	Response     *http.Response
+	TestResult   *script.TestResult
+	Collection   *postman.Collection
+	Environment  *postman.Environment
+	ItemName     string
+	IsModified   bool
 }
 
 type Model struct {

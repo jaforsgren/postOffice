@@ -659,7 +659,7 @@ func handleExecuteKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
 		item := m.currentItems[m.cursor]
 		if item.IsRequest() {
-			m = m.executeRequest(item)
+			return m.executeRequest(item)
 		}
 	}
 	return m, nil
@@ -670,26 +670,35 @@ func handleResponseViewKey(m Model) (Model, tea.Cmd) {
 		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
 			item := m.currentItems[m.cursor]
 			if item.IsRequest() {
-				m = m.executeRequest(item)
-				lines := m.buildResponseLines()
-				content := strings.Join(lines, "\n")
-				m.responseViewport.SetContent(content)
+				return m.executeRequest(item)
 			}
 		}
 	} else if m.mode == ModeRequests {
-		if m.lastResponse != nil {
-			m.scrollOffset = 0
-			m.mode = ModeResponse
+		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
+			item := m.currentItems[m.cursor]
+			if item.IsRequest() {
+				itemID := m.getRequestIdentifier(item)
+				if exec, exists := m.requestExecutions[itemID]; exists && exec.Response != nil {
+					m.lastResponse = exec.Response
+					m.lastTestResult = exec.TestResult
+					m.lastExecutedItemID = itemID
 
-			m.responseViewport.Width = m.width - 8
-			m.responseViewport.Height = m.height - 8
-			lines := m.buildResponseLines()
-			content := strings.Join(lines, "\n")
-			m.responseViewport.SetContent(content)
+					m.scrollOffset = 0
+					m.mode = ModeResponse
 
-			m.statusMessage = "Showing response (ctrl+r to resend, q to close)"
-		} else {
-			m.statusMessage = "No response to show. Execute a request first with ctrl+e"
+					m.responseViewport.Width = m.width - 8
+					m.responseViewport.Height = m.height - 8
+					lines := m.buildResponseLines()
+					content := strings.Join(lines, "\n")
+					m.responseViewport.SetContent(content)
+
+					m.statusMessage = "Showing response (ctrl+r to resend, q to close)"
+				} else {
+					m.statusMessage = "No response available for this request. Execute it first with ctrl+e"
+				}
+			} else {
+				m.statusMessage = "Cannot view response for folders"
+			}
 		}
 	}
 	return m, nil
