@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"postOffice/internal/postman"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -141,6 +142,14 @@ func (m Model) buildContextInfo() []string {
 				responseEmoji = "🔥"
 			}
 			responseValue = statusCode
+		}
+
+		if m.lastExecutedItemID != "" {
+			if exec, exists := m.requestExecutions[m.lastExecutedItemID]; exists {
+				elapsed := time.Since(exec.Timestamp)
+				timeAgo := formatTimeAgo(elapsed)
+				responseValue += fmt.Sprintf(" (%s)", timeAgo)
+			}
 		}
 	}
 	lines = append(lines,

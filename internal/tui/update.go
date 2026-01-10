@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"postOffice/internal/postman"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -374,6 +375,17 @@ func (m Model) executeRequest(item postman.Item) Model {
 
 	variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
 	m.lastResponse, m.lastTestResult = m.executor.Execute(requestToExecute, &item, m.collection, m.environment, variables)
+
+	status := "Error"
+	if m.lastResponse.Error == nil {
+		status = m.lastResponse.Status
+	}
+	m.requestExecutions[itemID] = &RequestExecution{
+		Status:    status,
+		Timestamp: time.Now(),
+		Duration:  m.lastResponse.Duration,
+	}
+	m.lastExecutedItemID = itemID
 
 	if m.collection != nil && len(item.Events) > 0 {
 		if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {

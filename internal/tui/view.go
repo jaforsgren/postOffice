@@ -20,8 +20,6 @@ func (m Model) View() string {
 }
 
 func (m Model) renderContent() []string {
-	metrics := m.calculateSplitLayout()
-
 	switch m.mode {
 	case ModeResponse:
 		return []string{m.renderResponseView()}
@@ -30,13 +28,7 @@ func (m Model) renderContent() []string {
 		return []string{m.renderInfoView()}
 
 	case ModeJSON:
-		if m.jsonContent != "" {
-			return []string{
-				m.renderItemsList(metrics.mainHeight),
-				m.renderJSONPopup(metrics.popupHeight),
-			}
-		}
-		return []string{m.renderMainWindow()}
+		return []string{m.renderJSONView()}
 
 	case ModeEdit:
 		metrics := m.calculateLayout()

@@ -742,14 +742,13 @@ func handleJSONKey(m Model) (Model, tea.Cmd) {
 		m.previousMode = m.mode
 		m.mode = ModeJSON
 
-		metrics := m.calculateSplitLayout()
 		m.jsonViewport.Width = m.width - 8
-		m.jsonViewport.Height = metrics.popupHeight - 4
-		title := lipgloss.NewStyle().Bold(true).Render("JSON View (press Esc to close)")
+		m.jsonViewport.Height = m.height - 8
+		title := lipgloss.NewStyle().Bold(true).Render("JSON View (q: close)")
 		fullContent := title + "\n\n" + m.jsonContent
 		m.jsonViewport.SetContent(fullContent)
 
-		m.statusMessage = "Showing JSON view (press Esc to close)"
+		m.statusMessage = "Showing JSON view (q to close)"
 	} else if m.mode == ModeEnvironments && m.cursor < len(m.items) {
 		envName := m.items[m.cursor]
 		if env, exists := m.parser.GetEnvironment(envName); exists {
@@ -763,14 +762,13 @@ func handleJSONKey(m Model) (Model, tea.Cmd) {
 			m.previousMode = m.mode
 			m.mode = ModeJSON
 
-			metrics := m.calculateSplitLayout()
 			m.jsonViewport.Width = m.width - 8
-			m.jsonViewport.Height = metrics.popupHeight - 4
-			title := lipgloss.NewStyle().Bold(true).Render("JSON View (press Esc to close)")
+			m.jsonViewport.Height = m.height - 8
+			title := lipgloss.NewStyle().Bold(true).Render("JSON View (q: close)")
 			fullContent := title + "\n\n" + m.jsonContent
 			m.jsonViewport.SetContent(fullContent)
 
-			m.statusMessage = "Showing JSON view (press Esc to close)"
+			m.statusMessage = "Showing JSON view (q to close)"
 		}
 	}
 	return m, nil

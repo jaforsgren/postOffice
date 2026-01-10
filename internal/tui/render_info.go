@@ -352,3 +352,18 @@ func (m Model) renderJSONPopup(availableHeight int) string {
 		Padding(1, 2).
 		Render(m.jsonViewport.View())
 }
+
+func (m Model) renderJSONView() string {
+	if m.jsonContent == "" {
+		metrics := m.calculateLayout()
+		return mainWindowStyle.
+			Height(metrics.contentHeight).
+			Width(m.width - 4).
+			Render("No JSON content available")
+	}
+
+	return mainWindowStyle.
+		Height(m.height-8).
+		Width(m.width-4).
+		Render(m.jsonViewport.View())
+}
