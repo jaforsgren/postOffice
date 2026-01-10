@@ -44,9 +44,6 @@ func (m Model) renderResponseView() string {
 func (m Model) buildResponseLines() []string {
 	var lines []string
 
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Response (ctrl+r: resend | q: close)"))
-	lines = append(lines, "")
-
 	lines = append(lines, m.buildRequestSection()...)
 	lines = append(lines, "")
 	lines = append(lines, m.buildResponseSection()...)

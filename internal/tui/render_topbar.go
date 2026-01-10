@@ -282,7 +282,17 @@ func (m Model) renderCommandBar() string {
 }
 
 func (m Model) renderStatusBar() string {
-	help := "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
+	help := ""
+
+	switch m.mode {
+	case ModeResponse:
+		help = "ctrl+r: resend | q: close | j/k: scroll"
+	case ModeInfo, ModeJSON, ModeLog:
+		help = "q: close | j/k: scroll"
+	default:
+		help = "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
+	}
+
 	if m.statusMessage != "" {
 		help = m.statusMessage + " | " + help
 	}
