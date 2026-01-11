@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"postOffice/internal/postman"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -122,6 +123,39 @@ func (m Model) buildContextInfo() []string {
 		modeEmoji+" "+
 			titleOrangeStyle.Render("Mode: ")+
 			valueWhiteStyle.Render(m.getModeString()))
+
+	responseEmoji := "📬"
+	responseValue := "none"
+	if m.lastResponse != nil {
+		if m.lastResponse.Error != nil {
+			responseEmoji = "❌"
+			responseValue = "Error"
+		} else {
+			statusCode := m.lastResponse.Status
+			if strings.HasPrefix(statusCode, "2") {
+				responseEmoji = "✅"
+			} else if strings.HasPrefix(statusCode, "3") {
+				responseEmoji = "↗️"
+			} else if strings.HasPrefix(statusCode, "4") {
+				responseEmoji = "⚠️"
+			} else if strings.HasPrefix(statusCode, "5") {
+				responseEmoji = "🔥"
+			}
+			responseValue = statusCode
+		}
+
+		if m.lastExecutedItemID != "" {
+			if exec, exists := m.requestExecutions[m.lastExecutedItemID]; exists {
+				elapsed := time.Since(exec.Timestamp)
+				timeAgo := formatTimeAgo(elapsed)
+				responseValue += fmt.Sprintf(" (%s)", timeAgo)
+			}
+		}
+	}
+	lines = append(lines,
+		responseEmoji+" "+
+			titleOrangeStyle.Render("Response: ")+
+			valueWhiteStyle.Render(responseValue))
 
 	return lines
 }
@@ -248,7 +282,17 @@ func (m Model) renderCommandBar() string {
 }
 
 func (m Model) renderStatusBar() string {
-	help := "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
+	help := ""
+
+	switch m.mode {
+	case ModeResponse:
+		help = "ctrl+r: resend | q: close | j/k: scroll"
+	case ModeInfo, ModeJSON, ModeLog:
+		help = "q: close | j/k: scroll"
+	default:
+		help = "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
+	}
+
 	if m.statusMessage != "" {
 		help = m.statusMessage + " | " + help
 	}

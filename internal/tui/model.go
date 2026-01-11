@@ -4,6 +4,7 @@ import (
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -44,6 +45,24 @@ const (
 	ScriptTypePreRequest ScriptType = iota
 	ScriptTypeTest
 )
+
+type RequestExecution struct {
+	Status     string
+	Timestamp  time.Time
+	Duration   time.Duration
+	Response   *http.Response
+	TestResult *script.TestResult
+}
+
+type RequestCompleteMsg struct {
+	ItemID       string
+	Response     *http.Response
+	TestResult   *script.TestResult
+	Collection   *postman.Collection
+	Environment  *postman.Environment
+	ItemName     string
+	IsModified   bool
+}
 
 type Model struct {
 	parser            *postman.Parser
@@ -112,6 +131,9 @@ type Model struct {
 	fileBrowserCwd     string
 	fileBrowserPath    []string
 	fileBrowserCommand string
+
+	requestExecutions  map[string]*RequestExecution
+	lastExecutedItemID string
 }
 
 func NewModel(parser *postman.Parser) Model {
@@ -155,6 +177,7 @@ func NewModel(parser *postman.Parser) Model {
 		infoViewport:         viewport.New(0, 0),
 		jsonViewport:         viewport.New(0, 0),
 		logsViewport:         viewport.New(0, 0),
+		requestExecutions:    make(map[string]*RequestExecution),
 	}
 }
 

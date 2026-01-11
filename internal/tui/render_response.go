@@ -26,11 +26,23 @@ func (m Model) renderResponsePopup(availableHeight int) string {
 		Render(m.responseViewport.View())
 }
 
+func (m Model) renderResponseView() string {
+	if m.lastResponse == nil {
+		metrics := m.calculateLayout()
+		return mainWindowStyle.
+			Height(metrics.contentHeight).
+			Width(m.width - 4).
+			Render("No response available. Execute a request with ctrl+e first.")
+	}
+
+	return mainWindowStyle.
+		Height(m.height-8).
+		Width(m.width-4).
+		Render(m.responseViewport.View())
+}
+
 func (m Model) buildResponseLines() []string {
 	var lines []string
-
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Response (press Esc to close)"))
-	lines = append(lines, "")
 
 	lines = append(lines, m.buildRequestSection()...)
 	lines = append(lines, "")

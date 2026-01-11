@@ -220,11 +220,18 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments, ModeChanges},
 		},
 		{
-			Keys:        []string{"ctrl+r"},
-			Description: "Execute",
-			ShortHelp:   "ctrl+r",
+			Keys:        []string{"ctrl+e"},
+			Description: "Execute request",
+			ShortHelp:   "ctrl+e",
 			Handler:     handleExecuteKey,
 			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"ctrl+r"},
+			Description: "View/Resend response",
+			ShortHelp:   "ctrl+r",
+			Handler:     handleResponseViewKey,
+			AvailableIn: []ViewMode{ModeRequests, ModeResponse},
 		},
 		{
 			Keys:        []string{"i"},
@@ -494,14 +501,13 @@ func handleInfoCommand(m Model, args []string) (Model, tea.Cmd) {
 		m.previousMode = m.mode
 		m.mode = ModeInfo
 
-		metrics := m.calculateSplitLayout()
 		m.infoViewport.Width = m.width - 8
-		m.infoViewport.Height = metrics.popupHeight - 4
+		m.infoViewport.Height = m.height - 8
 		lines := m.buildItemInfoLines()
 		content := strings.Join(lines, "\n")
 		m.infoViewport.SetContent(content)
 
-		m.statusMessage = "Showing item info"
+		m.statusMessage = "Showing item info (q to close)"
 	} else if m.mode == ModeCollections {
 		m.statusMessage = "Info command is only available in requests mode"
 	} else {
@@ -650,7 +656,52 @@ func handleEnterKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleExecuteKey(m Model) (Model, tea.Cmd) {
-	return m.handleSelection(), nil
+	if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
+		item := m.currentItems[m.cursor]
+		if item.IsRequest() {
+			return m.executeRequest(item)
+		}
+	}
+	return m, nil
+}
+
+func handleResponseViewKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeResponse {
+		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
+			item := m.currentItems[m.cursor]
+			if item.IsRequest() {
+				return m.executeRequest(item)
+			}
+		}
+	} else if m.mode == ModeRequests {
+		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
+			item := m.currentItems[m.cursor]
+			if item.IsRequest() {
+				itemID := m.getRequestIdentifier(item)
+				if exec, exists := m.requestExecutions[itemID]; exists && exec.Response != nil {
+					m.lastResponse = exec.Response
+					m.lastTestResult = exec.TestResult
+					m.lastExecutedItemID = itemID
+
+					m.scrollOffset = 0
+					m.mode = ModeResponse
+
+					m.responseViewport.Width = m.width - 8
+					m.responseViewport.Height = m.height - 8
+					lines := m.buildResponseLines()
+					content := strings.Join(lines, "\n")
+					m.responseViewport.SetContent(content)
+
+					m.statusMessage = "Showing response (ctrl+r to resend, q to close)"
+				} else {
+					m.statusMessage = "No response available for this request. Execute it first with ctrl+e"
+				}
+			} else {
+				m.statusMessage = "Cannot view response for folders"
+			}
+		}
+	}
+	return m, nil
 }
 
 func handleInfoKey(m Model) (Model, tea.Cmd) {
@@ -660,28 +711,26 @@ func handleInfoKey(m Model) (Model, tea.Cmd) {
 		m.previousMode = m.mode
 		m.mode = ModeInfo
 
-		metrics := m.calculateSplitLayout()
 		m.infoViewport.Width = m.width - 8
-		m.infoViewport.Height = metrics.popupHeight - 4
+		m.infoViewport.Height = m.height - 8
 		lines := m.buildItemInfoLines()
 		content := strings.Join(lines, "\n")
 		m.infoViewport.SetContent(content)
 
-		m.statusMessage = "Showing item info"
+		m.statusMessage = "Showing item info (q to close)"
 	} else if m.mode == ModeEnvironments && m.environment != nil {
 		m.scrollOffset = 0
 		m.envVarCursor = 0
 		m.previousMode = m.mode
 		m.mode = ModeInfo
 
-		metrics := m.calculateSplitLayout()
 		m.infoViewport.Width = m.width - 8
-		m.infoViewport.Height = metrics.popupHeight - 4
+		m.infoViewport.Height = m.height - 8
 		lines := m.buildEnvironmentInfoLines()
 		content := strings.Join(lines, "\n")
 		m.infoViewport.SetContent(content)
 
-		m.statusMessage = "Showing environment info"
+		m.statusMessage = "Showing environment info (q to close)"
 	} else if m.mode == ModeChanges && m.cursor < len(m.items) {
 		itemID := m.items[m.cursor]
 		m = m.showChangeDiff(itemID)
@@ -702,14 +751,13 @@ func handleJSONKey(m Model) (Model, tea.Cmd) {
 		m.previousMode = m.mode
 		m.mode = ModeJSON
 
-		metrics := m.calculateSplitLayout()
 		m.jsonViewport.Width = m.width - 8
-		m.jsonViewport.Height = metrics.popupHeight - 4
-		title := lipgloss.NewStyle().Bold(true).Render("JSON View (press Esc to close)")
+		m.jsonViewport.Height = m.height - 8
+		title := lipgloss.NewStyle().Bold(true).Render("JSON View (q: close)")
 		fullContent := title + "\n\n" + m.jsonContent
 		m.jsonViewport.SetContent(fullContent)
 
-		m.statusMessage = "Showing JSON view (press Esc to close)"
+		m.statusMessage = "Showing JSON view (q to close)"
 	} else if m.mode == ModeEnvironments && m.cursor < len(m.items) {
 		envName := m.items[m.cursor]
 		if env, exists := m.parser.GetEnvironment(envName); exists {
@@ -723,14 +771,13 @@ func handleJSONKey(m Model) (Model, tea.Cmd) {
 			m.previousMode = m.mode
 			m.mode = ModeJSON
 
-			metrics := m.calculateSplitLayout()
 			m.jsonViewport.Width = m.width - 8
-			m.jsonViewport.Height = metrics.popupHeight - 4
-			title := lipgloss.NewStyle().Bold(true).Render("JSON View (press Esc to close)")
+			m.jsonViewport.Height = m.height - 8
+			title := lipgloss.NewStyle().Bold(true).Render("JSON View (q: close)")
 			fullContent := title + "\n\n" + m.jsonContent
 			m.jsonViewport.SetContent(fullContent)
 
-			m.statusMessage = "Showing JSON view (press Esc to close)"
+			m.statusMessage = "Showing JSON view (q to close)"
 		}
 	}
 	return m, nil

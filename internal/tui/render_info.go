@@ -22,10 +22,25 @@ func (m Model) renderInfoPopup(availableHeight int) string {
 		Render(m.infoViewport.View())
 }
 
+func (m Model) renderInfoView() string {
+	if m.currentInfoItem == nil && m.environment == nil {
+		metrics := m.calculateLayout()
+		return mainWindowStyle.
+			Height(metrics.contentHeight).
+			Width(m.width - 4).
+			Render("No item selected")
+	}
+
+	return mainWindowStyle.
+		Height(m.height-8).
+		Width(m.width-4).
+		Render(m.infoViewport.View())
+}
+
 func (m Model) buildEnvironmentInfoLines() []string {
 	var lines []string
 
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Environment: "+m.environment.Name+" (press Esc to close)"))
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Environment: "+m.environment.Name+" (q: close)"))
 	lines = append(lines, "")
 	lines = append(lines, requestStyle.Render("ID: ")+m.environment.ID)
 	lines = append(lines, "")
@@ -109,7 +124,7 @@ func (m Model) formatEnvironmentVariableValue(variable postman.EnvVariable, isSe
 func (m Model) buildItemInfoLines() []string {
 	var lines []string
 
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Item Info (press Esc to close)"))
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Item Info (q: close)"))
 	lines = append(lines, "")
 
 	lines = append(lines, requestStyle.Render("Name:"))
@@ -335,5 +350,20 @@ func (m Model) renderJSONPopup(availableHeight int) string {
 		Height(availableHeight).
 		Width(m.width-4).
 		Padding(1, 2).
+		Render(m.jsonViewport.View())
+}
+
+func (m Model) renderJSONView() string {
+	if m.jsonContent == "" {
+		metrics := m.calculateLayout()
+		return mainWindowStyle.
+			Height(metrics.contentHeight).
+			Width(m.width - 4).
+			Render("No JSON content available")
+	}
+
+	return mainWindowStyle.
+		Height(m.height-8).
+		Width(m.width-4).
 		Render(m.jsonViewport.View())
 }
