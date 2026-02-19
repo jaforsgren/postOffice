@@ -176,11 +176,22 @@ func (m Model) buildFolderInfoLines() []string {
 func (m Model) buildRequestInfoLines() []string {
 	var lines []string
 
+	req := m.currentInfoItem.Request
+
+	if m.currentInfoItem.IsGRPC() {
+		lines = append(lines, requestStyle.Render("Type:"))
+		lines = append(lines, "  gRPC Request")
+		lines = append(lines, "")
+		lines = append(lines, m.buildGRPCInfoSection(req)...)
+		lines = append(lines, m.buildScriptsSection()...)
+		lines = append(lines, m.buildDescriptionSection()...)
+		return lines
+	}
+
 	lines = append(lines, requestStyle.Render("Type:"))
 	lines = append(lines, "  HTTP Request")
 	lines = append(lines, "")
 
-	req := m.currentInfoItem.Request
 	variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
 
 	lines = append(lines, m.buildMethodSection(req)...)
@@ -191,6 +202,90 @@ func (m Model) buildRequestInfoLines() []string {
 	lines = append(lines, m.buildDescriptionSection()...)
 
 	return lines
+}
+
+func (m Model) buildGRPCInfoSection(req *postman.Request) []string {
+	var lines []string
+
+	variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+
+	rawURL := req.URL.Raw
+	endpoint, service, method := parseGRPCURL(rawURL)
+
+	lines = append(lines, requestStyle.Render("Endpoint:"))
+	lines = append(lines, "  "+endpoint)
+	resolvedEndpoint := postman.ResolveVariables(endpoint, variables)
+	if endpoint != resolvedEndpoint {
+		resolvedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+		lines = append(lines, "  → "+resolvedStyle.Render(resolvedEndpoint))
+	}
+	lines = append(lines, "")
+
+	if service != "" {
+		lines = append(lines, requestStyle.Render("Service:"))
+		lines = append(lines, "  "+service)
+		lines = append(lines, "")
+	}
+
+	if method != "" {
+		lines = append(lines, requestStyle.Render("Method:"))
+		lines = append(lines, "  "+method)
+		lines = append(lines, "")
+	}
+
+	if len(req.Header) > 0 {
+		lines = append(lines, requestStyle.Render("Metadata:"))
+		for _, header := range req.Header {
+			originalValue := header.Value
+			resolvedValue := postman.ResolveVariables(originalValue, variables)
+			lines = append(lines, fmt.Sprintf("  %s: %s", header.Key, originalValue))
+			if originalValue != resolvedValue {
+				resolvedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+				lines = append(lines, "    → "+resolvedStyle.Render(resolvedValue))
+			}
+		}
+		lines = append(lines, "")
+	}
+
+	if req.Body != nil && req.Body.Raw != "" {
+		lines = append(lines, requestStyle.Render("Message:"))
+		originalBody := req.Body.Raw
+		resolvedBody := postman.ResolveVariables(originalBody, variables)
+		if originalBody != resolvedBody {
+			lines = append(lines, "")
+			lines = append(lines, folderStyle.Render("  Template:"))
+			lines = append(lines, m.formatBodyLines(originalBody, 5)...)
+			lines = append(lines, "")
+			resolvedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+			lines = append(lines, resolvedStyle.Render("  Resolved:"))
+			lines = append(lines, m.formatBodyLines(resolvedBody, 5)...)
+		} else {
+			bodyLines := strings.Split(req.Body.Raw, "\n")
+			for _, line := range bodyLines {
+				lines = append(lines, "  "+line)
+			}
+		}
+		lines = append(lines, "")
+	}
+
+	return lines
+}
+
+// parseGRPCURL extracts the endpoint, service name, and method from a gRPC URL.
+// Expected format: grpc://host:port/package.ServiceName/MethodName
+func parseGRPCURL(rawURL string) (endpoint, service, method string) {
+	withoutScheme := strings.TrimPrefix(rawURL, "grpc://")
+	slashIdx := strings.Index(withoutScheme, "/")
+	if slashIdx == -1 {
+		return withoutScheme, "", ""
+	}
+	endpoint = withoutScheme[:slashIdx]
+	remainder := strings.TrimPrefix(withoutScheme[slashIdx:], "/")
+	parts := strings.SplitN(remainder, "/", 2)
+	if len(parts) == 2 {
+		return endpoint, parts[0], parts[1]
+	}
+	return endpoint, remainder, ""
 }
 
 func (m Model) buildMethodSection(req *postman.Request) []string {

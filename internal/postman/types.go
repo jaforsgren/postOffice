@@ -1,5 +1,7 @@
 package postman
 
+import "strings"
+
 type Collection struct {
 	Info      Info       `json:"info"`
 	Items     []Item     `json:"item"`
@@ -14,12 +16,13 @@ type Info struct {
 }
 
 type Item struct {
-	Name        string     `json:"name"`
-	Request     *Request   `json:"request,omitempty"`
-	Items       []Item     `json:"item,omitempty"`
-	Description string     `json:"description,omitempty"`
-	Variables   []Variable `json:"variable,omitempty"`
-	Events      []Event    `json:"event,omitempty"`
+	Name                    string                 `json:"name"`
+	Request                 *Request               `json:"request,omitempty"`
+	Items                   []Item                 `json:"item,omitempty"`
+	Description             string                 `json:"description,omitempty"`
+	Variables               []Variable             `json:"variable,omitempty"`
+	Events                  []Event                `json:"event,omitempty"`
+	ProtocolProfileBehavior map[string]interface{} `json:"protocolProfileBehavior,omitempty"`
 }
 
 type Request struct {
@@ -41,9 +44,11 @@ type Body struct {
 }
 
 type URL struct {
-	Raw  string   `json:"raw"`
-	Host []string `json:"host,omitempty"`
-	Path []string `json:"path,omitempty"`
+	Raw      string   `json:"raw"`
+	Host     []string `json:"host,omitempty"`
+	Path     []string `json:"path,omitempty"`
+	Port     string   `json:"port,omitempty"`
+	Protocol string   `json:"protocol,omitempty"`
 }
 
 func (i *Item) IsFolder() bool {
@@ -52,6 +57,14 @@ func (i *Item) IsFolder() bool {
 
 func (i *Item) IsRequest() bool {
 	return i.Request != nil
+}
+
+func (i *Item) IsGRPC() bool {
+	if i.Request == nil {
+		return false
+	}
+	return strings.EqualFold(i.Request.Method, "GRPC") ||
+		strings.HasPrefix(strings.ToLower(i.Request.URL.Raw), "grpc://")
 }
 
 type Environment struct {

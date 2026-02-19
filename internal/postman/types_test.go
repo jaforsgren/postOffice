@@ -124,6 +124,81 @@ func TestItem_IsRequest(t *testing.T) {
 	}
 }
 
+func TestItem_IsGRPC(t *testing.T) {
+	tests := []struct {
+		name     string
+		item     Item
+		expected bool
+	}{
+		{
+			name: "gRPC by method",
+			item: Item{
+				Name: "SayHello",
+				Request: &Request{
+					Method: "GRPC",
+					URL:    URL{Raw: "grpc://localhost:50051"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "gRPC by URL scheme",
+			item: Item{
+				Name: "UnaryCall",
+				Request: &Request{
+					Method: "POST",
+					URL:    URL{Raw: "grpc://localhost:50051/helloworld.Greeter/SayHello"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "gRPC case-insensitive method",
+			item: Item{
+				Name: "StreamCall",
+				Request: &Request{
+					Method: "grpc",
+					URL:    URL{Raw: "grpc://localhost:50051"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "HTTP GET request",
+			item: Item{
+				Name: "Get Users",
+				Request: &Request{
+					Method: "GET",
+					URL:    URL{Raw: "https://example.com/users"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "Folder item",
+			item: Item{
+				Name:  "Folder",
+				Items: []Item{{Name: "Child"}},
+			},
+			expected: false,
+		},
+		{
+			name: "Nil request",
+			item: Item{Name: "Empty"},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.item.IsGRPC()
+			if result != tt.expected {
+				t.Errorf("Expected IsGRPC() = %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
 func TestItem_BothMethods(t *testing.T) {
 	folder := Item{
 		Name:    "Folder",

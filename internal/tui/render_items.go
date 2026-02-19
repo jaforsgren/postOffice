@@ -151,7 +151,8 @@ func (m Model) getItemStyle(itemText string) lipgloss.Style {
 		return folderStyle
 	}
 	if strings.HasPrefix(itemText, "[GET]") || strings.HasPrefix(itemText, "[POST]") ||
-		strings.HasPrefix(itemText, "[PUT]") || strings.HasPrefix(itemText, "[DELETE]") {
+		strings.HasPrefix(itemText, "[PUT]") || strings.HasPrefix(itemText, "[DELETE]") ||
+		strings.HasPrefix(itemText, "[GRPC]") {
 		return requestStyle
 	}
 	return normalItemStyle
