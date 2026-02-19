@@ -1508,3 +1508,65 @@ func TestExecuteCommand_WithArguments(t *testing.T) {
 
 	_, _ = m.executeCommand()
 }
+
+func TestItemDisplayPrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		item     postman.Item
+		expected string
+	}{
+		{
+			name:     "Folder prefix",
+			item:     postman.Item{Name: "Folder", Items: []postman.Item{{Name: "Child"}}},
+			expected: "[DIR] ",
+		},
+		{
+			name: "HTTP GET prefix",
+			item: postman.Item{Name: "Get Users", Request: &postman.Request{Method: "GET"}},
+			expected: "[GET] ",
+		},
+		{
+			name: "HTTP POST prefix",
+			item: postman.Item{Name: "Create User", Request: &postman.Request{Method: "POST"}},
+			expected: "[POST] ",
+		},
+		{
+			name: "gRPC prefix",
+			item: postman.Item{Name: "SayHello", Request: &postman.Request{Method: "GRPC", URL: postman.URL{Raw: "grpc://localhost:50051"}}},
+			expected: "[GRPC] ",
+		},
+		{
+			name:     "Unknown item prefix",
+			item:     postman.Item{Name: "Unknown"},
+			expected: "[???] ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := itemDisplayPrefix(tt.item)
+			if result != tt.expected {
+				t.Errorf("Expected prefix %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestExecuteRequest_GRPCReturnsUnsupported(t *testing.T) {
+	m := createTestModel()
+	grpcItem := postman.Item{
+		Name: "SayHello",
+		Request: &postman.Request{
+			Method: "GRPC",
+			URL:    postman.URL{Raw: "grpc://localhost:50051/helloworld.Greeter/SayHello"},
+		},
+	}
+
+	newM, cmd := m.executeRequest(grpcItem)
+	if cmd != nil {
+		t.Error("Expected no command for gRPC request execution")
+	}
+	if newM.statusMessage == "" {
+		t.Error("Expected status message for unsupported gRPC execution")
+	}
+}

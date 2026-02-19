@@ -285,6 +285,16 @@ func (m Model) loadCollectionsList() Model {
 	return m
 }
 
+func itemDisplayPrefix(item postman.Item) string {
+	if item.IsFolder() {
+		return "[DIR] "
+	}
+	if item.IsRequest() {
+		return fmt.Sprintf("[%s] ", item.Request.Method)
+	}
+	return "[???] "
+}
+
 func (m Model) loadRequestsList() Model {
 	if m.collection == nil {
 		m.items = []string{}
@@ -301,18 +311,14 @@ func (m Model) loadRequestsList() Model {
 	otherCount := 0
 
 	for _, item := range m.collection.Items {
-		prefix := ""
 		if item.IsFolder() {
-			prefix = "[DIR] "
 			folderCount++
 		} else if item.IsRequest() {
-			prefix = fmt.Sprintf("[%s] ", item.Request.Method)
 			requestCount++
 		} else {
-			prefix = "[???] "
 			otherCount++
 		}
-		m.items = append(m.items, prefix+item.Name)
+		m.items = append(m.items, itemDisplayPrefix(item)+item.Name)
 	}
 	m.cursor = 0
 
@@ -403,6 +409,10 @@ func (m Model) handleSelection() Model {
 }
 
 func (m Model) executeRequest(item postman.Item) (Model, tea.Cmd) {
+	if item.IsGRPC() {
+		m.statusMessage = "gRPC execution not yet supported — use :info to inspect the request"
+		return m, nil
+	}
 	if !item.IsRequest() || item.Request == nil {
 		m.statusMessage = "Cannot execute: not a request"
 		return m, nil
@@ -458,15 +468,7 @@ func (m Model) navigateInto(item postman.Item) Model {
 	m.currentItems = item.Items
 	m.items = []string{}
 	for _, subItem := range item.Items {
-		prefix := ""
-		if subItem.IsFolder() {
-			prefix = "[DIR] "
-		} else if subItem.IsRequest() {
-			prefix = fmt.Sprintf("[%s] ", subItem.Request.Method)
-		} else {
-			prefix = "[???] "
-		}
-		m.items = append(m.items, prefix+subItem.Name)
+		m.items = append(m.items, itemDisplayPrefix(subItem)+subItem.Name)
 	}
 	m.cursor = 0
 	m.searchActive = false
@@ -496,15 +498,7 @@ func (m Model) navigateUp() Model {
 		m.currentItems = current
 		m.items = []string{}
 		for _, item := range current {
-			prefix := ""
-			if item.IsFolder() {
-				prefix = "[DIR] "
-			} else if item.IsRequest() {
-				prefix = fmt.Sprintf("[%s] ", item.Request.Method)
-			} else {
-				prefix = "[???] "
-			}
-			m.items = append(m.items, prefix+item.Name)
+			m.items = append(m.items, itemDisplayPrefix(item)+item.Name)
 		}
 		m.cursor = 0
 	}
@@ -536,15 +530,7 @@ func (m Model) refreshCurrentView() Model {
 
 	m.items = []string{}
 	for _, item := range m.currentItems {
-		prefix := ""
-		if item.IsFolder() {
-			prefix = "[DIR] "
-		} else if item.IsRequest() {
-			prefix = fmt.Sprintf("[%s] ", item.Request.Method)
-		} else {
-			prefix = "[???] "
-		}
-		m.items = append(m.items, prefix+item.Name)
+		m.items = append(m.items, itemDisplayPrefix(item)+item.Name)
 	}
 
 	return m
@@ -576,14 +562,12 @@ func (m Model) searchItemsRecursive(items []postman.Item, query string, parentPa
 				}
 			}
 			if matches {
-				prefix := "[DIR] "
-				displayItems = append(displayItems, prefix+fullPath)
+				displayItems = append(displayItems, itemDisplayPrefix(item)+fullPath)
 				foundItems = append(foundItems, item)
 				indices = append(indices, idx)
 			}
 		} else if item.IsRequest() && matches {
-			prefix := fmt.Sprintf("[%s] ", item.Request.Method)
-			displayItems = append(displayItems, prefix+fullPath)
+			displayItems = append(displayItems, itemDisplayPrefix(item)+fullPath)
 			foundItems = append(foundItems, item)
 			indices = append(indices, idx)
 		}
@@ -1432,15 +1416,7 @@ func (m Model) restoreSession() Model {
 				m.currentItems = current
 				m.items = []string{}
 				for _, item := range current {
-					prefix := ""
-					if item.IsFolder() {
-						prefix = "[DIR] "
-					} else if item.IsRequest() {
-						prefix = fmt.Sprintf("[%s] ", item.Request.Method)
-					} else {
-						prefix = "[???] "
-					}
-					m.items = append(m.items, prefix+item.Name)
+					m.items = append(m.items, itemDisplayPrefix(item)+item.Name)
 				}
 			}
 
