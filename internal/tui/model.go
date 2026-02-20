@@ -140,6 +140,7 @@ type Model struct {
 
 	grpcEditEndpoint    string
 	grpcEditMethod      string
+	grpcEditTLS         bool
 	grpcReflectServices []grpc.ServiceInfo
 	grpcSelectedService int
 	grpcReflectPhase    int // 0 = services list, 1 = methods list

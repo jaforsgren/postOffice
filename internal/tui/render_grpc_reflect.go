@@ -19,7 +19,7 @@ func (m Model) renderGRPCReflect(availableHeight int) string {
 	if m.grpcReflectPhase == 0 {
 		lines = append(lines, m.renderServiceList()...)
 		lines = append(lines, "")
-		shortcuts := "<Enter> View Methods  <j/k> Navigate  <Esc> Back to Edit"
+		shortcuts := "<Enter> View Methods  <j/k> Navigate  <Ctrl+R> Refresh  <Esc> Back to Edit"
 		lines = append(lines, dimStyle.Render(shortcuts))
 	} else {
 		if m.grpcSelectedService < len(m.grpcReflectServices) {
@@ -29,7 +29,7 @@ func (m Model) renderGRPCReflect(availableHeight int) string {
 			lines = append(lines, m.renderMethodList(svc.Name)...)
 		}
 		lines = append(lines, "")
-		shortcuts := "<Enter> Use Method  <j/k> Navigate  <Esc> Back to Services"
+		shortcuts := "<Enter> Use Method  <j/k> Navigate  <Ctrl+R> Refresh  <Esc> Back to Services"
 		lines = append(lines, dimStyle.Render(shortcuts))
 	}
 

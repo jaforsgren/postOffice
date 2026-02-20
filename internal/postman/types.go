@@ -63,8 +63,10 @@ func (i *Item) IsGRPC() bool {
 	if i.Request == nil {
 		return false
 	}
+	lower := strings.ToLower(i.Request.URL.Raw)
 	return strings.EqualFold(i.Request.Method, "GRPC") ||
-		strings.HasPrefix(strings.ToLower(i.Request.URL.Raw), "grpc://")
+		strings.HasPrefix(lower, "grpc://") ||
+		strings.HasPrefix(lower, "grpcs://")
 }
 
 type Environment struct {

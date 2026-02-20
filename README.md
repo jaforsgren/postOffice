@@ -139,6 +139,9 @@ PostOffice supports gRPC requests stored in Postman collections (method `GRPC` o
 | **Service/Method** | Fully-qualified method path, e.g. `helloworld.Greeter/SayHello` |
 | **Metadata** | gRPC metadata headers, one `Key: Value` per line |
 | **Message** | JSON request body sent as the protobuf message |
+| **TLS** | `Enabled` / `Disabled (insecure)` — press `Enter` to toggle |
+
+TLS state is stored in the URL scheme: `grpc://` for insecure, `grpcs://` for TLS with system certificate roots.
 
 3. Press `enter` to edit a field (single-line fields: `enter` to save, `esc` to cancel)
 4. For multi-line fields (Metadata, Message): press `ctrl+s` to save, `esc` to cancel
