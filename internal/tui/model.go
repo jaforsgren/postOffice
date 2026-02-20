@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"postOffice/internal/grpc"
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
@@ -26,6 +27,7 @@ const (
 	ModeJSON
 	ModeLog
 	ModeFileBrowser
+	ModeGRPCReflect
 )
 
 type EditType int
@@ -37,6 +39,7 @@ const (
 	EditTypeCollectionVariable
 	EditTypeFolderVariable
 	EditTypeScript
+	EditTypeGRPCRequest
 )
 
 type ScriptType int
@@ -134,6 +137,18 @@ type Model struct {
 
 	requestExecutions  map[string]*RequestExecution
 	lastExecutedItemID string
+
+	grpcEditEndpoint    string
+	grpcEditMethod      string
+	grpcReflectServices []grpc.ServiceInfo
+	grpcSelectedService int
+	grpcReflectPhase    int // 0 = services list, 1 = methods list
+}
+
+// GRPCReflectMsg carries the result of an async gRPC server reflection call.
+type GRPCReflectMsg struct {
+	Services []grpc.ServiceInfo
+	Err      error
 }
 
 func NewModel(parser *postman.Parser) Model {
