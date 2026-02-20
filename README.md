@@ -10,6 +10,7 @@ A terminal UI for browsing and executing Postman collections with vim-style navi
 - Persistent session state
 - Environment variable support
 - Request and collection editing
+- gRPC request editing with live server reflection
 
 ## Installation
 
@@ -121,6 +122,40 @@ When loading files, `~/` is expanded to your home directory:
   - `d` - Discard selected change
   - `ctrl+d` - Discard all changes
   - `esc` - Close changes view
+
+## gRPC Requests
+
+PostOffice supports gRPC requests stored in Postman collections (method `GRPC` or URL scheme `grpc://`). A dedicated edit form replaces the standard HTTP edit fields.
+
+### Editing a gRPC Request
+
+1. Navigate to a gRPC request and press `e` or use `:edit`
+2. Use `j/k` to navigate between the five fields:
+
+| Field | Description |
+|-------|-------------|
+| **Name** | Request name in the collection |
+| **Endpoint** | Server address, e.g. `localhost:50051` |
+| **Service/Method** | Fully-qualified method path, e.g. `helloworld.Greeter/SayHello` |
+| **Metadata** | gRPC metadata headers, one `Key: Value` per line |
+| **Message** | JSON request body sent as the protobuf message |
+
+3. Press `enter` to edit a field (single-line fields: `enter` to save, `esc` to cancel)
+4. For multi-line fields (Metadata, Message): press `ctrl+s` to save, `esc` to cancel
+5. Press `esc` to exit edit mode, then `:w` to write to file
+
+### Server Reflection
+
+When the cursor is on the **Service/Method** field, press `Ctrl+R` to browse the server's available services and methods via gRPC reflection:
+
+1. PostOffice connects to the endpoint and lists all services
+2. Navigate services with `j/k`, press `enter` to expand a service's methods
+3. Navigate methods with `j/k`, press `enter` to select a method:
+   - **Service/Method** is filled with the selected method's full path
+   - **Message** is pre-filled with a JSON template generated from the method's protobuf input type
+4. Press `esc` to return to the method list, press `esc` again to return to the edit form without selecting
+
+The reflection connection is insecure (no TLS). For TLS-enabled servers, edit the **Service/Method** field manually.
 
 ## Environment Variables
 
