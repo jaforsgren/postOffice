@@ -2,9 +2,11 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	rpb "google.golang.org/grpc/reflection/grpc_reflection_v1"
 	"google.golang.org/protobuf/proto"
@@ -30,11 +32,17 @@ type Client struct {
 	conn *grpc.ClientConn
 }
 
-// NewClient creates an insecure gRPC client connected to the given endpoint.
-func NewClient(endpoint string) (*Client, error) {
-	conn, err := grpc.NewClient(endpoint,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+// NewClient creates a gRPC client connected to the given endpoint.
+// When tlsEnabled is true the connection uses TLS with system certificate roots.
+// When tlsEnabled is false the connection is plaintext (insecure).
+func NewClient(endpoint string, tlsEnabled bool) (*Client, error) {
+	var creds grpc.DialOption
+	if tlsEnabled {
+		creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
+	} else {
+		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
+	}
+	conn, err := grpc.NewClient(endpoint, creds)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gRPC client for %s: %w", endpoint, err)
 	}

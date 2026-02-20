@@ -104,6 +104,11 @@ func (m Model) buildGRPCEditFields() []string {
 		bodyText = m.editRequest.Body.Raw
 	}
 
+	tlsValue := "Disabled (insecure)"
+	if m.grpcEditTLS {
+		tlsValue = "Enabled"
+	}
+
 	fields := []struct {
 		label string
 		value string
@@ -113,9 +118,12 @@ func (m Model) buildGRPCEditFields() []string {
 		{"Service/Method", m.grpcEditMethod},
 		{"Metadata", metadataText},
 		{"Message", bodyText},
+		{"TLS", tlsValue},
 	}
 
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	tlsEnabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	tlsDisabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 
 	for i, field := range fields {
 		prefix := "  "
@@ -129,6 +137,20 @@ func (m Model) buildGRPCEditFields() []string {
 		}
 
 		lines = append(lines, prefix+labelStyle.Render(field.label+":"))
+
+		// TLS field: show coloured status + toggle hint, never enter text-edit mode.
+		if i == 5 {
+			style := tlsDisabledStyle
+			if m.grpcEditTLS {
+				style = tlsEnabledStyle
+			}
+			lines = append(lines, "    "+style.Render(field.value))
+			if i == m.editFieldCursor {
+				lines = append(lines, "    "+dimStyle.Render("[Enter to toggle]"))
+			}
+			lines = append(lines, "")
+			continue
+		}
 
 		displayValue := field.value
 		if i == m.editFieldCursor && m.editFieldMode {

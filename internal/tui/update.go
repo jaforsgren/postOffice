@@ -706,8 +706,9 @@ func (m Model) enterEditMode(item postman.Item) Model {
 	m.scrollOffset = 0
 
 	if item.IsGRPC() {
-		endpoint, service, method := parseGRPCURL(item.Request.URL.Raw)
+		endpoint, service, method, tls := parseGRPCURL(item.Request.URL.Raw)
 		m.grpcEditEndpoint = endpoint
+		m.grpcEditTLS = tls
 		if service != "" && method != "" {
 			m.grpcEditMethod = service + "/" + method
 		} else if service != "" {
@@ -855,6 +856,22 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "enter":
+		// TLS field is a boolean toggle, not a text field.
+		if m.editType == EditTypeGRPCRequest && m.editFieldCursor == 5 {
+			m.grpcEditTLS = !m.grpcEditTLS
+			m.editRequest.URL.Raw = m.buildGRPCURL()
+			tlsLabel := "Disabled (insecure)"
+			if m.grpcEditTLS {
+				tlsLabel = "Enabled"
+			}
+			if len(m.grpcReflectServices) > 0 && m.grpcEditEndpoint != "" {
+				m.statusMessage = fmt.Sprintf("TLS %s — reloading reflection…", tlsLabel)
+				return m.startGRPCReflection()
+			}
+			m.statusMessage = fmt.Sprintf("TLS %s (use :w to save)", tlsLabel)
+			return m, nil
+		}
+
 		m.editFieldMode = true
 		fieldValue := m.getCurrentFieldValue()
 		fieldNames := m.editFieldNames()
@@ -883,9 +900,10 @@ func (m Model) startGRPCReflection() (Model, tea.Cmd) {
 	}
 	m.statusMessage = "Connecting to gRPC server…"
 	endpoint := m.grpcEditEndpoint
+	tlsEnabled := m.grpcEditTLS
 
 	return m, func() tea.Msg {
-		client, err := grpc.NewClient(endpoint)
+		client, err := grpc.NewClient(endpoint, tlsEnabled)
 		if err != nil {
 			return GRPCReflectMsg{Err: err}
 		}
@@ -901,6 +919,13 @@ func (m Model) startGRPCReflection() (Model, tea.Cmd) {
 
 func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "ctrl+r":
+		if m.grpcEditEndpoint != "" {
+			m.statusMessage = "Reloading reflection…"
+			return m.startGRPCReflection()
+		}
+		return m, nil
+
 	case "esc":
 		if m.grpcReflectPhase == 1 {
 			m.grpcReflectPhase = 0
@@ -955,7 +980,7 @@ func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		selected := svc.Methods[m.cursor]
 		m.grpcEditMethod = selected.FullMethod
-		m.editRequest.URL.Raw = "grpc://" + m.grpcEditEndpoint + "/" + selected.FullMethod
+		m.editRequest.URL.Raw = m.buildGRPCURL()
 		if m.editRequest.Body == nil {
 			m.editRequest.Body = &postman.Body{Mode: "raw"}
 		}
@@ -1115,10 +1140,10 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.editItemName = m.editFieldInput.Value()
 				case 1:
 					m.grpcEditEndpoint = m.editFieldInput.Value()
-					m.editRequest.URL.Raw = "grpc://" + m.grpcEditEndpoint + "/" + m.grpcEditMethod
+					m.editRequest.URL.Raw = m.buildGRPCURL()
 				case 2:
 					m.grpcEditMethod = m.editFieldInput.Value()
-					m.editRequest.URL.Raw = "grpc://" + m.grpcEditEndpoint + "/" + m.grpcEditMethod
+					m.editRequest.URL.Raw = m.buildGRPCURL()
 				}
 			}
 			m.editFieldMode = false
@@ -1198,8 +1223,10 @@ func (m Model) isItemModified(itemID string) bool {
 
 func (m Model) getEditFieldCount() int {
 	switch m.editType {
-	case EditTypeRequest, EditTypeGRPCRequest:
+	case EditTypeRequest:
 		return 5
+	case EditTypeGRPCRequest:
+		return 6
 	default:
 		return 0
 	}
@@ -1207,9 +1234,20 @@ func (m Model) getEditFieldCount() int {
 
 func (m Model) editFieldNames() []string {
 	if m.editType == EditTypeGRPCRequest {
-		return []string{"Name", "Endpoint", "Service/Method", "Metadata", "Message"}
+		return []string{"Name", "Endpoint", "Service/Method", "Metadata", "Message", "TLS"}
 	}
 	return []string{"Name", "Method", "URL", "Headers", "Body"}
+}
+
+func (m Model) buildGRPCURL() string {
+	scheme := "grpc"
+	if m.grpcEditTLS {
+		scheme = "grpcs"
+	}
+	if m.grpcEditMethod != "" {
+		return scheme + "://" + m.grpcEditEndpoint + "/" + m.grpcEditMethod
+	}
+	return scheme + "://" + m.grpcEditEndpoint
 }
 
 func (m Model) navigateToChangedRequest(itemID string) Model {
@@ -1359,6 +1397,11 @@ func (m Model) getCurrentFieldValue() string {
 			if m.editRequest.Body != nil {
 				return m.editRequest.Body.Raw
 			}
+		case 5:
+			if m.grpcEditTLS {
+				return "Enabled"
+			}
+			return "Disabled (insecure)"
 		}
 	}
 	return ""

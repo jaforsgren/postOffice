@@ -210,7 +210,15 @@ func (m Model) buildGRPCInfoSection(req *postman.Request) []string {
 	variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
 
 	rawURL := req.URL.Raw
-	endpoint, service, method := parseGRPCURL(rawURL)
+	endpoint, service, method, tlsEnabled := parseGRPCURL(rawURL)
+
+	tlsLabel := "Disabled (insecure)"
+	if tlsEnabled {
+		tlsLabel = "Enabled"
+	}
+	lines = append(lines, requestStyle.Render("TLS:"))
+	lines = append(lines, "  "+tlsLabel)
+	lines = append(lines, "")
 
 	lines = append(lines, requestStyle.Render("Endpoint:"))
 	lines = append(lines, "  "+endpoint)
@@ -271,21 +279,34 @@ func (m Model) buildGRPCInfoSection(req *postman.Request) []string {
 	return lines
 }
 
-// parseGRPCURL extracts the endpoint, service name, and method from a gRPC URL.
-// Expected format: grpc://host:port/package.ServiceName/MethodName
-func parseGRPCURL(rawURL string) (endpoint, service, method string) {
-	withoutScheme := strings.TrimPrefix(rawURL, "grpc://")
+// parseGRPCURL extracts the endpoint, service name, method, and TLS flag from a gRPC URL.
+// Supported formats:
+//
+//	grpc://host:port/package.ServiceName/MethodName   — insecure
+//	grpcs://host:port/package.ServiceName/MethodName  — TLS
+func parseGRPCURL(rawURL string) (endpoint, service, method string, tlsEnabled bool) {
+	lower := strings.ToLower(rawURL)
+	var withoutScheme string
+	switch {
+	case strings.HasPrefix(lower, "grpcs://"):
+		tlsEnabled = true
+		withoutScheme = rawURL[len("grpcs://"):]
+	case strings.HasPrefix(lower, "grpc://"):
+		withoutScheme = rawURL[len("grpc://"):]
+	default:
+		withoutScheme = rawURL
+	}
 	slashIdx := strings.Index(withoutScheme, "/")
 	if slashIdx == -1 {
-		return withoutScheme, "", ""
+		return withoutScheme, "", "", tlsEnabled
 	}
 	endpoint = withoutScheme[:slashIdx]
 	remainder := strings.TrimPrefix(withoutScheme[slashIdx:], "/")
 	parts := strings.SplitN(remainder, "/", 2)
 	if len(parts) == 2 {
-		return endpoint, parts[0], parts[1]
+		return endpoint, parts[0], parts[1], tlsEnabled
 	}
-	return endpoint, remainder, ""
+	return endpoint, remainder, "", tlsEnabled
 }
 
 func (m Model) buildMethodSection(req *postman.Request) []string {
