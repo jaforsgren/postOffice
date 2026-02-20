@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"postOffice/internal/grpc"
 	"postOffice/internal/postman"
 	"strings"
 	"time"
@@ -71,12 +73,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
+	case GRPCReflectMsg:
+		if msg.Err != nil {
+			m.statusMessage = fmt.Sprintf("gRPC reflection failed: %v", msg.Err)
+			return m, nil
+		}
+		m.grpcReflectServices = msg.Services
+		m.grpcReflectPhase = 0
+		m.grpcSelectedService = 0
+		m.previousMode = ModeEdit
+		m.mode = ModeGRPCReflect
+		if len(msg.Services) == 0 {
+			m.statusMessage = "No services found via reflection"
+			m.mode = ModeEdit
+		} else {
+			m.statusMessage = fmt.Sprintf("Found %d service(s) — navigate with j/k, Enter to select", len(msg.Services))
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		if m.commandMode {
 			return m.handleCommandMode(msg)
 		}
 		if m.searchMode {
 			return m.handleSearchMode(msg)
+		}
+		if m.mode == ModeGRPCReflect {
+			return m.handleGRPCReflectKeys(msg)
 		}
 		if m.mode == ModeEdit {
 			if m.editFieldMode {
@@ -674,7 +697,6 @@ func (m Model) enterEditMode(item postman.Item) Model {
 	m.editRequest = m.deepCopyRequest(item.Request)
 	m.editItemName = item.Name
 	m.editOriginalName = item.Name
-	m.editType = EditTypeRequest
 	m.editFieldCursor = 0
 	m.editFieldMode = false
 	m.editCollectionName = m.collection.Info.Name
@@ -682,7 +704,23 @@ func (m Model) enterEditMode(item postman.Item) Model {
 	m.previousMode = m.mode
 	m.mode = ModeEdit
 	m.scrollOffset = 0
-	m.statusMessage = "Edit mode: Use j/k to navigate, Enter to edit field, :w to save, :wq to save & exit"
+
+	if item.IsGRPC() {
+		endpoint, service, method := parseGRPCURL(item.Request.URL.Raw)
+		m.grpcEditEndpoint = endpoint
+		if service != "" && method != "" {
+			m.grpcEditMethod = service + "/" + method
+		} else if service != "" {
+			m.grpcEditMethod = service
+		} else {
+			m.grpcEditMethod = ""
+		}
+		m.editType = EditTypeGRPCRequest
+		m.statusMessage = "Edit gRPC request: j/k navigate, Enter edit field, Ctrl+R reflect, :w save"
+	} else {
+		m.editType = EditTypeRequest
+		m.statusMessage = "Edit mode: Use j/k to navigate, Enter to edit field, :w to save, :wq to save & exit"
+	}
 
 	return m
 }
@@ -694,7 +732,7 @@ func (m Model) saveEdit() Model {
 	}
 
 	switch m.editType {
-	case EditTypeRequest:
+	case EditTypeRequest, EditTypeGRPCRequest:
 		if m.collection == nil {
 			m.statusMessage = "Error: No collection loaded"
 			return m
@@ -810,10 +848,17 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case "ctrl+r":
+		if m.editType == EditTypeGRPCRequest {
+			return m.startGRPCReflection()
+		}
+		return m, nil
+
 	case "enter":
 		m.editFieldMode = true
 		fieldValue := m.getCurrentFieldValue()
-		fieldName := []string{"Name", "Method", "URL", "Headers", "Body"}[m.editFieldCursor]
+		fieldNames := m.editFieldNames()
+		fieldName := fieldNames[m.editFieldCursor]
 
 		if m.editFieldCursor >= 3 {
 			m.editFieldTextArea.SetValue(fieldValue)
@@ -826,6 +871,98 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusMessage = fmt.Sprintf("Editing %s... (Enter to save, Esc to cancel)", fieldName)
 			return m, m.editFieldInput.Focus()
 		}
+	}
+
+	return m, nil
+}
+
+func (m Model) startGRPCReflection() (Model, tea.Cmd) {
+	if m.grpcEditEndpoint == "" {
+		m.statusMessage = "Set the Endpoint field before reflecting"
+		return m, nil
+	}
+	m.statusMessage = "Connecting to gRPC server…"
+	endpoint := m.grpcEditEndpoint
+
+	return m, func() tea.Msg {
+		client, err := grpc.NewClient(endpoint)
+		if err != nil {
+			return GRPCReflectMsg{Err: err}
+		}
+		defer client.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		services, err := client.ListServices(ctx)
+		return GRPCReflectMsg{Services: services, Err: err}
+	}
+}
+
+func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		if m.grpcReflectPhase == 1 {
+			m.grpcReflectPhase = 0
+			m.statusMessage = "Navigate services with j/k, Enter to view methods, Esc to return to edit"
+			return m, nil
+		}
+		m.mode = ModeEdit
+		m.statusMessage = "Returned to edit mode"
+		return m, nil
+
+	case "j", "down":
+		if m.grpcReflectPhase == 0 {
+			if m.grpcSelectedService < len(m.grpcReflectServices)-1 {
+				m.grpcSelectedService++
+			}
+		} else {
+			svc := m.grpcReflectServices[m.grpcSelectedService]
+			if m.cursor < len(svc.Methods)-1 {
+				m.cursor++
+			}
+		}
+		return m, nil
+
+	case "k", "up":
+		if m.grpcReflectPhase == 0 {
+			if m.grpcSelectedService > 0 {
+				m.grpcSelectedService--
+			}
+		} else {
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		}
+		return m, nil
+
+	case "enter":
+		if m.grpcReflectPhase == 0 {
+			if len(m.grpcReflectServices) == 0 {
+				return m, nil
+			}
+			m.grpcReflectPhase = 1
+			m.cursor = 0
+			svc := m.grpcReflectServices[m.grpcSelectedService]
+			m.statusMessage = fmt.Sprintf("%s — %d method(s), Enter to use, Esc to go back", svc.Name, len(svc.Methods))
+			return m, nil
+		}
+
+		// Phase 1: select a method
+		svc := m.grpcReflectServices[m.grpcSelectedService]
+		if m.cursor >= len(svc.Methods) {
+			return m, nil
+		}
+		selected := svc.Methods[m.cursor]
+		m.grpcEditMethod = selected.FullMethod
+		m.editRequest.URL.Raw = "grpc://" + m.grpcEditEndpoint + "/" + selected.FullMethod
+		if m.editRequest.Body == nil {
+			m.editRequest.Body = &postman.Body{Mode: "raw"}
+		}
+		m.editRequest.Body.Raw = selected.InputTemplate
+		m.mode = ModeEdit
+		m.statusMessage = "Method selected — edit message body, then :w to save"
+		return m, nil
 	}
 
 	return m, nil
@@ -930,14 +1067,25 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyCtrlS:
-		if isMultiLineField {
-			if m.editType == EditTypeRequest && m.editRequest != nil {
+		if isMultiLineField && m.editRequest != nil {
+			switch m.editType {
+			case EditTypeRequest:
 				switch m.editFieldCursor {
 				case 3:
 					m.editRequest.Header = m.parseHeaders(m.editFieldTextArea.Value())
 				case 4:
 					if m.editRequest.Body == nil {
 						m.editRequest.Body = &postman.Body{}
+					}
+					m.editRequest.Body.Raw = m.editFieldTextArea.Value()
+				}
+			case EditTypeGRPCRequest:
+				switch m.editFieldCursor {
+				case 3:
+					m.editRequest.Header = m.parseHeaders(m.editFieldTextArea.Value())
+				case 4:
+					if m.editRequest.Body == nil {
+						m.editRequest.Body = &postman.Body{Mode: "raw"}
 					}
 					m.editRequest.Body.Raw = m.editFieldTextArea.Value()
 				}
@@ -950,8 +1098,9 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyEnter:
-		if !isMultiLineField {
-			if m.editType == EditTypeRequest && m.editRequest != nil {
+		if !isMultiLineField && m.editRequest != nil {
+			switch m.editType {
+			case EditTypeRequest:
 				switch m.editFieldCursor {
 				case 0:
 					m.editItemName = m.editFieldInput.Value()
@@ -959,6 +1108,17 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.editRequest.Method = m.editFieldInput.Value()
 				case 2:
 					m.editRequest.URL.Raw = m.editFieldInput.Value()
+				}
+			case EditTypeGRPCRequest:
+				switch m.editFieldCursor {
+				case 0:
+					m.editItemName = m.editFieldInput.Value()
+				case 1:
+					m.grpcEditEndpoint = m.editFieldInput.Value()
+					m.editRequest.URL.Raw = "grpc://" + m.grpcEditEndpoint + "/" + m.grpcEditMethod
+				case 2:
+					m.grpcEditMethod = m.editFieldInput.Value()
+					m.editRequest.URL.Raw = "grpc://" + m.grpcEditEndpoint + "/" + m.grpcEditMethod
 				}
 			}
 			m.editFieldMode = false
@@ -1037,10 +1197,19 @@ func (m Model) isItemModified(itemID string) bool {
 }
 
 func (m Model) getEditFieldCount() int {
-	if m.editType == EditTypeRequest {
+	switch m.editType {
+	case EditTypeRequest, EditTypeGRPCRequest:
 		return 5
+	default:
+		return 0
 	}
-	return 0
+}
+
+func (m Model) editFieldNames() []string {
+	if m.editType == EditTypeGRPCRequest {
+		return []string{"Name", "Endpoint", "Service/Method", "Metadata", "Message"}
+	}
+	return []string{"Name", "Method", "URL", "Headers", "Body"}
 }
 
 func (m Model) navigateToChangedRequest(itemID string) Model {
@@ -1157,7 +1326,11 @@ func (m Model) findOriginalRequest(items []postman.Item, folderPath []string, re
 }
 
 func (m Model) getCurrentFieldValue() string {
-	if m.editType == EditTypeRequest && m.editRequest != nil {
+	if m.editRequest == nil {
+		return ""
+	}
+	switch m.editType {
+	case EditTypeRequest:
 		switch m.editFieldCursor {
 		case 0:
 			return m.editItemName
@@ -1166,22 +1339,40 @@ func (m Model) getCurrentFieldValue() string {
 		case 2:
 			return m.editRequest.URL.Raw
 		case 3:
-			if len(m.editRequest.Header) > 0 {
-				var headerLines []string
-				for _, h := range m.editRequest.Header {
-					headerLines = append(headerLines, h.Key+": "+h.Value)
-				}
-				return strings.Join(headerLines, "\n")
-			}
-			return ""
+			return headersToText(m.editRequest.Header)
 		case 4:
 			if m.editRequest.Body != nil {
 				return m.editRequest.Body.Raw
 			}
-			return ""
+		}
+	case EditTypeGRPCRequest:
+		switch m.editFieldCursor {
+		case 0:
+			return m.editItemName
+		case 1:
+			return m.grpcEditEndpoint
+		case 2:
+			return m.grpcEditMethod
+		case 3:
+			return headersToText(m.editRequest.Header)
+		case 4:
+			if m.editRequest.Body != nil {
+				return m.editRequest.Body.Raw
+			}
 		}
 	}
 	return ""
+}
+
+func headersToText(headers []postman.Header) string {
+	if len(headers) == 0 {
+		return ""
+	}
+	var lines []string
+	for _, h := range headers {
+		lines = append(lines, h.Key+": "+h.Value)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) parseHeaders(text string) []postman.Header {

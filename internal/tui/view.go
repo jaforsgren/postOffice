@@ -34,6 +34,10 @@ func (m Model) renderContent() []string {
 		metrics := m.calculateLayout()
 		return []string{m.renderEditPopup(metrics.contentHeight)}
 
+	case ModeGRPCReflect:
+		metrics := m.calculateLayout()
+		return []string{m.renderGRPCReflect(metrics.contentHeight)}
+
 	case ModeVariables:
 		return []string{m.renderVariablesView()}
 

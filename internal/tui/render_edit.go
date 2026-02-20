@@ -45,13 +45,23 @@ func (m Model) buildEditLines() []string {
 
 	if m.editType == EditTypeRequest && m.editRequest != nil {
 		lines = append(lines, m.buildEditFields()...)
+	} else if m.editType == EditTypeGRPCRequest && m.editRequest != nil {
+		lines = append(lines, m.buildGRPCEditFields()...)
 	}
 
 	lines = append(lines, "")
-	shortcuts := "<Enter> Edit field  <j/k> Navigate  <Esc> Cancel  <:w> Save  <:wq> Save & Exit"
+	shortcuts := m.buildEditShortcuts()
 	lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(shortcuts))
 
 	return lines
+}
+
+func (m Model) buildEditShortcuts() string {
+	base := "<Enter> Edit field  <j/k> Navigate  <Esc> Cancel  <:w> Save  <:wq> Save & Exit"
+	if m.editType == EditTypeGRPCRequest {
+		return base + "  <Ctrl+R> Reflect"
+	}
+	return base
 }
 
 func (m Model) buildEditTitle() string {
@@ -60,6 +70,12 @@ func (m Model) buildEditTitle() string {
 	case EditTypeRequest:
 		if m.editRequest != nil {
 			title += "Request: " + m.editRequest.Method
+		}
+	case EditTypeGRPCRequest:
+		if m.grpcEditMethod != "" {
+			title = "Edit gRPC Request: " + m.grpcEditMethod
+		} else {
+			title = "Edit gRPC Request"
 		}
 	case EditTypeEnvVariable:
 		title += "Environment Variable"
@@ -77,6 +93,70 @@ func (m Model) buildEditTitle() string {
 		}
 	}
 	return title
+}
+
+func (m Model) buildGRPCEditFields() []string {
+	var lines []string
+
+	metadataText := headersToText(m.editRequest.Header)
+	bodyText := ""
+	if m.editRequest.Body != nil {
+		bodyText = m.editRequest.Body.Raw
+	}
+
+	fields := []struct {
+		label string
+		value string
+	}{
+		{"Name", m.editItemName},
+		{"Endpoint", m.grpcEditEndpoint},
+		{"Service/Method", m.grpcEditMethod},
+		{"Metadata", metadataText},
+		{"Message", bodyText},
+	}
+
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+	for i, field := range fields {
+		prefix := "  "
+		labelStyle := lipgloss.NewStyle()
+		valueStyle := lipgloss.NewStyle()
+
+		if i == m.editFieldCursor {
+			prefix = "> "
+			labelStyle = labelStyle.Bold(true).Foreground(lipgloss.Color("10"))
+			valueStyle = valueStyle.Foreground(lipgloss.Color("12"))
+		}
+
+		lines = append(lines, prefix+labelStyle.Render(field.label+":"))
+
+		displayValue := field.value
+		if i == m.editFieldCursor && m.editFieldMode {
+			if i >= 3 {
+				displayValue = m.editFieldTextArea.View()
+			} else {
+				displayValue = m.editFieldInput.View()
+			}
+		}
+
+		if displayValue == "" && !m.editFieldMode {
+			displayValue = "(empty)"
+		}
+
+		valueLines := strings.Split(displayValue, "\n")
+		for _, vLine := range valueLines {
+			lines = append(lines, "    "+valueStyle.Render(vLine))
+		}
+
+		// Hint for the Service/Method field
+		if i == 2 && i == m.editFieldCursor && !m.editFieldMode {
+			lines = append(lines, "    "+dimStyle.Render("[Ctrl+R to browse via reflection]"))
+		}
+
+		lines = append(lines, "")
+	}
+
+	return lines
 }
 
 func (m Model) buildEditFields() []string {
