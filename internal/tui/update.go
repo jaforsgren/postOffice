@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"postOffice/internal/grpc"
+	"postOffice/internal/logger"
 	"postOffice/internal/postman"
 	"postOffice/internal/workflow"
 	"strings"
@@ -56,12 +57,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if msg.Response.Error != nil {
 			m.statusMessage = fmt.Sprintf("Request failed: %s - %v", msg.ItemName, msg.Response.Error)
+			logger.Log(fmt.Sprintf("[REQUEST] ERROR %s - %v", msg.ItemName, msg.Response.Error))
 		} else {
 			statusSuffix := ""
 			if msg.IsModified {
 				statusSuffix = " [unsaved changes]"
 			}
 			m.statusMessage = fmt.Sprintf("Response: %s - %s (%v)%s", msg.ItemName, msg.Response.Status, msg.Response.Duration, statusSuffix)
+			logger.Log(fmt.Sprintf("[REQUEST] %s %s (%v)", msg.Response.Status, msg.ItemName, msg.Response.Duration))
 		}
 
 		if m.mode == ModeResponse {

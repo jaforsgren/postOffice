@@ -93,6 +93,20 @@ func LogError(operation, path string, err error) {
 	}
 }
 
+func Log(msg string) {
+	if instance == nil {
+		return
+	}
+	instance.mu.Lock()
+	defer instance.mu.Unlock()
+	timestamp := time.Now().Format("2006/01/02 15:04:05")
+	entry := fmt.Sprintf("%s %s", timestamp, msg)
+	instance.memBuffer = append(instance.memBuffer, entry)
+	if instance.logger != nil {
+		instance.logger.Print(msg)
+	}
+}
+
 func GetLogs() []string {
 	if instance == nil {
 		return []string{"Logger not initialized"}

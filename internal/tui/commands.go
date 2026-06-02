@@ -663,6 +663,8 @@ func handleLogsCommand(m Model, args []string) (Model, tea.Cmd) {
 	m.previousMode = m.mode
 	m.mode = ModeLog
 	m.scrollOffset = 0
+	m.logsViewport.Width = m.width - 8
+	m.logsViewport.Height = m.height - 8
 	m.statusMessage = "Showing session logs (j/k to scroll, esc to close)"
 	return m, nil
 }
@@ -684,6 +686,8 @@ func handleEnterKey(m Model) (Model, tea.Cmd) {
 			item := m.currentItems[m.cursor]
 			if item.IsFolder() {
 				m = m.navigateInto(item)
+			} else if item.IsRequest() {
+				return m.executeRequest(item)
 			}
 		}
 		return m, nil
