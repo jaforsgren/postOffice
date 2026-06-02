@@ -87,6 +87,21 @@ func NewWorkflow(id string) *Workflow {
 	}
 }
 
+// PartialScript builds a script that runs a contiguous slice of steps by ID.
+// The range is [fromIdx, toIdx] inclusive. Steps outside the range are skipped silently.
+// The result is a valid workflow script that can be assigned to Workflow.Script.
+func PartialScript(steps []Step, fromIdx, toIdx int) string {
+	var sb strings.Builder
+	sb.WriteString("export default async function(wf, pm) {\n")
+	for i := fromIdx; i <= toIdx && i < len(steps); i++ {
+		if i >= 0 {
+			sb.WriteString(fmt.Sprintf("  await wf.run(%q);\n", steps[i].ID))
+		}
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
 // SaveWorkflow writes a workflow to path as YAML, creating parent directories if needed.
 func SaveWorkflow(wf *Workflow, path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

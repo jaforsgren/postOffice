@@ -168,7 +168,7 @@ func (cr *CommandRegistry) registerCommands() {
 			Description: "Quit application",
 			ShortHelp:   ":q",
 			Handler:     handleQuitCommand,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeInfo, ModeEnvironments, ModeVariables, ModeEdit, ModeWorkflows, ModeWorkflowRun},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeInfo, ModeEnvironments, ModeVariables, ModeEdit, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
 		},
 		{
 			Name:        "help",
@@ -200,7 +200,7 @@ func (cr *CommandRegistry) registerCommands() {
 			Description: "Manage and run workflows (:wf [run|new] <name>)",
 			ShortHelp:   ":wf",
 			Handler:     handleWorkflowCommand,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowRun},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
 		},
 	}
 
@@ -226,7 +226,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Select",
 			ShortHelp:   "enter",
 			Handler:     handleEnterKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments, ModeChanges},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments, ModeChanges, ModeWorkflows},
 		},
 		{
 			Keys:        []string{"ctrl+e"},
@@ -240,14 +240,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "View/Resend response / Run workflow",
 			ShortHelp:   "ctrl+r",
 			Handler:     handleResponseViewKey,
-			AvailableIn: []ViewMode{ModeRequests, ModeResponse, ModeWorkflows, ModeWorkflowRun},
+			AvailableIn: []ViewMode{ModeRequests, ModeResponse, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
 		},
 		{
 			Keys:        []string{"i"},
 			Description: "Info",
 			ShortHelp:   "i",
 			Handler:     handleInfoKey,
-			AvailableIn: []ViewMode{ModeRequests, ModeEnvironments, ModeChanges},
+			AvailableIn: []ViewMode{ModeRequests, ModeEnvironments, ModeChanges, ModeWorkflowDetail},
 		},
 		{
 			Keys:        []string{"J"},
@@ -275,21 +275,49 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
 		},
 		{
 			Keys:        []string{"up", "k"},
 			Description: "Navigate up",
 			ShortHelp:   "j/k",
 			Handler:     handleUpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
 		},
 		{
 			Keys:        []string{"down", "j"},
 			Description: "Scroll/Navigate",
 			ShortHelp:   "j/k",
 			Handler:     handleDownKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"e"},
+			Description: "Edit step request",
+			ShortHelp:   "e",
+			Handler:     handleWorkflowStepEditKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"1"},
+			Description: "Run workflow up to this step",
+			ShortHelp:   "1",
+			Handler:     handleWorkflowRunUpToKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"2"},
+			Description: "Run workflow from this step",
+			ShortHelp:   "2",
+			Handler:     handleWorkflowRunFromKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"3"},
+			Description: "Run this step only",
+			ShortHelp:   "3",
+			Handler:     handleWorkflowRunStepKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
 			Keys:        []string{"d"},
@@ -647,7 +675,7 @@ func handleQuitKey(m Model) (Model, tea.Cmd) {
 func handleEnterKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeWorkflows {
 		if m.workflowCursor < len(m.workflows) {
-			return m.startWorkflow(m.workflows[m.workflowCursor])
+			return m.openWorkflowDetail(m.workflows[m.workflowCursor])
 		}
 		return m, nil
 	}
@@ -681,9 +709,15 @@ func handleExecuteKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleResponseViewKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeWorkflowDetail {
+		if m.activeWorkflow != nil {
+			return m.startWorkflow(m.activeWorkflow)
+		}
+		return m, nil
+	}
 	if m.mode == ModeWorkflows {
 		if m.workflowCursor < len(m.workflows) {
-			return m.startWorkflow(m.workflows[m.workflowCursor])
+			return m.openWorkflowDetail(m.workflows[m.workflowCursor])
 		}
 		return m, nil
 	}
@@ -732,6 +766,9 @@ func handleResponseViewKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleInfoKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeWorkflowDetail {
+		return m.showWorkflowStepInfo()
+	}
 	if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
 		m.currentInfoItem = &m.currentItems[m.cursor]
 		m.scrollOffset = 0
@@ -879,9 +916,18 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Closed workflows view"
 		return m, nil
 	}
-	if m.mode == ModeWorkflowRun {
+	if m.mode == ModeWorkflowDetail {
 		m.mode = ModeWorkflows
 		m.statusMessage = "Returned to workflows list"
+		return m, nil
+	}
+	if m.mode == ModeWorkflowRun {
+		if m.previousMode == ModeWorkflowDetail {
+			m.mode = ModeWorkflowDetail
+		} else {
+			m.mode = ModeWorkflows
+		}
+		m.statusMessage = "Returned to workflow"
 		return m, nil
 	}
 	if m.searchActive {
@@ -900,6 +946,12 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleUpKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeWorkflowDetail {
+		if m.workflowStepCursor > 0 {
+			m.workflowStepCursor--
+		}
+		return m, nil
+	}
 	if m.mode == ModeWorkflows {
 		if m.workflowCursor > 0 {
 			m.workflowCursor--
@@ -927,6 +979,12 @@ func handleUpKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleDownKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeWorkflowDetail {
+		if m.activeWorkflow != nil && m.workflowStepCursor < len(m.activeWorkflow.Steps)-1 {
+			m.workflowStepCursor++
+		}
+		return m, nil
+	}
 	if m.mode == ModeWorkflows {
 		if m.workflowCursor < len(m.workflows)-1 {
 			m.workflowCursor++
@@ -1158,6 +1216,34 @@ func (m Model) newWorkflow(id string) (Model, tea.Cmd) {
 
 	m.statusMessage = fmt.Sprintf("Created workflow: %s", wfPath)
 	return m, nil
+}
+
+func handleWorkflowStepEditKey(m Model) (Model, tea.Cmd) {
+	return m.editWorkflowStepRequest()
+}
+
+func handleWorkflowRunUpToKey(m Model) (Model, tea.Cmd) {
+	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
+		m.statusMessage = "No steps to run"
+		return m, nil
+	}
+	return m.startWorkflowPartial(m.activeWorkflow, 0, m.workflowStepCursor)
+}
+
+func handleWorkflowRunFromKey(m Model) (Model, tea.Cmd) {
+	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
+		m.statusMessage = "No steps to run"
+		return m, nil
+	}
+	return m.startWorkflowPartial(m.activeWorkflow, m.workflowStepCursor, len(m.activeWorkflow.Steps)-1)
+}
+
+func handleWorkflowRunStepKey(m Model) (Model, tea.Cmd) {
+	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
+		m.statusMessage = "No steps to run"
+		return m, nil
+	}
+	return m.startWorkflowPartial(m.activeWorkflow, m.workflowStepCursor, m.workflowStepCursor)
 }
 
 func handleEditScriptCommand(m Model, args []string) (Model, tea.Cmd) {

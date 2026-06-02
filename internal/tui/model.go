@@ -31,6 +31,7 @@ const (
 	ModeGRPCReflect
 	ModeWorkflows
 	ModeWorkflowRun
+	ModeWorkflowDetail
 )
 
 type EditType int
@@ -148,12 +149,13 @@ type Model struct {
 	grpcSelectedService int
 	grpcReflectPhase    int // 0 = services list, 1 = methods list
 
-	workflows        []*workflow.Workflow
-	workflowCursor   int
-	activeWorkflow   *workflow.Workflow
-	workflowState    workflow.ExecutionState
-	workflowChan     <-chan workflow.ExecutionState
-	workflowViewport viewport.Model
+	workflows          []*workflow.Workflow
+	workflowCursor     int
+	workflowStepCursor int
+	activeWorkflow     *workflow.Workflow
+	workflowState      workflow.ExecutionState
+	workflowChan       <-chan workflow.ExecutionState
+	workflowViewport   viewport.Model
 }
 
 // GRPCReflectMsg carries the result of an async gRPC server reflection call.

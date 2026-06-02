@@ -3,6 +3,7 @@ package workflow
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -142,6 +143,67 @@ func TestNewWorkflow(t *testing.T) {
 	}
 	if wf.Steps == nil {
 		t.Error("Steps should be initialized (not nil)")
+	}
+}
+
+func TestPartialScript_singleStep(t *testing.T) {
+	steps := []Step{
+		{ID: "login", Request: "Auth/Login"},
+		{ID: "get-user", Request: "Users/Get User"},
+		{ID: "list-users", Request: "Users/List"},
+	}
+
+	got := PartialScript(steps, 1, 1)
+	if !strings.Contains(got, `wf.run("get-user")`) {
+		t.Errorf("expected get-user in script, got:\n%s", got)
+	}
+	if strings.Contains(got, `wf.run("login")`) {
+		t.Errorf("login should not appear in single-step script, got:\n%s", got)
+	}
+	if strings.Contains(got, `wf.run("list-users")`) {
+		t.Errorf("list-users should not appear in single-step script, got:\n%s", got)
+	}
+}
+
+func TestPartialScript_range(t *testing.T) {
+	steps := []Step{
+		{ID: "a", Request: "Folder/A"},
+		{ID: "b", Request: "Folder/B"},
+		{ID: "c", Request: "Folder/C"},
+		{ID: "d", Request: "Folder/D"},
+	}
+
+	got := PartialScript(steps, 1, 2)
+	if !strings.Contains(got, `wf.run("b")`) {
+		t.Errorf("b missing: %s", got)
+	}
+	if !strings.Contains(got, `wf.run("c")`) {
+		t.Errorf("c missing: %s", got)
+	}
+	if strings.Contains(got, `wf.run("a")`) {
+		t.Errorf("a should be excluded: %s", got)
+	}
+	if strings.Contains(got, `wf.run("d")`) {
+		t.Errorf("d should be excluded: %s", got)
+	}
+}
+
+func TestPartialScript_allSteps(t *testing.T) {
+	steps := []Step{
+		{ID: "step1", Request: "F/S1"},
+		{ID: "step2", Request: "F/S2"},
+	}
+	got := PartialScript(steps, 0, len(steps)-1)
+	if !strings.Contains(got, `wf.run("step1")`) || !strings.Contains(got, `wf.run("step2")`) {
+		t.Errorf("both steps should be present: %s", got)
+	}
+}
+
+func TestPartialScript_isValidWorkflowScript(t *testing.T) {
+	steps := []Step{{ID: "login", Request: "Auth/Login"}}
+	got := PartialScript(steps, 0, 0)
+	if !strings.HasPrefix(strings.TrimSpace(got), "export default async function") {
+		t.Errorf("script should start with export default async function, got: %s", got)
 	}
 }
 
