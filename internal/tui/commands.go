@@ -347,6 +347,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Handler:     handleDiscardAllKey,
 			AvailableIn: []ViewMode{ModeChanges},
 		},
+		{
+			Keys:        []string{"ctrl+d"},
+			Description: "Delete request",
+			ShortHelp:   "ctrl+d",
+			Handler:     handleDeleteRequestKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
 	}
 }
 
@@ -1264,5 +1271,56 @@ func handleEditScriptCommand(m Model, args []string) (Model, tea.Cmd) {
 	} else {
 		m.statusMessage = "No request selected"
 	}
+	return m, nil
+}
+
+func handleDeleteRequestKey(m Model) (Model, tea.Cmd) {
+	if m.mode != ModeRequests || m.cursor >= len(m.currentItems) {
+		return m, nil
+	}
+	item := m.currentItems[m.cursor]
+	if !item.IsRequest() {
+		m.statusMessage = "Can only delete requests, not folders"
+		return m, nil
+	}
+	if m.collection == nil {
+		return m, nil
+	}
+
+	parentItems := &m.collection.Items
+	for _, crumb := range m.breadcrumb {
+		found := false
+		for i := range *parentItems {
+			if (*parentItems)[i].Name == crumb && (*parentItems)[i].IsFolder() {
+				parentItems = &(*parentItems)[i].Items
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.statusMessage = "Could not find parent folder"
+			return m, nil
+		}
+	}
+
+	deletedName := item.Name
+	*parentItems = append((*parentItems)[:m.cursor], (*parentItems)[m.cursor+1:]...)
+	m.currentItems = *parentItems
+
+	m.items = make([]string, len(m.currentItems))
+	for i, ci := range m.currentItems {
+		m.items[i] = itemDisplayPrefix(ci) + ci.Name
+	}
+
+	if m.cursor >= len(m.currentItems) && m.cursor > 0 {
+		m.cursor--
+	}
+
+	if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {
+		m.statusMessage = fmt.Sprintf("Deleted %s but failed to save: %v", deletedName, err)
+		return m, nil
+	}
+
+	m.statusMessage = fmt.Sprintf("Deleted: %s", deletedName)
 	return m, nil
 }
