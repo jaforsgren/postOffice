@@ -983,7 +983,7 @@ func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "enter":
 		if m.grpcReflectPhase == 0 {
-			if len(m.grpcReflectServices) == 0 {
+			if len(m.grpcReflectServices) == 0 || m.grpcSelectedService >= len(m.grpcReflectServices) {
 				return m, nil
 			}
 			m.grpcReflectPhase = 1
@@ -994,6 +994,9 @@ func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		// Phase 1: select a method
+		if m.grpcSelectedService >= len(m.grpcReflectServices) {
+			return m, nil
+		}
 		svc := m.grpcReflectServices[m.grpcSelectedService]
 		if m.cursor >= len(svc.Methods) {
 			return m, nil

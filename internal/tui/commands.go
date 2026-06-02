@@ -1110,6 +1110,9 @@ func handleWorkflowCommand(m Model, args []string) (Model, tea.Cmd) {
 	}
 
 	parts := strings.Fields(args[0])
+	if len(parts) == 0 {
+		return m.loadWorkflows()
+	}
 	subCmd := parts[0]
 	subArgs := parts[1:]
 
