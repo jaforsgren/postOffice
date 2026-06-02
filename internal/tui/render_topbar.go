@@ -184,6 +184,8 @@ func (m Model) getModeString() string {
 		return "Logs"
 	case ModeFileBrowser:
 		return "File Browser"
+	case ModeSavedResponses:
+		return "Saved Responses"
 	default:
 		return ""
 	}
@@ -287,9 +289,11 @@ func (m Model) renderStatusBar() string {
 
 	switch m.mode {
 	case ModeResponse:
-		help = "ctrl+r: resend | q: close | j/k: scroll"
+		help = "ctrl+r: resend | s: save | y: copy body | Y: copy all | q: close | j/k: scroll"
 	case ModeInfo, ModeJSON, ModeLog:
 		help = "q: close | j/k: scroll"
+	case ModeSavedResponses:
+		help = "enter: view | d: delete | esc: back | j/k: navigate"
 	default:
 		help = "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
 	}

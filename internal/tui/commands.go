@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/workflow"
 	"strings"
+	"time"
 
+	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -226,7 +229,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Select",
 			ShortHelp:   "enter",
 			Handler:     handleEnterKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments, ModeChanges, ModeWorkflows},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments, ModeChanges, ModeWorkflows, ModeSavedResponses},
 		},
 		{
 			Keys:        []string{"ctrl+e"},
@@ -275,21 +278,21 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses},
 		},
 		{
 			Keys:        []string{"up", "k"},
 			Description: "Navigate up",
 			ShortHelp:   "j/k",
 			Handler:     handleUpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses},
 		},
 		{
 			Keys:        []string{"down", "j"},
 			Description: "Scroll/Navigate",
 			ShortHelp:   "j/k",
 			Handler:     handleDownKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses},
 		},
 		{
 			Keys:        []string{"e"},
@@ -353,6 +356,41 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			ShortHelp:   "ctrl+d",
 			Handler:     handleDeleteRequestKey,
 			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"H"},
+			Description: "Saved response history",
+			ShortHelp:   "H",
+			Handler:     handleSavedResponsesKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"y"},
+			Description: "Copy response body",
+			ShortHelp:   "y",
+			Handler:     handleCopyResponseBodyKey,
+			AvailableIn: []ViewMode{ModeResponse},
+		},
+		{
+			Keys:        []string{"Y"},
+			Description: "Copy full response",
+			ShortHelp:   "Y",
+			Handler:     handleCopyFullResponseKey,
+			AvailableIn: []ViewMode{ModeResponse},
+		},
+		{
+			Keys:        []string{"s"},
+			Description: "Save response",
+			ShortHelp:   "s",
+			Handler:     handleSaveResponseKey,
+			AvailableIn: []ViewMode{ModeResponse},
+		},
+		{
+			Keys:        []string{"d"},
+			Description: "Delete saved response",
+			ShortHelp:   "d",
+			Handler:     handleDeleteSavedResponseKey,
+			AvailableIn: []ViewMode{ModeSavedResponses},
 		},
 	}
 }
@@ -682,6 +720,22 @@ func handleQuitKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleEnterKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeSavedResponses {
+		if m.savedResponseCursor < len(m.savedResponses) {
+			sr := m.savedResponses[m.savedResponseCursor]
+			m.lastResponse = savedResponseToHTTPResponse(sr)
+			m.lastTestResult = nil
+			m.viewingSavedResponse = true
+			m.scrollOffset = 0
+			m.responseViewport.Width = m.width - 8
+			m.responseViewport.Height = m.height - 8
+			lines := m.buildResponseLines()
+			m.responseViewport.SetContent(strings.Join(lines, "\n"))
+			m.mode = ModeResponse
+			m.statusMessage = fmt.Sprintf("Viewing saved: %s  %s", sr.SavedAt.Format("2006-01-02 15:04:05"), sr.Status)
+		}
+		return m, nil
+	}
 	if m.mode == ModeWorkflows {
 		if m.workflowCursor < len(m.workflows) {
 			return m.openWorkflowDetail(m.workflows[m.workflowCursor])
@@ -879,10 +933,22 @@ func handleRestoreSessionKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleBackKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeResponse && m.viewingSavedResponse {
+		m.viewingSavedResponse = false
+		m.mode = ModeSavedResponses
+		m.statusMessage = ""
+		return m, nil
+	}
 	if m.mode == ModeResponse {
 		m.mode = ModeRequests
 		m.scrollOffset = 0
 		m.statusMessage = "Closed response view"
+		return m, nil
+	}
+	if m.mode == ModeSavedResponses {
+		m.mode = ModeRequests
+		m.savedResponseCursor = 0
+		m.statusMessage = "Closed saved responses"
 		return m, nil
 	}
 	if m.mode == ModeInfo {
@@ -973,6 +1039,12 @@ func handleUpKey(m Model) (Model, tea.Cmd) {
 		m.workflowViewport.ScrollUp(1)
 		return m, nil
 	}
+	if m.mode == ModeSavedResponses {
+		if m.savedResponseCursor > 0 {
+			m.savedResponseCursor--
+		}
+		return m, nil
+	}
 	if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
 		if m.envVarCursor > 0 {
 			m.envVarCursor--
@@ -1004,6 +1076,12 @@ func handleDownKey(m Model) (Model, tea.Cmd) {
 	}
 	if m.mode == ModeWorkflowRun {
 		m.workflowViewport.ScrollDown(1)
+		return m, nil
+	}
+	if m.mode == ModeSavedResponses {
+		if m.savedResponseCursor < len(m.savedResponses)-1 {
+			m.savedResponseCursor++
+		}
 		return m, nil
 	}
 	if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
@@ -1323,4 +1401,111 @@ func handleDeleteRequestKey(m Model) (Model, tea.Cmd) {
 
 	m.statusMessage = fmt.Sprintf("Deleted: %s", deletedName)
 	return m, nil
+}
+
+func handleSavedResponsesKey(m Model) (Model, tea.Cmd) {
+	if m.mode != ModeRequests || m.cursor >= len(m.currentItems) {
+		return m, nil
+	}
+	item := m.currentItems[m.cursor]
+	if !item.IsRequest() {
+		m.statusMessage = "Select a request to view saved responses"
+		return m, nil
+	}
+	itemID := m.getRequestIdentifier(item)
+	responses, err := m.parser.GetSavedResponses(itemID)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to load saved responses: %v", err)
+		return m, nil
+	}
+	m.savedResponses = responses
+	m.savedResponseItemID = itemID
+	m.savedResponseCursor = 0
+	m.savedResponseViewport.Width = m.width - 8
+	m.savedResponseViewport.Height = m.height - 8
+	m.previousMode = m.mode
+	m.mode = ModeSavedResponses
+	m.statusMessage = fmt.Sprintf("%d saved response(s)", len(responses))
+	return m, nil
+}
+
+func handleCopyResponseBodyKey(m Model) (Model, tea.Cmd) {
+	if m.lastResponse == nil {
+		return m, nil
+	}
+	if err := clipboard.WriteAll(m.lastResponse.Body); err != nil {
+		m.statusMessage = fmt.Sprintf("Copy failed: %v", err)
+		return m, nil
+	}
+	m.statusMessage = "Response body copied to clipboard"
+	return m, nil
+}
+
+func handleCopyFullResponseKey(m Model) (Model, tea.Cmd) {
+	if m.lastResponse == nil {
+		return m, nil
+	}
+	lines := m.buildResponseLines()
+	if err := clipboard.WriteAll(strings.Join(lines, "\n")); err != nil {
+		m.statusMessage = fmt.Sprintf("Copy failed: %v", err)
+		return m, nil
+	}
+	m.statusMessage = "Full response copied to clipboard"
+	return m, nil
+}
+
+func handleSaveResponseKey(m Model) (Model, tea.Cmd) {
+	if m.lastResponse == nil || m.lastExecutedItemID == "" {
+		m.statusMessage = "No response to save"
+		return m, nil
+	}
+	resp := m.lastResponse
+	saved := postman.SavedResponse{
+		SavedAt:         time.Now(),
+		RequestMethod:   resp.RequestMethod,
+		RequestURL:      resp.RequestURL,
+		RequestHeaders:  resp.RequestHeaders,
+		RequestBody:     resp.RequestBody,
+		StatusCode:      resp.StatusCode,
+		Status:          resp.Status,
+		ResponseHeaders: resp.Headers,
+		Body:            resp.Body,
+		DurationMS:      resp.Duration.Milliseconds(),
+	}
+	if err := m.parser.SaveResponse(m.lastExecutedItemID, saved); err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to save response: %v", err)
+		return m, nil
+	}
+	m.statusMessage = fmt.Sprintf("Response saved (%s)", saved.Status)
+	return m, nil
+}
+
+func handleDeleteSavedResponseKey(m Model) (Model, tea.Cmd) {
+	if m.mode != ModeSavedResponses || m.savedResponseCursor >= len(m.savedResponses) {
+		return m, nil
+	}
+	if err := m.parser.DeleteSavedResponse(m.savedResponseItemID, m.savedResponseCursor); err != nil {
+		m.statusMessage = fmt.Sprintf("Delete failed: %v", err)
+		return m, nil
+	}
+	m.savedResponses = append(m.savedResponses[:m.savedResponseCursor], m.savedResponses[m.savedResponseCursor+1:]...)
+	if m.savedResponseCursor >= len(m.savedResponses) && m.savedResponseCursor > 0 {
+		m.savedResponseCursor--
+	}
+	m.statusMessage = fmt.Sprintf("%d saved response(s) remaining", len(m.savedResponses))
+	return m, nil
+}
+
+func savedResponseToHTTPResponse(sr postman.SavedResponse) *http.Response {
+	return &http.Response{
+		StatusCode:     sr.StatusCode,
+		Status:         sr.Status,
+		Headers:        sr.ResponseHeaders,
+		Body:           sr.Body,
+		Duration:       time.Duration(sr.DurationMS) * time.Millisecond,
+		RequestMethod:  sr.RequestMethod,
+		RequestURL:     sr.RequestURL,
+		RequestHeaders: sr.RequestHeaders,
+		RequestBody:    sr.RequestBody,
+	}
 }
