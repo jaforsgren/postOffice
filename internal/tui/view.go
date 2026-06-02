@@ -52,6 +52,9 @@ func (m Model) renderContent() []string {
 	case ModeWorkflowRun:
 		return []string{m.renderWorkflowRunView()}
 
+	case ModeWorkflowDetail:
+		return []string{m.renderWorkflowDetail()}
+
 	default:
 		return []string{m.renderMainWindow()}
 	}

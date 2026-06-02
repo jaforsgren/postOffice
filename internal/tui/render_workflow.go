@@ -51,6 +51,89 @@ func (m Model) renderWorkflowsList() string {
 	return m.padToHeight(sb.String(), h)
 }
 
+func (m Model) renderWorkflowDetail() string {
+	metrics := m.calculateLayout()
+	h := metrics.contentHeight
+
+	wf := m.activeWorkflow
+	if wf == nil {
+		return m.padToHeight(subtleStyle.Render("No workflow selected."), h)
+	}
+
+	var sb strings.Builder
+
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+	sb.WriteString(headerStyle.Render(wf.Name) + "\n")
+	if wf.Description != "" {
+		sb.WriteString(subtleStyle.Render(wf.Description) + "\n")
+	}
+
+	meta := fmt.Sprintf("Steps: %d", len(wf.Steps))
+	if wf.Version > 0 {
+		meta += fmt.Sprintf("  Version: %d", wf.Version)
+	}
+	sb.WriteString(dimStyle.Render(meta) + "\n\n")
+
+	if len(wf.Steps) == 0 {
+		sb.WriteString(subtleStyle.Render("No steps defined.") + "\n")
+	} else {
+		sb.WriteString(labelStyle.Render("Steps:") + "\n")
+		for i, step := range wf.Steps {
+			selected := i == m.workflowStepCursor
+			prefix := "  "
+			if selected {
+				prefix = "> "
+			}
+			num := fmt.Sprintf("[%d]", i+1)
+			idStr := fmt.Sprintf("%-20s", step.ID)
+			line := prefix + dimStyle.Render(num) + " "
+			if selected {
+				line += lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).Render(idStr)
+			} else {
+				line += normalItemStyle.Render(idStr)
+			}
+			line += "  " + subtleStyle.Render(step.Request)
+			sb.WriteString(line + "\n")
+		}
+	}
+
+	// Inline key guide
+	sb.WriteString("\n")
+	separator := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(strings.Repeat("─", 40))
+	sb.WriteString(separator + "\n")
+	keys := []struct{ key, desc string }{
+		{"j/k", "navigate steps"},
+		{"e", "edit step request"},
+		{"i", "inspect step"},
+		{"1", "run up to this step"},
+		{"2", "run from this step"},
+		{"3", "run this step only"},
+		{"ctrl+r", "run full workflow"},
+		{"esc", "back to workflows"},
+	}
+	col := 0
+	for _, k := range keys {
+		entry := lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("<"+k.key+">") + " " + dimStyle.Render(k.desc)
+		if col > 0 {
+			sb.WriteString("   ")
+		}
+		sb.WriteString(entry)
+		col++
+		if col == 2 {
+			sb.WriteString("\n")
+			col = 0
+		}
+	}
+	if col != 0 {
+		sb.WriteString("\n")
+	}
+
+	return m.padToHeight(sb.String(), h)
+}
+
 func (m Model) renderWorkflowRunView() string {
 	return m.workflowViewport.View()
 }

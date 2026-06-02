@@ -1885,6 +1885,141 @@ func (m Model) findItemByPath(path []string, itemName string) *postman.Item {
 	return nil
 }
 
+// openWorkflowDetail sets the active workflow and enters the detail view.
+func (m Model) openWorkflowDetail(wf *workflow.Workflow) (Model, tea.Cmd) {
+	m.activeWorkflow = wf
+	m.workflowStepCursor = 0
+	m.previousMode = m.mode
+	m.mode = ModeWorkflowDetail
+	steps := len(wf.Steps)
+	if steps == 0 {
+		m.statusMessage = fmt.Sprintf("%s — no steps defined  <:wf new> to scaffold", wf.Name)
+	} else {
+		m.statusMessage = fmt.Sprintf("%s — %d step(s)  j/k navigate  1/2/3 partial run  ctrl+r full run", wf.Name, steps)
+	}
+	return m, nil
+}
+
+// startWorkflowPartial runs a contiguous range of steps [fromIdx, toIdx] without the workflow's script logic.
+func (m Model) startWorkflowPartial(wf *workflow.Workflow, fromIdx, toIdx int) (Model, tea.Cmd) {
+	if m.collection == nil {
+		m.statusMessage = "Load a collection first"
+		return m, nil
+	}
+
+	partialWf := *wf
+	partialWf.Script = workflow.PartialScript(wf.Steps, fromIdx, toIdx)
+
+	var rangeDesc string
+	switch {
+	case fromIdx == toIdx:
+		rangeDesc = fmt.Sprintf("step: %s", wf.Steps[fromIdx].ID)
+	case fromIdx == 0:
+		rangeDesc = fmt.Sprintf("up to: %s", wf.Steps[toIdx].ID)
+	default:
+		rangeDesc = fmt.Sprintf("from: %s", wf.Steps[fromIdx].ID)
+	}
+	m.statusMessage = fmt.Sprintf("Running %s (%s)", wf.Name, rangeDesc)
+
+	return m.startWorkflow(&partialWf)
+}
+
+// resolveStepItem finds the postman.Item for a workflow step by traversing the collection.
+func (m Model) resolveStepItem(requestPath string) (*postman.Item, []string, error) {
+	if m.collection == nil {
+		return nil, nil, fmt.Errorf("no collection loaded")
+	}
+	parts := strings.Split(requestPath, "/")
+	if len(parts) == 0 {
+		return nil, nil, fmt.Errorf("empty request path")
+	}
+
+	folderPath := parts[:len(parts)-1]
+	itemName := parts[len(parts)-1]
+
+	current := m.collection.Items
+	for _, folder := range folderPath {
+		found := false
+		for i := range current {
+			if current[i].Name == folder {
+				current = current[i].Items
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, nil, fmt.Errorf("folder %q not found", folder)
+		}
+	}
+
+	for i := range current {
+		if current[i].Name == itemName {
+			return &current[i], folderPath, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("request %q not found in collection", itemName)
+}
+
+// editWorkflowStepRequest navigates to the step's underlying request and enters edit mode.
+func (m Model) editWorkflowStepRequest() (Model, tea.Cmd) {
+	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
+		m.statusMessage = "No step selected"
+		return m, nil
+	}
+	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
+		m.statusMessage = "No step selected"
+		return m, nil
+	}
+
+	step := m.activeWorkflow.Steps[m.workflowStepCursor]
+	item, folderPath, err := m.resolveStepItem(step.Request)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Cannot find request %q: %v", step.Request, err)
+		return m, nil
+	}
+	if !item.IsRequest() {
+		m.statusMessage = fmt.Sprintf("%q is a folder, not a request", step.Request)
+		return m, nil
+	}
+
+	// Set breadcrumb so saveEdit() can locate the item in the collection.
+	m.breadcrumb = folderPath
+	m.previousMode = ModeWorkflowDetail
+	m = m.enterEditMode(*item)
+	return m, nil
+}
+
+// showWorkflowStepInfo opens the Info view for the step's underlying request.
+func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
+	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
+		m.statusMessage = "No step selected"
+		return m, nil
+	}
+	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
+		m.statusMessage = "No step selected"
+		return m, nil
+	}
+
+	step := m.activeWorkflow.Steps[m.workflowStepCursor]
+	item, _, err := m.resolveStepItem(step.Request)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Cannot find request %q: %v", step.Request, err)
+		return m, nil
+	}
+
+	m.currentInfoItem = item
+	m.scrollOffset = 0
+	m.previousMode = ModeWorkflowDetail
+	m.mode = ModeInfo
+
+	m.infoViewport.Width = m.width - 8
+	m.infoViewport.Height = m.height - 8
+	lines := m.buildItemInfoLines()
+	m.infoViewport.SetContent(strings.Join(lines, "\n"))
+	m.statusMessage = fmt.Sprintf("Inspecting: %s  (esc to return to workflow)", step.Request)
+	return m, nil
+}
+
 func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
 	if m.collection == nil {
 		m.statusMessage = "Load a collection first"
