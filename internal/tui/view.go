@@ -46,6 +46,12 @@ func (m Model) renderContent() []string {
 	case ModeFileBrowser:
 		return []string{m.renderFileBrowser()}
 
+	case ModeWorkflows:
+		return []string{m.renderWorkflowsList()}
+
+	case ModeWorkflowRun:
+		return []string{m.renderWorkflowRunView()}
+
 	default:
 		return []string{m.renderMainWindow()}
 	}

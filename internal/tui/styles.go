@@ -40,4 +40,6 @@ var (
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("81")).
 			Padding(1, 2)
+
+	subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )

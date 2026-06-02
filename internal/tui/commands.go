@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"postOffice/internal/postman"
+	"postOffice/internal/workflow"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -167,7 +168,7 @@ func (cr *CommandRegistry) registerCommands() {
 			Description: "Quit application",
 			ShortHelp:   ":q",
 			Handler:     handleQuitCommand,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeInfo, ModeEnvironments, ModeVariables, ModeEdit},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeInfo, ModeEnvironments, ModeVariables, ModeEdit, ModeWorkflows, ModeWorkflowRun},
 		},
 		{
 			Name:        "help",
@@ -192,6 +193,14 @@ func (cr *CommandRegistry) registerCommands() {
 			ShortHelp:   ":logs",
 			Handler:     handleLogsCommand,
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeInfo, ModeJSON},
+		},
+		{
+			Name:        "wf",
+			Aliases:     []string{"workflow", "workflows"},
+			Description: "Manage and run workflows (:wf [run|new] <name>)",
+			ShortHelp:   ":wf",
+			Handler:     handleWorkflowCommand,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowRun},
 		},
 	}
 
@@ -228,10 +237,10 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		},
 		{
 			Keys:        []string{"ctrl+r"},
-			Description: "View/Resend response",
+			Description: "View/Resend response / Run workflow",
 			ShortHelp:   "ctrl+r",
 			Handler:     handleResponseViewKey,
-			AvailableIn: []ViewMode{ModeRequests, ModeResponse},
+			AvailableIn: []ViewMode{ModeRequests, ModeResponse, ModeWorkflows, ModeWorkflowRun},
 		},
 		{
 			Keys:        []string{"i"},
@@ -266,21 +275,21 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun},
 		},
 		{
 			Keys:        []string{"up", "k"},
 			Description: "Navigate up",
 			ShortHelp:   "j/k",
 			Handler:     handleUpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun},
 		},
 		{
 			Keys:        []string{"down", "j"},
 			Description: "Scroll/Navigate",
 			ShortHelp:   "j/k",
 			Handler:     handleDownKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun},
 		},
 		{
 			Keys:        []string{"d"},
@@ -636,6 +645,12 @@ func handleQuitKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleEnterKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeWorkflows {
+		if m.workflowCursor < len(m.workflows) {
+			return m.startWorkflow(m.workflows[m.workflowCursor])
+		}
+		return m, nil
+	}
 	if m.mode == ModeRequests {
 		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
 			item := m.currentItems[m.cursor]
@@ -666,6 +681,18 @@ func handleExecuteKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleResponseViewKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeWorkflows {
+		if m.workflowCursor < len(m.workflows) {
+			return m.startWorkflow(m.workflows[m.workflowCursor])
+		}
+		return m, nil
+	}
+	if m.mode == ModeWorkflowRun {
+		if m.activeWorkflow != nil && m.workflowChan == nil {
+			return m.startWorkflow(m.activeWorkflow)
+		}
+		return m, nil
+	}
 	if m.mode == ModeResponse {
 		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
 			item := m.currentItems[m.cursor]
@@ -847,6 +874,16 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Closed changes view"
 		return m, nil
 	}
+	if m.mode == ModeWorkflows {
+		m.mode = m.previousMode
+		m.statusMessage = "Closed workflows view"
+		return m, nil
+	}
+	if m.mode == ModeWorkflowRun {
+		m.mode = ModeWorkflows
+		m.statusMessage = "Returned to workflows list"
+		return m, nil
+	}
 	if m.searchActive {
 		m.searchActive = false
 		m.searchInput.SetValue("")
@@ -863,6 +900,16 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleUpKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeWorkflows {
+		if m.workflowCursor > 0 {
+			m.workflowCursor--
+		}
+		return m, nil
+	}
+	if m.mode == ModeWorkflowRun {
+		m.workflowViewport.ScrollUp(1)
+		return m, nil
+	}
 	if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
 		if m.envVarCursor > 0 {
 			m.envVarCursor--
@@ -880,6 +927,16 @@ func handleUpKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleDownKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeWorkflows {
+		if m.workflowCursor < len(m.workflows)-1 {
+			m.workflowCursor++
+		}
+		return m, nil
+	}
+	if m.mode == ModeWorkflowRun {
+		m.workflowViewport.ScrollDown(1)
+		return m, nil
+	}
 	if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
 		if m.envVarCursor < len(m.environment.Values)-1 {
 			m.envVarCursor++
@@ -986,6 +1043,120 @@ func handleDiscardAllKey(m Model) (Model, tea.Cmd) {
 		m = m.refreshCurrentView()
 		m.statusMessage = "Discarded all changes and reloaded from file"
 	}
+	return m, nil
+}
+
+func handleWorkflowCommand(m Model, args []string) (Model, tea.Cmd) {
+	if len(args) == 0 {
+		return m.loadWorkflows()
+	}
+
+	parts := strings.Fields(args[0])
+	subCmd := parts[0]
+	subArgs := parts[1:]
+
+	switch subCmd {
+	case "run", "r":
+		if len(subArgs) == 0 {
+			m.statusMessage = "Usage: :wf run <workflow-id>"
+			return m, nil
+		}
+		return m.runWorkflowByID(strings.Join(subArgs, " "))
+
+	case "new", "n":
+		if len(subArgs) == 0 {
+			m.statusMessage = "Usage: :wf new <workflow-id>"
+			return m, nil
+		}
+		return m.newWorkflow(strings.Join(subArgs, " "))
+
+	default:
+		// Treat as a workflow ID to run directly.
+		return m.runWorkflowByID(args[0])
+	}
+}
+
+func (m Model) loadWorkflows() (Model, tea.Cmd) {
+	if m.collection == nil {
+		m.statusMessage = "Load a collection first"
+		return m, nil
+	}
+
+	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+	if !exists {
+		m.statusMessage = "Collection path not found"
+		return m, nil
+	}
+
+	wfDir := workflow.WorkflowsDir(collectionPath)
+	wfs, err := workflow.DiscoverWorkflows(wfDir)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to discover workflows: %v", err)
+		return m, nil
+	}
+
+	m.workflows = wfs
+	m.workflowCursor = 0
+	m.previousMode = m.mode
+	m.mode = ModeWorkflows
+
+	if len(wfs) == 0 {
+		m.statusMessage = "No workflows found. Create one with :wf new <id>"
+	} else {
+		m.statusMessage = fmt.Sprintf("%d workflow(s) — enter or ctrl+r to run", len(wfs))
+	}
+	return m, nil
+}
+
+func (m Model) runWorkflowByID(id string) (Model, tea.Cmd) {
+	if m.collection == nil {
+		m.statusMessage = "Load a collection first"
+		return m, nil
+	}
+
+	// Try loaded workflows first.
+	for _, wf := range m.workflows {
+		if wf.ID == id || wf.Name == id {
+			return m.startWorkflow(wf)
+		}
+	}
+
+	// Try loading from file.
+	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+	if !exists {
+		m.statusMessage = fmt.Sprintf("Workflow %q not found", id)
+		return m, nil
+	}
+	wfPath := workflow.WorkflowPath(collectionPath, id)
+	wf, err := workflow.LoadWorkflow(wfPath)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Workflow %q not found: %v", id, err)
+		return m, nil
+	}
+	return m.startWorkflow(wf)
+}
+
+func (m Model) newWorkflow(id string) (Model, tea.Cmd) {
+	if m.collection == nil {
+		m.statusMessage = "Load a collection first"
+		return m, nil
+	}
+
+	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+	if !exists {
+		m.statusMessage = "Collection path not found"
+		return m, nil
+	}
+
+	wf := workflow.NewWorkflow(id)
+	wfPath := workflow.WorkflowPath(collectionPath, id)
+
+	if err := workflow.SaveWorkflow(wf, wfPath); err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to create workflow: %v", err)
+		return m, nil
+	}
+
+	m.statusMessage = fmt.Sprintf("Created workflow: %s", wfPath)
 	return m, nil
 }
 
