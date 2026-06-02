@@ -268,9 +268,10 @@ func (m Model) getContextualShortcuts() string {
 func (m Model) renderCommandBar() string {
 	if m.commandMode {
 		display := ":" + m.commandInput.View()
-		if m.commandSuggestion != "" && len(m.commandInput.Value()) > 0 {
+		inputLen := len(m.commandInput.Value())
+		if m.commandSuggestion != "" && inputLen > 0 && inputLen <= len(m.commandSuggestion) {
 			fadedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-			remaining := m.commandSuggestion[len(m.commandInput.Value()):]
+			remaining := m.commandSuggestion[inputLen:]
 			display += fadedStyle.Render(remaining)
 		}
 		return commandBarStyle.Width(m.width).Render(display)
