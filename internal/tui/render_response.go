@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -73,13 +74,7 @@ func (m Model) buildRequestSection() []string {
 	if m.lastResponse.RequestBody != "" {
 		lines = append(lines, "")
 		lines = append(lines, folderStyle.Render("Request Body:"))
-		bodyLines := strings.Split(m.lastResponse.RequestBody, "\n")
-		maxPreviewLines := 666
-		for i, line := range bodyLines {
-			if i >= maxPreviewLines {
-				lines = append(lines, "  ...")
-				break
-			}
+		for _, line := range prettyBodyLines(m.lastResponse.RequestBody) {
 			lines = append(lines, "  "+line)
 		}
 	}
@@ -116,8 +111,7 @@ func (m Model) buildResponseSection() []string {
 
 		if m.lastResponse.Body != "" {
 			lines = append(lines, requestStyle.Render("Response Body:"))
-			bodyLines := strings.Split(m.lastResponse.Body, "\n")
-			lines = append(lines, bodyLines...)
+			lines = append(lines, prettyBodyLines(m.lastResponse.Body)...)
 		}
 	}
 
@@ -227,6 +221,16 @@ func (m Model) buildTestResultsSection() []string {
 	}
 
 	return lines
+}
+
+func prettyBodyLines(body string) []string {
+	var js interface{}
+	if err := json.Unmarshal([]byte(body), &js); err == nil {
+		if pretty, err := json.MarshalIndent(js, "", "  "); err == nil {
+			return strings.Split(string(pretty), "\n")
+		}
+	}
+	return strings.Split(body, "\n")
 }
 
 func (m Model) renderEmptyPopup(message string, availableHeight int) string {
