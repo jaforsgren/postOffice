@@ -194,7 +194,7 @@ func NewModel(parser *postman.Parser) Model {
 	editFieldTextArea := textarea.New()
 	editFieldTextArea.CharLimit = 50000
 
-	return Model{
+	m := Model{
 		parser:               parser,
 		executor:             http.NewExecutor(),
 		commandRegistry:      NewCommandRegistry(),
@@ -223,6 +223,9 @@ func NewModel(parser *postman.Parser) Model {
 		workflowViewport:     viewport.New(0, 0),
 		requestExecutions:    make(map[string]*RequestExecution),
 	}
+	m = m.restoreSession()
+	m.statusMessage = "Press : to enter command mode"
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
