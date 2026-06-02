@@ -55,6 +55,9 @@ func (m Model) renderContent() []string {
 	case ModeWorkflowDetail:
 		return []string{m.renderWorkflowDetail()}
 
+	case ModeSavedResponses:
+		return []string{m.renderSavedResponsesView()}
+
 	default:
 		return []string{m.renderMainWindow()}
 	}

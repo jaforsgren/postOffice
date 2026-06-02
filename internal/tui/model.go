@@ -32,6 +32,7 @@ const (
 	ModeWorkflows
 	ModeWorkflowRun
 	ModeWorkflowDetail
+	ModeSavedResponses
 )
 
 type EditType int
@@ -156,6 +157,12 @@ type Model struct {
 	workflowState      workflow.ExecutionState
 	workflowChan       <-chan workflow.ExecutionState
 	workflowViewport   viewport.Model
+
+	savedResponses         []postman.SavedResponse
+	savedResponseCursor    int
+	savedResponseItemID    string
+	savedResponseViewport  viewport.Model
+	viewingSavedResponse   bool
 }
 
 // GRPCReflectMsg carries the result of an async gRPC server reflection call.
@@ -220,8 +227,9 @@ func NewModel(parser *postman.Parser) Model {
 		infoViewport:         viewport.New(0, 0),
 		jsonViewport:         viewport.New(0, 0),
 		logsViewport:         viewport.New(0, 0),
-		workflowViewport:     viewport.New(0, 0),
-		requestExecutions:    make(map[string]*RequestExecution),
+		workflowViewport:      viewport.New(0, 0),
+		savedResponseViewport: viewport.New(0, 0),
+		requestExecutions:     make(map[string]*RequestExecution),
 	}
 	m = m.restoreSession()
 	m.statusMessage = "Press : to enter command mode"
