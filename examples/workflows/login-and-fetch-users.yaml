@@ -1,0 +1,71 @@
+id: login-and-fetch-users
+
+name: Login and Fetch Users
+
+description: Authenticate via login endpoint, extract token, then fetch and log users
+
+version: 1
+
+steps:
+  - id: login
+    request: Auth/Login
+
+  - id: get-user
+    request: Users/Get User
+
+  - id: list-users
+    request: Users/List Users
+
+  - id: create-post
+    request: Posts/Create Post
+
+  - id: health-check
+    request: Health/Check
+
+script: |
+  export default async function (wf, pm) {
+    const loginResult = await wf.run("login");
+
+    if (loginResult.response.code !== 201) {
+      wf.fail("Login failed with status " + loginResult.response.code);
+      return;
+    }
+
+    const loginData = loginResult.response.json();
+    pm.collectionVariables.set("authToken", "token-" + loginData.id);
+    wf.context.userId = loginData.id || pm.collectionVariables.get("userId");
+
+    const userResult = await wf.run("get-user");
+
+    if (userResult.response.code !== 200) {
+      wf.fail("Failed to fetch user: " + userResult.response.code);
+      return;
+    }
+
+    const user = userResult.response.json();
+    pm.environment.set("last_user_name", user.name);
+    wf.context.user = user;
+
+    const listResult = await wf.run("list-users");
+    const users = listResult.response.json();
+    console.log("Found " + users.length + " users. Current user: " + user.name);
+
+    const postResult = await wf.run("create-post");
+
+    if (postResult.response.code !== 201) {
+      wf.fail("Failed to create post: " + postResult.response.code);
+      return;
+    }
+
+    const post = postResult.response.json();
+    console.log("Created post with id: " + post.id + ", title: " + post.title);
+
+    const healthResult = await wf.run("health-check");
+
+    if (healthResult.response.code !== 200) {
+      wf.fail("Health check failed: " + healthResult.response.code);
+      return;
+    }
+
+    console.log("Workflow complete. User: " + user.name + ", Post: " + post.id);
+  }

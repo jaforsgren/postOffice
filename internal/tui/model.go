@@ -5,6 +5,7 @@ import (
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
+	"postOffice/internal/workflow"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -28,6 +29,8 @@ const (
 	ModeLog
 	ModeFileBrowser
 	ModeGRPCReflect
+	ModeWorkflows
+	ModeWorkflowRun
 )
 
 type EditType int
@@ -144,12 +147,34 @@ type Model struct {
 	grpcReflectServices []grpc.ServiceInfo
 	grpcSelectedService int
 	grpcReflectPhase    int // 0 = services list, 1 = methods list
+
+	workflows        []*workflow.Workflow
+	workflowCursor   int
+	activeWorkflow   *workflow.Workflow
+	workflowState    workflow.ExecutionState
+	workflowChan     <-chan workflow.ExecutionState
+	workflowViewport viewport.Model
 }
 
 // GRPCReflectMsg carries the result of an async gRPC server reflection call.
 type GRPCReflectMsg struct {
 	Services []grpc.ServiceInfo
 	Err      error
+}
+
+// WorkflowMsg carries a workflow state snapshot from the async runner.
+// Done is true when the workflow has finished.
+type WorkflowMsg struct {
+	State workflow.ExecutionState
+	Done  bool
+}
+
+// waitForWorkflow returns a tea.Cmd that blocks until the next state arrives on ch.
+func waitForWorkflow(ch <-chan workflow.ExecutionState) tea.Cmd {
+	return func() tea.Msg {
+		state, ok := <-ch
+		return WorkflowMsg{State: state, Done: !ok}
+	}
 }
 
 func NewModel(parser *postman.Parser) Model {
@@ -193,6 +218,7 @@ func NewModel(parser *postman.Parser) Model {
 		infoViewport:         viewport.New(0, 0),
 		jsonViewport:         viewport.New(0, 0),
 		logsViewport:         viewport.New(0, 0),
+		workflowViewport:     viewport.New(0, 0),
 		requestExecutions:    make(map[string]*RequestExecution),
 	}
 }

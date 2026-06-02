@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"postOffice/internal/grpc"
 	"postOffice/internal/postman"
+	"postOffice/internal/workflow"
 	"strings"
 	"time"
 
@@ -72,6 +73,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		return m, nil
+
+	case WorkflowMsg:
+		m.workflowState = msg.State
+		if msg.Done {
+			if msg.State.Status == workflow.StatusSuccess {
+				m.statusMessage = fmt.Sprintf("Workflow %q completed", msg.State.WorkflowName)
+			} else {
+				errMsg := msg.State.Error
+				if errMsg == "" {
+					errMsg = msg.State.Status
+				}
+				m.statusMessage = fmt.Sprintf("Workflow %q %s: %s", msg.State.WorkflowName, msg.State.Status, errMsg)
+			}
+			m.workflowChan = nil
+			m = m.refreshWorkflowView()
+			return m, nil
+		}
+		m = m.refreshWorkflowView()
+		return m, waitForWorkflow(m.workflowChan)
 
 	case GRPCReflectMsg:
 		if msg.Err != nil {
@@ -1863,6 +1883,60 @@ func (m Model) findItemByPath(path []string, itemName string) *postman.Item {
 		}
 	}
 	return nil
+}
+
+func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
+	if m.collection == nil {
+		m.statusMessage = "Load a collection first"
+		return m, nil
+	}
+
+	m.activeWorkflow = wf
+	m.workflowState = workflow.ExecutionState{
+		WorkflowID:   wf.ID,
+		WorkflowName: wf.Name,
+		Status:       workflow.StatusPending,
+		StepIndex:    make(map[string]*workflow.StepState),
+	}
+	for _, s := range wf.Steps {
+		ss := &workflow.StepState{ID: s.ID, Request: s.Request, Status: workflow.StatusPending}
+		m.workflowState.Steps = append(m.workflowState.Steps, ss)
+		m.workflowState.StepIndex[s.ID] = ss
+	}
+
+	m.previousMode = m.mode
+	m.mode = ModeWorkflowRun
+	m.statusMessage = fmt.Sprintf("Running workflow: %s", wf.Name)
+	m = m.refreshWorkflowView()
+
+	progressChan := make(chan workflow.ExecutionState, 20)
+	m.workflowChan = progressChan
+
+	collection := m.collection
+	environment := m.environment
+	executor := m.executor
+
+	return m, tea.Batch(
+		// Run the workflow in a goroutine; close the channel when done.
+		func() tea.Msg {
+			runner := workflow.NewRunner(collection, environment, executor)
+			finalState := runner.Run(wf, func(state workflow.ExecutionState) {
+				progressChan <- state
+			})
+			close(progressChan)
+			return WorkflowMsg{State: finalState, Done: true}
+		},
+		// Start receiving progress updates.
+		waitForWorkflow(progressChan),
+	)
+}
+
+func (m Model) refreshWorkflowView() Model {
+	m.workflowViewport.Width = m.width - 4
+	m.workflowViewport.Height = m.height - 8
+	lines := m.buildWorkflowRunLines()
+	m.workflowViewport.SetContent(strings.Join(lines, "\n"))
+	return m
 }
 
 func joinPath(parts []string) string {

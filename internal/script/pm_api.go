@@ -9,6 +9,12 @@ import (
 	"postOffice/internal/postman"
 )
 
+// SetupPmAPI registers the Postman-compatible pm object on the given goja runtime.
+// Callers outside this package (e.g. workflow runtime) should use this exported entry point.
+func SetupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) error {
+	return setupPmAPI(vm, ctx, result)
+}
+
 func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) error {
 	pmObj := vm.NewObject()
 

@@ -1,0 +1,108 @@
+{
+  "id": "test-env-001",
+  "name": "Test Environment",
+  "values": [
+    {
+      "key": "api_key",
+      "value": "test-api-key-12345",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "environment",
+      "value": "testing",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "debug",
+      "value": "true",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "workflow_status",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "workflow_completed_at",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "operation",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "result",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "last_workflow_run",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "total_users",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "users_fetched_successfully",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "users_fetch_failed",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "completion_rate",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "workflow_summary",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "user_fetch_attempts",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "last_error",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "post_created",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "validation_error",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    }
+  ]
+}
