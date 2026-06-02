@@ -45,6 +45,11 @@ func (r *Runtime) ExecuteTestScript(script postman.Script, ctx *ExecutionContext
 		return result
 	}
 
+	if err := setupCryptoJS(r.vm); err != nil {
+		result.AddError(fmt.Sprintf("failed to setup CryptoJS: %v", err))
+		return result
+	}
+
 	scriptCode := strings.Join(script.Exec, "\n")
 
 	timeoutChan := make(chan struct{})
@@ -118,6 +123,11 @@ func (r *Runtime) ExecutePreRequestScript(script postman.Script, ctx *ExecutionC
 
 	if err := setupPmAPI(r.vm, ctx, result); err != nil {
 		result.AddError(fmt.Sprintf("failed to setup pm API: %v", err))
+		return result
+	}
+
+	if err := setupCryptoJS(r.vm); err != nil {
+		result.AddError(fmt.Sprintf("failed to setup CryptoJS: %v", err))
 		return result
 	}
 

@@ -291,6 +291,17 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) err
 		return fmt.Errorf("failed to set pm global: %w", err)
 	}
 
+	consoleObj := vm.NewObject()
+	noop := func(call goja.FunctionCall) goja.Value { return goja.Undefined() }
+	for _, method := range []string{"log", "warn", "error", "info", "debug"} {
+		if err := consoleObj.Set(method, noop); err != nil {
+			return fmt.Errorf("failed to set console.%s: %w", method, err)
+		}
+	}
+	if err := vm.Set("console", consoleObj); err != nil {
+		return fmt.Errorf("failed to set console global: %w", err)
+	}
+
 	// Define ok and error as getters if response context is present
 	if ctx.Response != nil {
 		_, err := vm.RunString(fmt.Sprintf(`
