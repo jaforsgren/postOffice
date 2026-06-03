@@ -714,7 +714,7 @@ func TestSaveEdit_NoEditType(t *testing.T) {
 	m := createTestModel()
 	m.editType = EditTypeNone
 
-	m = m.saveEdit()
+	m, _ = m.saveEdit()
 
 	if m.statusMessage != "Nothing to save" {
 		t.Errorf("Expected 'Nothing to save' status, got %s", m.statusMessage)
@@ -1324,7 +1324,7 @@ func TestSaveAllModifiedRequests_NoChanges(t *testing.T) {
 	m := createTestModel()
 	m.modifiedCollections = make(map[string]bool)
 
-	m = m.saveAllModifiedRequests()
+	m, _ = m.saveAllModifiedRequests()
 
 	if m.statusMessage != "No unsaved changes" {
 		t.Errorf("Expected 'No unsaved changes', got '%s'", m.statusMessage)

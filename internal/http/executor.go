@@ -54,7 +54,7 @@ func (e *Executor) Execute(
 			resp.Duration = time.Since(start)
 			return resp, nil
 		}
-		updatedVariables = rebuildVariables(collection, environment)
+		updatedVariables = postman.GetAllVariables(collection, nil, environment)
 	}
 
 	httpReq, err := e.buildRequest(req, updatedVariables)
@@ -176,38 +176,6 @@ func (e *Executor) executeTestScripts(
 	return result
 }
 
-func rebuildVariables(collection *postman.Collection, environment *postman.Environment) []postman.VariableSource {
-	var variables []postman.VariableSource
-	seen := make(map[string]bool)
-
-	if environment != nil {
-		for _, envVar := range environment.Values {
-			if envVar.Enabled && !seen[envVar.Key] {
-				variables = append(variables, postman.VariableSource{
-					Key:    envVar.Key,
-					Value:  envVar.Value,
-					Source: "Environment: " + environment.Name,
-				})
-				seen[envVar.Key] = true
-			}
-		}
-	}
-
-	if collection != nil {
-		for _, collVar := range collection.Variables {
-			if !seen[collVar.Key] {
-				variables = append(variables, postman.VariableSource{
-					Key:    collVar.Key,
-					Value:  collVar.Value,
-					Source: "Collection: " + collection.Info.Name,
-				})
-				seen[collVar.Key] = true
-			}
-		}
-	}
-
-	return variables
-}
 
 func (e *Executor) buildRequest(req *postman.Request, variables []postman.VariableSource) (*http.Request, error) {
 	url := req.URL.Raw

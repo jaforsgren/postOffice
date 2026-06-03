@@ -35,6 +35,15 @@ const (
 	ModeSavedResponses
 )
 
+type GRPCReflectPhase int
+
+const (
+	GRPCPhaseServices GRPCReflectPhase = iota
+	GRPCPhaseMethods
+)
+
+const modeUnset ViewMode = -1
+
 type EditType int
 
 const (
@@ -151,7 +160,7 @@ type Model struct {
 	grpcEditTLS         bool
 	grpcReflectServices []grpc.ServiceInfo
 	grpcSelectedService int
-	grpcReflectPhase    int // 0 = services list, 1 = methods list
+	grpcReflectPhase    GRPCReflectPhase
 
 	workflows              []*workflow.Workflow
 	workflowCursor         int
@@ -220,7 +229,7 @@ func NewModel(parser *postman.Parser) Model {
 		items:                []string{},
 		currentItems:         []postman.Item{},
 		breadcrumb:           []string{},
-		statusMessage:        "Press : to enter command mode",
+		previousMode:         modeUnset,
 		searchInput:          searchInput,
 		editFieldInput:       editFieldInput,
 		editFieldTextArea:    editFieldTextArea,
@@ -237,7 +246,6 @@ func NewModel(parser *postman.Parser) Model {
 		requestExecutions:     make(map[string]*RequestExecution),
 	}
 	m = m.restoreSession()
-	m.statusMessage = "Press : to enter command mode"
 	return m
 }
 

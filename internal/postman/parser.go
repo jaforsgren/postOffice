@@ -166,27 +166,7 @@ func (p *Parser) SaveCollection(name string) error {
 		return err
 	}
 
-	data, err := json.MarshalIndent(collection, "", "  ")
-	if err != nil {
-		logger.LogError("SaveCollection", path, err)
-		return fmt.Errorf("failed to marshal collection: %w", err)
-	}
-
-	tempPath := path + ".tmp"
-	logger.LogFileWrite(tempPath)
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		logger.LogError("SaveCollection", tempPath, err)
-		return fmt.Errorf("failed to write temp file: %w", err)
-	}
-
-	logger.LogFileWrite(path)
-	if err := os.Rename(tempPath, path); err != nil {
-		os.Remove(tempPath)
-		logger.LogError("SaveCollection", path, err)
-		return fmt.Errorf("failed to rename temp file: %w", err)
-	}
-
-	return nil
+	return saveToFile(collection, path, "SaveCollection")
 }
 
 func (p *Parser) SaveEnvironment(name string) error {
@@ -204,23 +184,27 @@ func (p *Parser) SaveEnvironment(name string) error {
 		return err
 	}
 
-	data, err := json.MarshalIndent(environment, "", "  ")
+	return saveToFile(environment, path, "SaveEnvironment")
+}
+
+func saveToFile(data any, path string, logLabel string) error {
+	bytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		logger.LogError("SaveEnvironment", path, err)
-		return fmt.Errorf("failed to marshal environment: %w", err)
+		logger.LogError(logLabel, path, err)
+		return fmt.Errorf("failed to marshal %s: %w", logLabel, err)
 	}
 
 	tempPath := path + ".tmp"
 	logger.LogFileWrite(tempPath)
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		logger.LogError("SaveEnvironment", tempPath, err)
+	if err := os.WriteFile(tempPath, bytes, 0644); err != nil {
+		logger.LogError(logLabel, tempPath, err)
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 
 	logger.LogFileWrite(path)
 	if err := os.Rename(tempPath, path); err != nil {
 		os.Remove(tempPath)
-		logger.LogError("SaveEnvironment", path, err)
+		logger.LogError(logLabel, path, err)
 		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 

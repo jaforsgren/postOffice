@@ -186,7 +186,7 @@ func (m Model) renderWorkflowDetail() string {
 }
 
 func (m Model) renderWorkflowRunView() string {
-	return m.workflowViewport.View()
+	return strings.Join(m.buildWorkflowRunLines(), "\n")
 }
 
 func (m Model) buildWorkflowRunLines() []string {

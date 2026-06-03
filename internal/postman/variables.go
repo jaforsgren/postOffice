@@ -11,7 +11,11 @@ type VariableSource struct {
 	Source string
 }
 
-func (p *Parser) GetAllVariables(collection *Collection, breadcrumb []string, environment *Environment) []VariableSource {
+var variablePattern = regexp.MustCompile(`\{\{([^}]+)\}\}`)
+
+// GetAllVariables collects variables from environment, collection, and folder scopes in
+// precedence order (environment overrides collection, collection overrides folders).
+func GetAllVariables(collection *Collection, breadcrumb []string, environment *Environment) []VariableSource {
 	var variables []VariableSource
 	seen := make(map[string]bool)
 
@@ -73,14 +77,11 @@ func ResolveVariables(text string, variables []VariableSource) string {
 		variableMap[v.Key] = v.Value
 	}
 
-	re := regexp.MustCompile(`\{\{([^}]+)\}\}`)
-	result := re.ReplaceAllStringFunc(text, func(match string) string {
+	return variablePattern.ReplaceAllStringFunc(text, func(match string) string {
 		key := strings.TrimSpace(match[2 : len(match)-2])
 		if value, exists := variableMap[key]; exists {
 			return value
 		}
 		return match
 	})
-
-	return result
 }

@@ -6,8 +6,7 @@ import (
 )
 
 func TestGetAllVariables_EnvironmentOnly(t *testing.T) {
-	parser := NewParser()
-	env := &Environment{
+env := &Environment{
 		Name: "Test Env",
 		Values: []EnvVariable{
 			{Key: "apiKey", Value: "secret123", Enabled: true},
@@ -16,7 +15,7 @@ func TestGetAllVariables_EnvironmentOnly(t *testing.T) {
 		},
 	}
 
-	vars := parser.GetAllVariables(nil, nil, env)
+	vars := GetAllVariables(nil, nil, env)
 
 	if len(vars) != 2 {
 		t.Errorf("Expected 2 variables (disabled excluded), got %d", len(vars))
@@ -43,8 +42,7 @@ func TestGetAllVariables_EnvironmentOnly(t *testing.T) {
 }
 
 func TestGetAllVariables_CollectionOnly(t *testing.T) {
-	parser := NewParser()
-	collection := &Collection{
+collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "collectionVar", Value: "collectionValue"},
@@ -52,7 +50,7 @@ func TestGetAllVariables_CollectionOnly(t *testing.T) {
 		},
 	}
 
-	vars := parser.GetAllVariables(collection, nil, nil)
+	vars := GetAllVariables(collection, nil, nil)
 
 	if len(vars) != 2 {
 		t.Errorf("Expected 2 variables, got %d", len(vars))
@@ -73,8 +71,7 @@ func TestGetAllVariables_CollectionOnly(t *testing.T) {
 }
 
 func TestGetAllVariables_FolderVariables(t *testing.T) {
-	parser := NewParser()
-	collection := &Collection{
+collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Items: []Item{
 			{
@@ -98,7 +95,7 @@ func TestGetAllVariables_FolderVariables(t *testing.T) {
 	}
 
 	breadcrumb := []string{"Folder1", "Subfolder"}
-	vars := parser.GetAllVariables(collection, breadcrumb, nil)
+	vars := GetAllVariables(collection, breadcrumb, nil)
 
 	if len(vars) != 2 {
 		t.Errorf("Expected 2 folder variables, got %d", len(vars))
@@ -131,8 +128,6 @@ func TestGetAllVariables_FolderVariables(t *testing.T) {
 }
 
 func TestGetAllVariables_Precedence(t *testing.T) {
-	parser := NewParser()
-
 	env := &Environment{
 		Name: "Test Env",
 		Values: []EnvVariable{
@@ -162,7 +157,7 @@ func TestGetAllVariables_Precedence(t *testing.T) {
 	}
 
 	breadcrumb := []string{"Folder"}
-	vars := parser.GetAllVariables(collection, breadcrumb, env)
+	vars := GetAllVariables(collection, breadcrumb, env)
 
 	varMap := make(map[string]string)
 	for _, v := range vars {
@@ -184,8 +179,7 @@ func TestGetAllVariables_Precedence(t *testing.T) {
 }
 
 func TestGetAllVariables_NoBreadcrumb(t *testing.T) {
-	parser := NewParser()
-	collection := &Collection{
+collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "var1", Value: "value1"},
@@ -203,7 +197,7 @@ func TestGetAllVariables_NoBreadcrumb(t *testing.T) {
 		},
 	}
 
-	vars := parser.GetAllVariables(collection, nil, nil)
+	vars := GetAllVariables(collection, nil, nil)
 
 	if len(vars) != 1 {
 		t.Errorf("Expected 1 variable (no folder vars without breadcrumb), got %d", len(vars))
@@ -217,15 +211,14 @@ func TestGetAllVariables_NoBreadcrumb(t *testing.T) {
 }
 
 func TestGetAllVariables_EmptyBreadcrumb(t *testing.T) {
-	parser := NewParser()
-	collection := &Collection{
+collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "var1", Value: "value1"},
 		},
 	}
 
-	vars := parser.GetAllVariables(collection, []string{}, nil)
+	vars := GetAllVariables(collection, []string{}, nil)
 
 	if len(vars) != 1 {
 		t.Errorf("Expected 1 variable, got %d", len(vars))
@@ -233,8 +226,7 @@ func TestGetAllVariables_EmptyBreadcrumb(t *testing.T) {
 }
 
 func TestGetAllVariables_InvalidBreadcrumb(t *testing.T) {
-	parser := NewParser()
-	collection := &Collection{
+collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "var1", Value: "value1"},
@@ -253,7 +245,7 @@ func TestGetAllVariables_InvalidBreadcrumb(t *testing.T) {
 	}
 
 	breadcrumb := []string{"NonExistentFolder"}
-	vars := parser.GetAllVariables(collection, breadcrumb, nil)
+	vars := GetAllVariables(collection, breadcrumb, nil)
 
 	if len(vars) != 1 {
 		t.Errorf("Expected only collection variable, got %d", len(vars))
@@ -261,9 +253,7 @@ func TestGetAllVariables_InvalidBreadcrumb(t *testing.T) {
 }
 
 func TestGetAllVariables_NilInputs(t *testing.T) {
-	parser := NewParser()
-
-	vars := parser.GetAllVariables(nil, nil, nil)
+	vars := GetAllVariables(nil, nil, nil)
 
 	if len(vars) != 0 {
 		t.Errorf("Expected 0 variables for nil inputs, got %d", len(vars))
@@ -457,8 +447,6 @@ func TestVariableSource_Structure(t *testing.T) {
 }
 
 func TestGetAllVariables_ComplexHierarchy(t *testing.T) {
-	parser := NewParser()
-
 	env := &Environment{
 		Name: "Production",
 		Values: []EnvVariable{
@@ -493,7 +481,7 @@ func TestGetAllVariables_ComplexHierarchy(t *testing.T) {
 	}
 
 	breadcrumb := []string{"Auth", "OAuth"}
-	vars := parser.GetAllVariables(collection, breadcrumb, env)
+	vars := GetAllVariables(collection, breadcrumb, env)
 
 	varMap := make(map[string]string)
 	for _, v := range vars {

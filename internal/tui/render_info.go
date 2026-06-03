@@ -192,7 +192,7 @@ func (m Model) buildRequestInfoLines() []string {
 	lines = append(lines, "  HTTP Request")
 	lines = append(lines, "")
 
-	variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+	variables := postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
 
 	lines = append(lines, m.buildMethodSection(req)...)
 	lines = append(lines, m.buildURLSection(req, variables)...)
@@ -207,7 +207,7 @@ func (m Model) buildRequestInfoLines() []string {
 func (m Model) buildGRPCInfoSection(req *postman.Request) []string {
 	var lines []string
 
-	variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+	variables := postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
 
 	rawURL := req.URL.Raw
 	endpoint, service, method, tlsEnabled := parseGRPCURL(rawURL)

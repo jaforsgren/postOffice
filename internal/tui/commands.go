@@ -312,14 +312,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Keys:        []string{"e"},
 			Description: "Edit step request",
 			ShortHelp:   "e",
-			Handler:     handleWorkflowStepEditKey,
+			Handler:     Model.editWorkflowStepRequest,
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
 			Keys:        []string{"E"},
 			Description: "Edit step scripts",
 			ShortHelp:   "E",
-			Handler:     handleWorkflowStepScriptKey,
+			Handler:     Model.enterWorkflowStepScriptSelection,
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
@@ -347,7 +347,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Keys:        []string{"ctrl+d"},
 			Description: "Delete step",
 			ShortHelp:   "ctrl+d",
-			Handler:     handleDeleteWorkflowStepKey,
+			Handler:     Model.deleteWorkflowStep,
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
@@ -611,11 +611,7 @@ func handleInfoCommand(m Model, args []string) (Model, tea.Cmd) {
 		m.previousMode = m.mode
 		m.mode = ModeInfo
 
-		m.infoViewport.Width = m.width - 8
-		m.infoViewport.Height = m.height - 8
-		lines := m.buildItemInfoLines()
-		content := strings.Join(lines, "\n")
-		m.infoViewport.SetContent(content)
+		m.configureViewport(&m.infoViewport, strings.Join(m.buildItemInfoLines(), "\n"))
 
 		m.statusMessage = "Showing item info (q to close)"
 	} else if m.mode == ModeCollections {
@@ -642,24 +638,22 @@ func handleEditCommand(m Model, args []string) (Model, tea.Cmd) {
 
 func handleWriteCommand(m Model, args []string) (Model, tea.Cmd) {
 	if m.mode == ModeEdit {
-		m = m.saveEdit()
+		m, _ = m.saveEdit()
 	} else {
-		m = m.saveAllModifiedRequests()
+		m, _ = m.saveAllModifiedRequests()
 	}
 	return m, nil
 }
 
 func handleWriteQuitCommand(m Model, args []string) (Model, tea.Cmd) {
+	var err error
 	if m.mode == ModeEdit {
-		m = m.saveEdit()
-		if !strings.Contains(m.statusMessage, "Failed") && !strings.Contains(m.statusMessage, "Error") {
-			return m, tea.Quit
-		}
+		m, err = m.saveEdit()
 	} else {
-		m = m.saveAllModifiedRequests()
-		if !strings.Contains(m.statusMessage, "error") {
-			return m, tea.Quit
-		}
+		m, err = m.saveAllModifiedRequests()
+	}
+	if err == nil {
+		return m, tea.Quit
 	}
 	return m, nil
 }
@@ -736,8 +730,8 @@ func handleLogsCommand(m Model, args []string) (Model, tea.Cmd) {
 	m.previousMode = m.mode
 	m.mode = ModeLog
 	m.scrollOffset = 0
-	m.logsViewport.Width = m.width - 8
-	m.logsViewport.Height = m.height - 8
+	m.logsViewport.Width = m.width - viewportPadding
+	m.logsViewport.Height = m.height - viewportPadding
 	m.statusMessage = "Showing session logs (j/k to scroll, esc to close)"
 	return m, nil
 }
@@ -755,10 +749,7 @@ func handleEnterKey(m Model) (Model, tea.Cmd) {
 			m.lastTestResult = nil
 			m.viewingSavedResponse = true
 			m.scrollOffset = 0
-			m.responseViewport.Width = m.width - 8
-			m.responseViewport.Height = m.height - 8
-			lines := m.buildResponseLines()
-			m.responseViewport.SetContent(strings.Join(lines, "\n"))
+			m.configureViewport(&m.responseViewport, strings.Join(m.buildResponseLines(), "\n"))
 			m.mode = ModeResponse
 			m.statusMessage = fmt.Sprintf("Viewing saved: %s  %s", sr.SavedAt.Format("2006-01-02 15:04:05"), sr.Status)
 		}
@@ -840,11 +831,7 @@ func handleResponseViewKey(m Model) (Model, tea.Cmd) {
 					m.scrollOffset = 0
 					m.mode = ModeResponse
 
-					m.responseViewport.Width = m.width - 8
-					m.responseViewport.Height = m.height - 8
-					lines := m.buildResponseLines()
-					content := strings.Join(lines, "\n")
-					m.responseViewport.SetContent(content)
+					m.configureViewport(&m.responseViewport, strings.Join(m.buildResponseLines(), "\n"))
 
 					m.statusMessage = "Showing response (ctrl+r to resend, q to close)"
 				} else {
@@ -868,11 +855,7 @@ func handleInfoKey(m Model) (Model, tea.Cmd) {
 		m.previousMode = m.mode
 		m.mode = ModeInfo
 
-		m.infoViewport.Width = m.width - 8
-		m.infoViewport.Height = m.height - 8
-		lines := m.buildItemInfoLines()
-		content := strings.Join(lines, "\n")
-		m.infoViewport.SetContent(content)
+		m.configureViewport(&m.infoViewport, strings.Join(m.buildItemInfoLines(), "\n"))
 
 		m.statusMessage = "Showing item info (q to close)"
 	} else if m.mode == ModeEnvironments && m.environment != nil {
@@ -881,11 +864,7 @@ func handleInfoKey(m Model) (Model, tea.Cmd) {
 		m.previousMode = m.mode
 		m.mode = ModeInfo
 
-		m.infoViewport.Width = m.width - 8
-		m.infoViewport.Height = m.height - 8
-		lines := m.buildEnvironmentInfoLines()
-		content := strings.Join(lines, "\n")
-		m.infoViewport.SetContent(content)
+		m.configureViewport(&m.infoViewport, strings.Join(m.buildEnvironmentInfoLines(), "\n"))
 
 		m.statusMessage = "Showing environment info (q to close)"
 	} else if m.mode == ModeChanges && m.cursor < len(m.items) {
@@ -908,11 +887,7 @@ func handleJSONKey(m Model) (Model, tea.Cmd) {
 		m.previousMode = m.mode
 		m.mode = ModeJSON
 
-		m.jsonViewport.Width = m.width - 8
-		m.jsonViewport.Height = m.height - 8
-		title := lipgloss.NewStyle().Bold(true).Render("JSON View (q: close)")
-		fullContent := title + "\n\n" + m.jsonContent
-		m.jsonViewport.SetContent(fullContent)
+		m.configureViewport(&m.jsonViewport, lipgloss.NewStyle().Bold(true).Render("JSON View (q: close)")+"\n\n"+m.jsonContent)
 
 		m.statusMessage = "Showing JSON view (q to close)"
 	} else if m.mode == ModeEnvironments && m.cursor < len(m.items) {
@@ -928,11 +903,7 @@ func handleJSONKey(m Model) (Model, tea.Cmd) {
 			m.previousMode = m.mode
 			m.mode = ModeJSON
 
-			m.jsonViewport.Width = m.width - 8
-			m.jsonViewport.Height = m.height - 8
-			title := lipgloss.NewStyle().Bold(true).Render("JSON View (q: close)")
-			fullContent := title + "\n\n" + m.jsonContent
-			m.jsonViewport.SetContent(fullContent)
+			m.configureViewport(&m.jsonViewport, lipgloss.NewStyle().Bold(true).Render("JSON View (q: close)")+"\n\n"+m.jsonContent)
 
 			m.statusMessage = "Showing JSON view (q to close)"
 		}
@@ -968,7 +939,7 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.mode == ModeResponse {
-		if m.previousMode != 0 {
+		if m.previousMode != modeUnset {
 			m.mode = m.previousMode
 		} else {
 			m.mode = ModeRequests
@@ -984,7 +955,7 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.mode == ModeInfo {
-		if m.previousMode != 0 {
+		if m.previousMode != modeUnset {
 			m.mode = m.previousMode
 		} else {
 			m.mode = ModeRequests
@@ -995,7 +966,7 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.mode == ModeJSON {
-		if m.previousMode != 0 {
+		if m.previousMode != modeUnset {
 			m.mode = m.previousMode
 		} else {
 			m.mode = ModeRequests
@@ -1006,7 +977,7 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.mode == ModeLog {
-		if m.previousMode != 0 {
+		if m.previousMode != modeUnset {
 			m.mode = m.previousMode
 		} else {
 			m.mode = ModeRequests
@@ -1350,23 +1321,11 @@ func (m Model) newWorkflow(id string) (Model, tea.Cmd) {
 	return m, cmd
 }
 
-func handleDeleteWorkflowStepKey(m Model) (Model, tea.Cmd) {
-	return m.deleteWorkflowStep()
-}
-
 func handleRunFullWorkflowKey(m Model) (Model, tea.Cmd) {
 	if m.activeWorkflow != nil {
 		return m.startWorkflow(m.activeWorkflow)
 	}
 	return m, nil
-}
-
-func handleWorkflowStepEditKey(m Model) (Model, tea.Cmd) {
-	return m.editWorkflowStepRequest()
-}
-
-func handleWorkflowStepScriptKey(m Model) (Model, tea.Cmd) {
-	return m.enterWorkflowStepScriptSelection()
 }
 
 func (m Model) enterWorkflowStepScriptSelection() (Model, tea.Cmd) {
@@ -1452,46 +1411,7 @@ func handleDeleteRequestKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Can only delete requests, not folders"
 		return m, nil
 	}
-	if m.collection == nil {
-		return m, nil
-	}
-
-	parentItems := &m.collection.Items
-	for _, crumb := range m.breadcrumb {
-		found := false
-		for i := range *parentItems {
-			if (*parentItems)[i].Name == crumb && (*parentItems)[i].IsFolder() {
-				parentItems = &(*parentItems)[i].Items
-				found = true
-				break
-			}
-		}
-		if !found {
-			m.statusMessage = "Could not find parent folder"
-			return m, nil
-		}
-	}
-
-	deletedName := item.Name
-	*parentItems = append((*parentItems)[:m.cursor], (*parentItems)[m.cursor+1:]...)
-	m.currentItems = *parentItems
-
-	m.items = make([]string, len(m.currentItems))
-	for i, ci := range m.currentItems {
-		m.items[i] = itemDisplayPrefix(ci) + ci.Name
-	}
-
-	if m.cursor >= len(m.currentItems) && m.cursor > 0 {
-		m.cursor--
-	}
-
-	if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {
-		m.statusMessage = fmt.Sprintf("Deleted %s but failed to save: %v", deletedName, err)
-		return m, nil
-	}
-
-	m.statusMessage = fmt.Sprintf("Deleted: %s", deletedName)
-	return m, nil
+	return m.deleteRequest(item), nil
 }
 
 func handleSavedResponsesKey(m Model) (Model, tea.Cmd) {
@@ -1512,8 +1432,8 @@ func handleSavedResponsesKey(m Model) (Model, tea.Cmd) {
 	m.savedResponses = responses
 	m.savedResponseItemID = itemID
 	m.savedResponseCursor = 0
-	m.savedResponseViewport.Width = m.width - 8
-	m.savedResponseViewport.Height = m.height - 8
+	m.savedResponseViewport.Width = m.width - viewportPadding
+	m.savedResponseViewport.Height = m.height - viewportPadding
 	m.previousMode = m.mode
 	m.mode = ModeSavedResponses
 	m.statusMessage = fmt.Sprintf("%d saved response(s)", len(responses))
@@ -1619,17 +1539,10 @@ func (m Model) confirmAddWorkflowStep(item postman.Item) (Model, tea.Cmd) {
 		Request: requestPath,
 	})
 
-	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
-	if !exists {
-		m.statusMessage = "Collection path not found — step not saved"
-		m.mode = ModeWorkflowDetail
-		return m, nil
-	}
-
-	wfPath := workflow.WorkflowPath(collectionPath, m.activeWorkflow.ID)
-	if err := workflow.SaveWorkflow(m.activeWorkflow, wfPath); err != nil {
+	if m2, err := m.saveActiveWorkflow(); err != nil {
 		m.statusMessage = fmt.Sprintf("Added step but failed to save: %v", err)
 	} else {
+		m = m2
 		m.statusMessage = fmt.Sprintf("Added step %q → %s", stepID, requestPath)
 	}
 

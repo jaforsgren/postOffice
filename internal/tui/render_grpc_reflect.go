@@ -16,7 +16,7 @@ func (m Model) renderGRPCReflect(availableHeight int) string {
 	lines = append(lines, titleStyle.Render("gRPC Reflection — "+m.grpcEditEndpoint))
 	lines = append(lines, "")
 
-	if m.grpcReflectPhase == 0 {
+	if m.grpcReflectPhase == GRPCPhaseServices {
 		lines = append(lines, m.renderServiceList()...)
 		lines = append(lines, "")
 		shortcuts := "<Enter> View Methods  <j/k> Navigate  <Ctrl+R> Refresh  <Esc> Back to Edit"

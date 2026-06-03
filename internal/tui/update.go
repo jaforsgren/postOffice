@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/viewport"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -21,9 +22,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.responseViewport.Width = msg.Width - 8
-		m.infoViewport.Width = msg.Width - 8
-		m.jsonViewport.Width = msg.Width - 8
+		m.responseViewport.Width = msg.Width - viewportPadding
+		m.infoViewport.Width = msg.Width - viewportPadding
+		m.jsonViewport.Width = msg.Width - viewportPadding
 		return m, nil
 
 	case RequestCompleteMsg:
@@ -68,11 +69,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.mode == ModeResponse {
-			m.responseViewport.Width = m.width - 8
-			m.responseViewport.Height = m.height - 8
-			lines := m.buildResponseLines()
-			content := strings.Join(lines, "\n")
-			m.responseViewport.SetContent(content)
+			m.configureViewport(&m.responseViewport, strings.Join(m.buildResponseLines(), "\n"))
 		}
 
 		return m, nil
@@ -113,7 +110,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.grpcReflectServices = msg.Services
-		m.grpcReflectPhase = 0
+		m.grpcReflectPhase = GRPCPhaseServices
 		m.grpcSelectedService = 0
 		m.previousMode = ModeEdit
 		m.mode = ModeGRPCReflect
@@ -225,11 +222,7 @@ func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.commandSuggestion != "" {
 			m.commandInput.SetValue(m.commandSuggestion)
 			m.commandInput.CursorEnd()
-			if !strings.HasSuffix(m.commandSuggestion, "/") {
-				m.commandSuggestion = ""
-			} else {
-				m.commandSuggestion = ""
-			}
+			m.commandSuggestion = ""
 		}
 		return m, nil
 
@@ -283,7 +276,6 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key == ":" {
 		m.commandMode = true
 		m.commandInput.SetValue("")
-		m.commandInput.Focus()
 		return m, m.commandInput.Focus()
 	}
 
@@ -342,6 +334,65 @@ func (m Model) loadCollectionsList() Model {
 	return m
 }
 
+const viewportPadding = 8
+
+// traverseToDepth walks items along path and returns the items slice at that depth.
+// Returns nil if any path segment is not found as a folder.
+func traverseToDepth(items []postman.Item, path []string) []postman.Item {
+	current := items
+	for _, name := range path {
+		found := false
+		for _, item := range current {
+			if item.IsFolder() && item.Name == name {
+				current = item.Items
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+	}
+	return current
+}
+
+// traverseToDepthPtr walks items along path and returns a pointer to the items slice at
+// that depth for mutation. Returns nil if any path segment is not found as a folder.
+func traverseToDepthPtr(items *[]postman.Item, path []string) *[]postman.Item {
+	current := items
+	for _, name := range path {
+		found := false
+		for i := range *current {
+			if (*current)[i].IsFolder() && (*current)[i].Name == name {
+				current = &(*current)[i].Items
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+	}
+	return current
+}
+
+// configureViewport sizes a viewport to the model's terminal dimensions minus viewportPadding
+// and sets its content. vp must be a pointer to a field on the caller's model copy.
+func (m Model) configureViewport(vp *viewport.Model, content string) {
+	vp.Width = m.width - viewportPadding
+	vp.Height = m.height - viewportPadding
+	vp.SetContent(content)
+}
+
+// buildDisplayList converts a slice of items into display strings with method/type prefixes.
+func buildDisplayList(items []postman.Item) []string {
+	list := make([]string, len(items))
+	for i, item := range items {
+		list[i] = itemDisplayPrefix(item) + item.Name
+	}
+	return list
+}
+
 func itemDisplayPrefix(item postman.Item) string {
 	if item.IsFolder() {
 		return "[DIR] "
@@ -375,8 +426,8 @@ func (m Model) loadRequestsList() Model {
 		} else {
 			otherCount++
 		}
-		m.items = append(m.items, itemDisplayPrefix(item)+item.Name)
 	}
+	m.items = buildDisplayList(m.collection.Items)
 	m.cursor = 0
 
 	if len(m.items) == 0 {
@@ -449,11 +500,7 @@ func (m Model) handleSelection() Model {
 				m.previousMode = m.mode
 				m.mode = ModeInfo
 
-				m.infoViewport.Width = m.width - 8
-				m.infoViewport.Height = m.height - 8
-				lines := m.buildEnvironmentInfoLines()
-				content := strings.Join(lines, "\n")
-				m.infoViewport.SetContent(content)
+				m.configureViewport(&m.infoViewport, strings.Join(m.buildEnvironmentInfoLines(), "\n"))
 
 				m.statusMessage = fmt.Sprintf("Showing environment: %s (q to close)", envName)
 			} else {
@@ -498,7 +545,7 @@ func (m Model) executeRequest(item postman.Item) (Model, tea.Cmd) {
 		TestResult: nil,
 	}
 
-	variables := m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+	variables := postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
 
 	executor := m.executor
 	collection := m.collection
@@ -523,10 +570,7 @@ func (m Model) executeRequest(item postman.Item) (Model, tea.Cmd) {
 func (m Model) navigateInto(item postman.Item) Model {
 	m.breadcrumb = append(m.breadcrumb, item.Name)
 	m.currentItems = item.Items
-	m.items = []string{}
-	for _, subItem := range item.Items {
-		m.items = append(m.items, itemDisplayPrefix(subItem)+subItem.Name)
-	}
+	m.items = buildDisplayList(item.Items)
 	m.cursor = 0
 	m.searchActive = false
 	m.searchInput.SetValue("")
@@ -543,20 +587,12 @@ func (m Model) navigateUp() Model {
 	if len(m.breadcrumb) == 0 {
 		m = m.loadRequestsList()
 	} else {
-		current := m.collection.Items
-		for _, crumb := range m.breadcrumb {
-			for _, item := range current {
-				if item.Name == crumb {
-					current = item.Items
-					break
-				}
-			}
+		current := traverseToDepth(m.collection.Items, m.breadcrumb)
+		if current == nil {
+			current = m.collection.Items
 		}
 		m.currentItems = current
-		m.items = []string{}
-		for _, item := range current {
-			m.items = append(m.items, itemDisplayPrefix(item)+item.Name)
-		}
+		m.items = buildDisplayList(current)
 		m.cursor = 0
 	}
 
@@ -573,23 +609,14 @@ func (m Model) refreshCurrentView() Model {
 	if len(m.breadcrumb) == 0 {
 		m.currentItems = m.collection.Items
 	} else {
-		current := m.collection.Items
-		for _, crumb := range m.breadcrumb {
-			for _, item := range current {
-				if item.Name == crumb {
-					current = item.Items
-					break
-				}
-			}
+		current := traverseToDepth(m.collection.Items, m.breadcrumb)
+		if current == nil {
+			current = m.collection.Items
 		}
 		m.currentItems = current
 	}
 
-	m.items = []string{}
-	for _, item := range m.currentItems {
-		m.items = append(m.items, itemDisplayPrefix(item)+item.Name)
-	}
-
+	m.items = buildDisplayList(m.currentItems)
 	return m
 }
 
@@ -703,7 +730,7 @@ func (m Model) loadEnvironment(path string) Model {
 }
 
 func (m Model) loadVariablesList() Model {
-	m.variables = m.parser.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+	m.variables = postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
 
 	m.items = []string{}
 	for _, variable := range m.variables {
@@ -760,22 +787,24 @@ func (m Model) enterEditMode(item postman.Item) Model {
 	return m
 }
 
-func (m Model) saveEdit() Model {
+func (m Model) saveEdit() (Model, error) {
 	if m.editType == EditTypeNone {
 		m.statusMessage = "Nothing to save"
-		return m
+		return m, nil
 	}
 
 	switch m.editType {
 	case EditTypeRequest, EditTypeGRPCRequest:
 		if m.collection == nil {
-			m.statusMessage = "Error: No collection loaded"
-			return m
+			err := fmt.Errorf("no collection loaded")
+			m.statusMessage = "Error: " + err.Error()
+			return m, err
 		}
 
 		if !m.updateRequestInCollection(m.editItemPath, m.editOriginalName, m.editItemName, m.editRequest) {
-			m.statusMessage = "Error: Failed to update request in collection"
-			return m
+			err := fmt.Errorf("failed to update request in collection")
+			m.statusMessage = "Error: " + err.Error()
+			return m, err
 		}
 
 		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
@@ -785,7 +814,7 @@ func (m Model) saveEdit() Model {
 
 		if err := m.parser.SaveCollection(m.editCollectionName); err != nil {
 			m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
-			return m
+			return m, err
 		}
 
 		m.statusMessage = "Saved changes to collection file"
@@ -797,7 +826,7 @@ func (m Model) saveEdit() Model {
 		m = m.saveScript()
 		if err := m.parser.SaveCollection(m.editCollectionName); err != nil {
 			m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
-			return m
+			return m, err
 		}
 		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editScriptItemName)
 		delete(m.modifiedItems, itemID)
@@ -808,35 +837,36 @@ func (m Model) saveEdit() Model {
 		m = m.saveWorkflowStepScript()
 	}
 
-	return m
+	return m, nil
 }
 
-func (m Model) saveAllModifiedRequests() Model {
+func (m Model) saveAllModifiedRequests() (Model, error) {
 	if len(m.modifiedCollections) == 0 {
 		m.statusMessage = "No unsaved changes"
-		return m
+		return m, nil
 	}
 
 	savedCount := 0
-	var errors []string
+	var errs []string
 
 	for collectionName := range m.modifiedCollections {
 		if err := m.parser.SaveCollection(collectionName); err != nil {
-			errors = append(errors, fmt.Sprintf("%s: %v", collectionName, err))
+			errs = append(errs, fmt.Sprintf("%s: %v", collectionName, err))
 		} else {
 			savedCount++
 		}
 	}
 
-	if len(errors) > 0 {
-		m.statusMessage = fmt.Sprintf("Saved %d collections, %d errors: %s", savedCount, len(errors), strings.Join(errors, "; "))
-	} else {
-		m.statusMessage = fmt.Sprintf("Saved %d collection(s) to file", savedCount)
-		m.modifiedCollections = make(map[string]bool)
-		m.modifiedItems = make(map[string]bool)
+	if len(errs) > 0 {
+		msg := fmt.Sprintf("Saved %d collections, %d errors: %s", savedCount, len(errs), strings.Join(errs, "; "))
+		m.statusMessage = msg
+		return m, fmt.Errorf("%s", msg)
 	}
 
-	return m
+	m.statusMessage = fmt.Sprintf("Saved %d collection(s) to file", savedCount)
+	m.modifiedCollections = make(map[string]bool)
+	m.modifiedItems = make(map[string]bool)
+	return m, nil
 }
 
 func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -869,7 +899,6 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ":":
 		m.commandMode = true
 		m.commandInput.SetValue("")
-		m.commandInput.Focus()
 		return m, m.commandInput.Focus()
 
 	case "j", "down":
@@ -963,8 +992,8 @@ func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "esc":
-		if m.grpcReflectPhase == 1 {
-			m.grpcReflectPhase = 0
+		if m.grpcReflectPhase == GRPCPhaseMethods {
+			m.grpcReflectPhase = GRPCPhaseServices
 			m.statusMessage = "Navigate services with j/k, Enter to view methods, Esc to return to edit"
 			return m, nil
 		}
@@ -973,7 +1002,7 @@ func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "j", "down":
-		if m.grpcReflectPhase == 0 {
+		if m.grpcReflectPhase == GRPCPhaseServices {
 			if m.grpcSelectedService < len(m.grpcReflectServices)-1 {
 				m.grpcSelectedService++
 			}
@@ -986,7 +1015,7 @@ func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "k", "up":
-		if m.grpcReflectPhase == 0 {
+		if m.grpcReflectPhase == GRPCPhaseServices {
 			if m.grpcSelectedService > 0 {
 				m.grpcSelectedService--
 			}
@@ -998,11 +1027,11 @@ func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "enter":
-		if m.grpcReflectPhase == 0 {
+		if m.grpcReflectPhase == GRPCPhaseServices {
 			if len(m.grpcReflectServices) == 0 || m.grpcSelectedService >= len(m.grpcReflectServices) {
 				return m, nil
 			}
-			m.grpcReflectPhase = 1
+			m.grpcReflectPhase = GRPCPhaseMethods
 			m.cursor = 0
 			svc := m.grpcReflectServices[m.grpcSelectedService]
 			m.statusMessage = fmt.Sprintf("%s — %d method(s), Enter to use, Esc to go back", svc.Name, len(svc.Methods))
@@ -1380,11 +1409,7 @@ func (m Model) showChangeDiff(itemID string) Model {
 		Request: modifiedReq,
 	}
 
-	m.infoViewport.Width = m.width - 8
-	m.infoViewport.Height = m.height - 8
-	lines := m.buildItemInfoLines()
-	content := strings.Join(lines, "\n")
-	m.infoViewport.SetContent(content)
+	m.configureViewport(&m.infoViewport, strings.Join(m.buildItemInfoLines(), "\n"))
 
 	m.statusMessage = "Showing diff (original → modified) (q to close)"
 
@@ -1392,23 +1417,12 @@ func (m Model) showChangeDiff(itemID string) Model {
 }
 
 func (m Model) findOriginalRequest(items []postman.Item, folderPath []string, requestName string) *postman.Request {
-	currentItems := items
-
-	for _, folderName := range folderPath {
-		found := false
-		for _, item := range currentItems {
-			if item.IsFolder() && item.Name == folderName {
-				currentItems = item.Items
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil
-		}
+	current := traverseToDepth(items, folderPath)
+	if current == nil {
+		return nil
 	}
 
-	for _, item := range currentItems {
+	for _, item := range current {
 		if item.IsRequest() && item.Name == requestName {
 			return item.Request
 		}
@@ -1505,24 +1519,9 @@ func (m Model) updateRequestInCollection(path []string, originalName string, new
 		return false
 	}
 
-	items := &m.collection.Items
-
-	for i, folderName := range path {
-		found := false
-		for j := range *items {
-			if (*items)[j].Name == folderName && (*items)[j].IsFolder() {
-				items = &(*items)[j].Items
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-
-		if i == len(path)-1 {
-			break
-		}
+	items := traverseToDepthPtr(&m.collection.Items, path)
+	if items == nil {
+		return false
 	}
 
 	for i := range *items {
@@ -1548,21 +1547,10 @@ func (m Model) duplicateRequest(item postman.Item) Model {
 		Description: item.Description,
 	}
 
-	items := &m.collection.Items
-
-	for _, folderName := range m.breadcrumb {
-		found := false
-		for j := range *items {
-			if (*items)[j].Name == folderName && (*items)[j].IsFolder() {
-				items = &(*items)[j].Items
-				found = true
-				break
-			}
-		}
-		if !found {
-			m.statusMessage = "Error: Could not find folder in breadcrumb"
-			return m
-		}
+	items := traverseToDepthPtr(&m.collection.Items, m.breadcrumb)
+	if items == nil {
+		m.statusMessage = "Error: Could not find folder in breadcrumb"
+		return m
 	}
 
 	*items = append(*items, duplicatedItem)
@@ -1587,21 +1575,10 @@ func (m Model) deleteRequest(item postman.Item) Model {
 		return m
 	}
 
-	items := &m.collection.Items
-
-	for _, folderName := range m.breadcrumb {
-		found := false
-		for j := range *items {
-			if (*items)[j].Name == folderName && (*items)[j].IsFolder() {
-				items = &(*items)[j].Items
-				found = true
-				break
-			}
-		}
-		if !found {
-			m.statusMessage = "Error: Could not find folder in breadcrumb"
-			return m
-		}
+	items := traverseToDepthPtr(&m.collection.Items, m.breadcrumb)
+	if items == nil {
+		m.statusMessage = "Error: Could not find folder in breadcrumb"
+		return m
 	}
 
 	for i := range *items {
@@ -1683,29 +1660,15 @@ func (m Model) restoreSession() Model {
 			if len(session.Breadcrumb) == 0 {
 				m = m.loadRequestsList()
 			} else {
-				current := m.collection.Items
-				for _, crumb := range session.Breadcrumb {
-					found := false
-					for _, item := range current {
-						if item.IsFolder() && item.Name == crumb {
-							current = item.Items
-							found = true
-							break
-						}
-					}
-					if !found {
-						m.statusMessage = "Could not restore folder path"
-						m = m.loadRequestsList()
-						return m
-					}
+				current := traverseToDepth(m.collection.Items, session.Breadcrumb)
+				if current == nil {
+					m.statusMessage = "Could not restore folder path"
+					m = m.loadRequestsList()
+					return m
 				}
-
 				m.breadcrumb = session.Breadcrumb
 				m.currentItems = current
-				m.items = []string{}
-				for _, item := range current {
-					m.items = append(m.items, itemDisplayPrefix(item)+item.Name)
-				}
+				m.items = buildDisplayList(current)
 			}
 
 			if session.Cursor >= len(m.currentItems) {
@@ -1902,6 +1865,18 @@ func (m Model) saveScript() Model {
 	return m
 }
 
+func (m Model) saveActiveWorkflow() (Model, error) {
+	if m.collection == nil {
+		return m, fmt.Errorf("no collection loaded")
+	}
+	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+	if !exists {
+		return m, fmt.Errorf("collection path not found")
+	}
+	wfPath := workflow.WorkflowPath(collectionPath, m.activeWorkflow.ID)
+	return m, workflow.SaveWorkflow(m.activeWorkflow, wfPath)
+}
+
 func (m Model) saveWorkflowStepScript() Model {
 	if m.activeWorkflow == nil {
 		m.statusMessage = "Error: No active workflow"
@@ -1932,13 +1907,8 @@ func (m Model) saveWorkflowStepScript() Model {
 		m.statusMessage = "Error: No collection loaded"
 		return m
 	}
-	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
-	if !exists {
-		m.statusMessage = "Error: Collection path not found"
-		return m
-	}
-	wfPath := workflow.WorkflowPath(collectionPath, m.activeWorkflow.ID)
-	if err := workflow.SaveWorkflow(m.activeWorkflow, wfPath); err != nil {
+	var err error
+	if m, err = m.saveActiveWorkflow(); err != nil {
 		m.statusMessage = fmt.Sprintf("Failed to save workflow: %v", err)
 		return m
 	}
@@ -1952,19 +1922,9 @@ func (m Model) findItemByPath(path []string, itemName string) *postman.Item {
 		return nil
 	}
 
-	current := m.collection.Items
-	for _, folderName := range path {
-		found := false
-		for i := range current {
-			if current[i].Name == folderName && current[i].IsFolder() {
-				current = current[i].Items
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil
-		}
+	current := traverseToDepth(m.collection.Items, path)
+	if current == nil {
+		return nil
 	}
 
 	for i := range current {
@@ -2102,10 +2062,7 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 	m.previousMode = ModeWorkflowDetail
 	m.mode = ModeInfo
 
-	m.infoViewport.Width = m.width - 8
-	m.infoViewport.Height = m.height - 8
-	lines := m.buildItemInfoLines()
-	m.infoViewport.SetContent(strings.Join(lines, "\n"))
+	m.configureViewport(&m.infoViewport, strings.Join(m.buildItemInfoLines(), "\n"))
 	m.statusMessage = fmt.Sprintf("Inspecting: %s  (esc to return to workflow)", step.Request)
 	return m, nil
 }
@@ -2141,10 +2098,7 @@ func (m Model) showWorkflowStepResponse() (Model, tea.Cmd) {
 	m.previousMode = ModeWorkflowDetail
 	m.mode = ModeResponse
 
-	m.responseViewport.Width = m.width - 8
-	m.responseViewport.Height = m.height - 8
-	lines := m.buildResponseLines()
-	m.responseViewport.SetContent(strings.Join(lines, "\n"))
+	m.configureViewport(&m.responseViewport, strings.Join(m.buildResponseLines(), "\n"))
 	m.statusMessage = fmt.Sprintf("Response for %s (esc to return)", step.ID)
 	return m, nil
 }
@@ -2174,14 +2128,8 @@ func (m Model) deleteWorkflowStep() (Model, tea.Cmd) {
 		m.workflowStepCursor--
 	}
 
-	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
-	if !exists {
-		m.statusMessage = fmt.Sprintf("Deleted step %q but collection path not found — not saved", deletedID)
-		return m, nil
-	}
-
-	wfPath := workflow.WorkflowPath(collectionPath, m.activeWorkflow.ID)
-	if err := workflow.SaveWorkflow(m.activeWorkflow, wfPath); err != nil {
+	var err error
+	if m, err = m.saveActiveWorkflow(); err != nil {
 		m.statusMessage = fmt.Sprintf("Deleted step %q but failed to save: %v", deletedID, err)
 		return m, nil
 	}
@@ -2243,38 +2191,7 @@ func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
 	)
 }
 
-func (m Model) refreshWorkflowView() Model {
-	m.workflowViewport.Width = m.width - 4
-	m.workflowViewport.Height = m.height - 8
-	lines := m.buildWorkflowRunLines()
-	m.workflowViewport.SetContent(strings.Join(lines, "\n"))
-	return m
-}
-
-func joinPath(parts []string) string {
-	result := ""
-	for i, part := range parts {
-		result += part
-		if i < len(parts)-1 {
-			result += "/"
-		}
-	}
-	return result
-}
 
 func splitLines(text string) []string {
-	lines := []string{}
-	currentLine := ""
-	for _, ch := range text {
-		if ch == '\n' {
-			lines = append(lines, currentLine)
-			currentLine = ""
-		} else if ch != '\r' {
-			currentLine += string(ch)
-		}
-	}
-	if currentLine != "" || len(lines) == 0 {
-		lines = append(lines, currentLine)
-	}
-	return lines
+	return strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 }

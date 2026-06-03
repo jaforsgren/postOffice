@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"postOffice/internal/logger"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -50,7 +51,8 @@ func DiscoverWorkflows(dir string) ([]*Workflow, error) {
 		}
 		wf, err := LoadWorkflow(filepath.Join(dir, name))
 		if err != nil {
-			continue // skip unparseable files silently
+			logger.LogError("DiscoverWorkflows", filepath.Join(dir, name), err)
+			continue
 		}
 		workflows = append(workflows, wf)
 	}
@@ -94,9 +96,7 @@ func PartialScript(steps []Step, fromIdx, toIdx int) string {
 	var sb strings.Builder
 	sb.WriteString("export default async function(wf, pm) {\n")
 	for i := fromIdx; i <= toIdx && i < len(steps); i++ {
-		if i >= 0 {
-			sb.WriteString(fmt.Sprintf("  await wf.run(%q);\n", steps[i].ID))
-		}
+		sb.WriteString(fmt.Sprintf("  await wf.run(%q);\n", steps[i].ID))
 	}
 	sb.WriteString("}")
 	return sb.String()

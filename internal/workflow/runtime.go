@@ -313,7 +313,6 @@ Object.defineProperty(__wf__, 'status', {
     enumerable: true
 });
 delete __wfStatusGetter__;
-delete __wf__;
 `); err != nil {
 		return err
 	}
@@ -547,28 +546,7 @@ func (r *Runner) executeGRPC(item *postman.Item, variables []postman.VariableSou
 }
 
 func (r *Runner) getVariables() []postman.VariableSource {
-	var vars []postman.VariableSource
-	seen := make(map[string]bool)
-
-	if r.environment != nil {
-		for _, ev := range r.environment.Values {
-			if ev.Enabled && !seen[ev.Key] {
-				vars = append(vars, postman.VariableSource{Key: ev.Key, Value: ev.Value, Source: "environment"})
-				seen[ev.Key] = true
-			}
-		}
-	}
-
-	if r.collection != nil {
-		for _, cv := range r.collection.Variables {
-			if !seen[cv.Key] {
-				vars = append(vars, postman.VariableSource{Key: cv.Key, Value: cv.Value, Source: "collection"})
-				seen[cv.Key] = true
-			}
-		}
-	}
-
-	return vars
+	return postman.GetAllVariables(r.collection, nil, r.environment)
 }
 
 // --- JavaScript helpers ---
