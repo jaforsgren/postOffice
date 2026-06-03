@@ -45,6 +45,7 @@ const (
 	EditTypeFolderVariable
 	EditTypeScript
 	EditTypeGRPCRequest
+	EditTypeWorkflowStepScript
 )
 
 type ScriptType int
@@ -52,6 +53,8 @@ type ScriptType int
 const (
 	ScriptTypePreRequest ScriptType = iota
 	ScriptTypeTest
+	ScriptTypeStepPre
+	ScriptTypeStepPost
 )
 
 type RequestExecution struct {
@@ -150,14 +153,15 @@ type Model struct {
 	grpcSelectedService int
 	grpcReflectPhase    int // 0 = services list, 1 = methods list
 
-	workflows            []*workflow.Workflow
-	workflowCursor       int
-	workflowStepCursor   int
-	activeWorkflow       *workflow.Workflow
-	workflowState        workflow.ExecutionState
-	workflowChan         <-chan workflow.ExecutionState
-	workflowViewport     viewport.Model
-	addingWorkflowStep   bool
+	workflows              []*workflow.Workflow
+	workflowCursor         int
+	workflowStepCursor     int
+	activeWorkflow         *workflow.Workflow
+	workflowState          workflow.ExecutionState
+	workflowChan           <-chan workflow.ExecutionState
+	workflowViewport       viewport.Model
+	addingWorkflowStep     bool
+	editingWorkflowStepIdx int
 
 	savedResponses         []postman.SavedResponse
 	savedResponseCursor    int

@@ -91,6 +91,16 @@ func (m Model) buildEditTitle() string {
 			}
 			title = scriptTypeName + " Script - " + m.editScriptItemName
 		}
+	case EditTypeWorkflowStepScript:
+		if m.scriptSelectionMode {
+			title = "Select Script Type - Step " + m.editScriptItemName
+		} else {
+			scriptTypeName := "Pre-step"
+			if m.editScriptType == ScriptTypeStepPost {
+				scriptTypeName = "Post-step"
+			}
+			title = scriptTypeName + " Script - Step " + m.editScriptItemName
+		}
 	}
 	return title
 }

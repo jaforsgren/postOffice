@@ -309,6 +309,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
+			Keys:        []string{"E"},
+			Description: "Edit step scripts",
+			ShortHelp:   "E",
+			Handler:     handleWorkflowStepScriptKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
+		},
+		{
 			Keys:        []string{"1"},
 			Description: "Run workflow up to this step",
 			ShortHelp:   "1",
@@ -1330,6 +1337,46 @@ func (m Model) newWorkflow(id string) (Model, tea.Cmd) {
 
 func handleWorkflowStepEditKey(m Model) (Model, tea.Cmd) {
 	return m.editWorkflowStepRequest()
+}
+
+func handleWorkflowStepScriptKey(m Model) (Model, tea.Cmd) {
+	return m.enterWorkflowStepScriptSelection()
+}
+
+func (m Model) enterWorkflowStepScriptSelection() (Model, tea.Cmd) {
+	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
+		m.statusMessage = "No step selected"
+		return m, nil
+	}
+	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
+		m.statusMessage = "No step selected"
+		return m, nil
+	}
+
+	step := m.activeWorkflow.Steps[m.workflowStepCursor]
+	m.editingWorkflowStepIdx = m.workflowStepCursor
+	m.editScriptItemName = step.ID
+	m.previousMode = m.mode
+	m.mode = ModeEdit
+	m.cursor = 0
+	m.editType = EditTypeWorkflowStepScript
+
+	var options []string
+	if step.PreScript != "" {
+		options = append(options, "Pre-step Script")
+	} else {
+		options = append(options, "Create Pre-step Script")
+	}
+	if step.PostScript != "" {
+		options = append(options, "Post-step Script")
+	} else {
+		options = append(options, "Create Post-step Script")
+	}
+
+	m.items = options
+	m.scriptSelectionMode = true
+	m.statusMessage = "Select script type (j/k navigate, Enter select, Esc cancel)"
+	return m, nil
 }
 
 func handleWorkflowRunUpToKey(m Model) (Model, tea.Cmd) {

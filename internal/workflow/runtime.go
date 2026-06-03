@@ -360,6 +360,16 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 	ss.Status = StatusRunning
 	r.notifyProgress()
 
+	wfStep := r.findStep(stepID)
+
+	if wfStep != nil && wfStep.PreScript != "" {
+		if err := r.runStepScript(wfStep.PreScript, stepID, nil); err != nil {
+			ss.Status = StatusFailed
+			r.notifyProgress()
+			return nil, fmt.Errorf("pre-script for step %q failed: %w", stepID, err)
+		}
+	}
+
 	var responses []*StepResponse
 	var last *StepResponse
 
@@ -381,6 +391,14 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 		}
 	}
 
+	if wfStep != nil && wfStep.PostScript != "" && last != nil {
+		if err := r.runStepScript(wfStep.PostScript, stepID, last); err != nil {
+			ss.Status = StatusFailed
+			r.notifyProgress()
+			return nil, fmt.Errorf("post-script for step %q failed: %w", stepID, err)
+		}
+	}
+
 	ss.Status = StatusSuccess
 	r.notifyProgress()
 
@@ -398,6 +416,32 @@ func (r *Runner) findRequestPath(stepID string) string {
 		}
 	}
 	return ""
+}
+
+func (r *Runner) findStep(stepID string) *Step {
+	for i := range r.wfSteps {
+		if r.wfSteps[i].ID == stepID {
+			return &r.wfSteps[i]
+		}
+	}
+	return nil
+}
+
+// runStepScript executes a plain JS string in the runner VM.
+// response is nil for pre-scripts; post-scripts receive a `step` object with the response.
+func (r *Runner) runStepScript(script, stepID string, response *StepResponse) error {
+	if response != nil {
+		stepObj := r.vm.NewObject()
+		stepObj.Set("id", stepID)
+		stepObj.Set("response", r.responseToJS(response))
+		if err := r.vm.Set("step", stepObj); err != nil {
+			return err
+		}
+		defer r.vm.Set("step", goja.Undefined())
+	}
+
+	_, err := r.vm.RunString(script)
+	return err
 }
 
 func (r *Runner) resolveRequest(path string) (*postman.Item, error) {

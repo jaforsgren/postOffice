@@ -793,6 +793,8 @@ func (m Model) saveEdit() Model {
 		if len(m.modifiedItems) == 0 {
 			delete(m.modifiedCollections, m.editCollectionName)
 		}
+	case EditTypeWorkflowStepScript:
+		m = m.saveWorkflowStepScript()
 	}
 
 	return m
@@ -1047,8 +1049,23 @@ func (m Model) handleScriptSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		selection := m.items[m.cursor]
-		var scriptType ScriptType
 
+		if m.editType == EditTypeWorkflowStepScript {
+			var scriptType ScriptType
+			switch selection {
+			case "Pre-step Script", "Create Pre-step Script":
+				scriptType = ScriptTypeStepPre
+			case "Post-step Script", "Create Post-step Script":
+				scriptType = ScriptTypeStepPost
+			default:
+				m.statusMessage = "Unknown script type selected"
+				return m, nil
+			}
+			m = m.selectWorkflowStepScriptType(scriptType)
+			return m, nil
+		}
+
+		var scriptType ScriptType
 		if selection == "Pre-request Script" || selection == "Create Pre-request Script" {
 			scriptType = ScriptTypePreRequest
 		} else if selection == "Test Script" || selection == "Create Test Script" {
@@ -1786,6 +1803,36 @@ func (m Model) selectScriptType(item postman.Item, scriptType ScriptType) Model 
 	return m
 }
 
+func (m Model) selectWorkflowStepScriptType(scriptType ScriptType) Model {
+	if m.activeWorkflow == nil || m.editingWorkflowStepIdx >= len(m.activeWorkflow.Steps) {
+		m.statusMessage = "Error: Step not found"
+		return m
+	}
+
+	step := m.activeWorkflow.Steps[m.editingWorkflowStepIdx]
+	var content string
+	switch scriptType {
+	case ScriptTypeStepPre:
+		content = step.PreScript
+	case ScriptTypeStepPost:
+		content = step.PostScript
+	}
+
+	m.editScriptType = scriptType
+	m.scriptSelectionMode = false
+	m.editFieldTextArea.SetValue(content)
+	m.editFieldTextArea.Focus()
+
+	var scriptTypeName string
+	if scriptType == ScriptTypeStepPre {
+		scriptTypeName = "pre-step"
+	} else {
+		scriptTypeName = "post-step"
+	}
+	m.statusMessage = fmt.Sprintf("Editing %s script for %q — :w to save, :wq to save & exit, Esc to cancel", scriptTypeName, step.ID)
+	return m
+}
+
 func (m Model) saveScript() Model {
 	if m.editScript == nil || m.collection == nil {
 		m.statusMessage = "Error: No script to save"
@@ -1841,6 +1888,51 @@ func (m Model) saveScript() Model {
 	}
 
 	m.statusMessage = fmt.Sprintf("Saved %s script for '%s'", scriptTypeName, m.editScriptItemName)
+	return m
+}
+
+func (m Model) saveWorkflowStepScript() Model {
+	if m.activeWorkflow == nil {
+		m.statusMessage = "Error: No active workflow"
+		return m
+	}
+	if m.editingWorkflowStepIdx < 0 || m.editingWorkflowStepIdx >= len(m.activeWorkflow.Steps) {
+		m.statusMessage = "Error: Invalid step index"
+		return m
+	}
+
+	content := m.editFieldTextArea.Value()
+	step := &m.activeWorkflow.Steps[m.editingWorkflowStepIdx]
+
+	var scriptTypeName string
+	switch m.editScriptType {
+	case ScriptTypeStepPre:
+		step.PreScript = content
+		scriptTypeName = "pre-step"
+	case ScriptTypeStepPost:
+		step.PostScript = content
+		scriptTypeName = "post-step"
+	default:
+		m.statusMessage = "Error: Unknown workflow script type"
+		return m
+	}
+
+	if m.collection == nil {
+		m.statusMessage = "Error: No collection loaded"
+		return m
+	}
+	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+	if !exists {
+		m.statusMessage = "Error: Collection path not found"
+		return m
+	}
+	wfPath := workflow.WorkflowPath(collectionPath, m.activeWorkflow.ID)
+	if err := workflow.SaveWorkflow(m.activeWorkflow, wfPath); err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to save workflow: %v", err)
+		return m
+	}
+
+	m.statusMessage = fmt.Sprintf("Saved %s script for step %q", scriptTypeName, step.ID)
 	return m
 }
 

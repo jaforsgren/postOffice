@@ -96,6 +96,12 @@ func (m Model) renderWorkflowDetail() string {
 				line += normalItemStyle.Render(idStr)
 			}
 			line += "  " + subtleStyle.Render(step.Request)
+			if step.PreScript != "" {
+				line += " " + dimStyle.Render("[pre]")
+			}
+			if step.PostScript != "" {
+				line += " " + dimStyle.Render("[post]")
+			}
 			sb.WriteString(line + "\n")
 		}
 	}
@@ -108,6 +114,7 @@ func (m Model) renderWorkflowDetail() string {
 		{"j/k", "navigate steps"},
 		{"a", "add step"},
 		{"e", "edit step request"},
+		{"E", "edit step scripts"},
 		{"i", "inspect step"},
 		{"1", "run up to this step"},
 		{"2", "run from this step"},

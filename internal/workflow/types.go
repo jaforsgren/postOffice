@@ -14,8 +14,10 @@ type Workflow struct {
 
 // Step is a named reference to a request within the collection.
 type Step struct {
-	ID      string `yaml:"id"`
-	Request string `yaml:"request"` // collection path, e.g. "Auth/Login"
+	ID         string `yaml:"id"`
+	Request    string `yaml:"request"`              // collection path, e.g. "Auth/Login"
+	PreScript  string `yaml:"pre_script,omitempty"` // JS executed before the request
+	PostScript string `yaml:"post_script,omitempty"` // JS executed after the request, receives `step.response`
 }
 
 // RunOptions controls optional wf.run() behavior.
