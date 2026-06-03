@@ -323,23 +323,23 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
-			Keys:        []string{"1"},
+			Keys:        []string{"u"},
 			Description: "Run workflow up to this step",
-			ShortHelp:   "1",
+			ShortHelp:   "u",
 			Handler:     handleWorkflowRunUpToKey,
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
-			Keys:        []string{"2"},
+			Keys:        []string{"f"},
 			Description: "Run workflow from this step",
-			ShortHelp:   "2",
+			ShortHelp:   "f",
 			Handler:     handleWorkflowRunFromKey,
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
-			Keys:        []string{"3"},
+			Keys:        []string{"r"},
 			Description: "Run this step only",
-			ShortHelp:   "3",
+			ShortHelp:   "r",
 			Handler:     handleWorkflowRunStepKey,
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
@@ -351,9 +351,23 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
+			Keys:        []string{"e"},
+			Description: "Edit request",
+			ShortHelp:   "e",
+			Handler:     handleEditRequestKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Keys:        []string{"d"},
-			Description: "Duplicate",
+			Description: "Delete request",
 			ShortHelp:   "d",
+			Handler:     handleDeleteRequestKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"D"},
+			Description: "Duplicate request",
+			ShortHelp:   "D",
 			Handler:     handleDuplicateKey,
 			AvailableIn: []ViewMode{ModeRequests},
 		},
@@ -379,11 +393,39 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeChanges},
 		},
 		{
-			Keys:        []string{"ctrl+d"},
-			Description: "Delete request",
-			ShortHelp:   "ctrl+d",
-			Handler:     handleDeleteRequestKey,
-			AvailableIn: []ViewMode{ModeRequests},
+			Keys:        []string{"?"},
+			Description: "Show help",
+			ShortHelp:   "?",
+			Handler:     handleHelpKey,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"q"},
+			Description: "Close view",
+			ShortHelp:   "q",
+			Handler:     handleBackKey,
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeSavedResponses},
+		},
+		{
+			Keys:        []string{"g"},
+			Description: "Go to top",
+			ShortHelp:   "g/G",
+			Handler:     handleGoTopKey,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"G"},
+			Description: "Go to bottom",
+			ShortHelp:   "g/G",
+			Handler:     handleGoBottomKey,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"r"},
+			Description: "Refresh",
+			ShortHelp:   "r",
+			Handler:     handleRefreshKey,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments},
 		},
 		{
 			Keys:        []string{"H"},
@@ -1470,6 +1512,70 @@ func handleDeleteSavedResponseKey(m Model) (Model, tea.Cmd) {
 		m.savedResponseCursor--
 	}
 	m.statusMessage = fmt.Sprintf("%d saved response(s) remaining", len(m.savedResponses))
+	return m, nil
+}
+
+func handleEditRequestKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
+		item := m.currentItems[m.cursor]
+		if item.IsRequest() {
+			m = m.enterEditMode(item)
+		} else {
+			m.statusMessage = "Can only edit requests, not folders"
+		}
+	} else {
+		m.statusMessage = "No editable item selected"
+	}
+	return m, nil
+}
+
+func handleHelpKey(m Model) (Model, tea.Cmd) {
+	m.statusMessage = m.commandRegistry.GenerateHelpText()
+	return m, nil
+}
+
+func handleGoTopKey(m Model) (Model, tea.Cmd) {
+	switch m.mode {
+	case ModeWorkflowDetail:
+		m.workflowStepCursor = 0
+	case ModeWorkflows:
+		m.workflowCursor = 0
+	default:
+		m.cursor = 0
+	}
+	return m, nil
+}
+
+func handleGoBottomKey(m Model) (Model, tea.Cmd) {
+	switch m.mode {
+	case ModeWorkflowDetail:
+		if m.activeWorkflow != nil && len(m.activeWorkflow.Steps) > 0 {
+			m.workflowStepCursor = len(m.activeWorkflow.Steps) - 1
+		}
+	case ModeWorkflows:
+		if len(m.workflows) > 0 {
+			m.workflowCursor = len(m.workflows) - 1
+		}
+	default:
+		if len(m.items) > 0 {
+			m.cursor = len(m.items) - 1
+		}
+	}
+	return m, nil
+}
+
+func handleRefreshKey(m Model) (Model, tea.Cmd) {
+	switch m.mode {
+	case ModeCollections:
+		m = m.loadCollectionsList()
+		m.statusMessage = "Refreshed collections"
+	case ModeRequests:
+		m = m.refreshCurrentView()
+		m.statusMessage = "Refreshed"
+	case ModeEnvironments:
+		m = m.loadEnvironmentsList()
+		m.statusMessage = "Refreshed environments"
+	}
 	return m, nil
 }
 
