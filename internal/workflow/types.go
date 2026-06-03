@@ -1,6 +1,9 @@
 package workflow
 
-import "encoding/json"
+import (
+	"encoding/json"
+	internalhttp "postOffice/internal/http"
+)
 
 // Workflow is a single YAML file describing execution steps and inline JavaScript.
 type Workflow struct {
@@ -65,11 +68,12 @@ const (
 
 // StepState tracks the runtime state of a single step.
 type StepState struct {
-	ID       string
-	Request  string
-	Status   string
-	Progress int // current repeat iteration (1-based)
-	Total    int // planned repeat count
+	ID           string
+	Request      string
+	Status       string
+	Progress     int // current repeat iteration (1-based)
+	Total        int // planned repeat count
+	LastResponse *internalhttp.Response `json:"-"`
 }
 
 // ExecutionState is the full runtime state of a workflow execution.

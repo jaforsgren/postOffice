@@ -377,16 +377,19 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 		ss.Progress = i + 1
 		r.notifyProgress()
 
-		resp, execErr := r.executeItem(item)
+		stepResp, rawResp, execErr := r.executeItem(item)
 		if execErr != nil {
 			ss.Status = StatusFailed
 			r.notifyProgress()
 			return nil, execErr
 		}
-		responses = append(responses, resp)
-		last = resp
+		responses = append(responses, stepResp)
+		last = stepResp
+		if rawResp != nil {
+			ss.LastResponse = rawResp
+		}
 
-		if opts.Until != nil && opts.Until(resp) {
+		if opts.Until != nil && opts.Until(stepResp) {
 			break
 		}
 	}
@@ -474,18 +477,19 @@ func (r *Runner) resolveRequest(path string) (*postman.Item, error) {
 	return nil, fmt.Errorf("request %q not found", path)
 }
 
-func (r *Runner) executeItem(item *postman.Item) (*StepResponse, error) {
+func (r *Runner) executeItem(item *postman.Item) (*StepResponse, *http.Response, error) {
 	// Write workflow-script variable changes to the collection before running.
 	r.syncToCollection()
 
 	variables := r.getVariables()
 
 	if item.IsGRPC() {
-		return r.executeGRPC(item, variables)
+		stepResp, err := r.executeGRPC(item, variables)
+		return stepResp, nil, err
 	}
 
 	if !item.IsRequest() || item.Request == nil {
-		return nil, fmt.Errorf("item %q is not a request", item.Name)
+		return nil, nil, fmt.Errorf("item %q is not a request", item.Name)
 	}
 
 	resp, _ := r.httpExecutor.Execute(item.Request, item, r.collection, r.environment, variables)
@@ -504,7 +508,7 @@ func (r *Runner) executeItem(item *postman.Item) (*StepResponse, error) {
 		r.addLog(fmt.Sprintf("[HTTP ERROR] %v", resp.Error))
 	}
 
-	return stepResp, nil
+	return stepResp, resp, nil
 }
 
 func (r *Runner) executeGRPC(item *postman.Item, variables []postman.VariableSource) (*StepResponse, error) {

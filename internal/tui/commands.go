@@ -240,10 +240,17 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		},
 		{
 			Keys:        []string{"ctrl+r"},
-			Description: "View/Resend response / Run workflow",
+			Description: "View/Resend response",
 			ShortHelp:   "ctrl+r",
 			Handler:     handleResponseViewKey,
 			AvailableIn: []ViewMode{ModeRequests, ModeResponse, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"R"},
+			Description: "Run full workflow",
+			ShortHelp:   "R",
+			Handler:     handleRunFullWorkflowKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
 			Keys:        []string{"i"},
@@ -334,6 +341,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Run this step only",
 			ShortHelp:   "3",
 			Handler:     handleWorkflowRunStepKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"ctrl+d"},
+			Description: "Delete step",
+			ShortHelp:   "ctrl+d",
+			Handler:     handleDeleteWorkflowStepKey,
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
@@ -792,10 +806,7 @@ func handleExecuteKey(m Model) (Model, tea.Cmd) {
 
 func handleResponseViewKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeWorkflowDetail {
-		if m.activeWorkflow != nil {
-			return m.startWorkflow(m.activeWorkflow)
-		}
-		return m, nil
+		return m.showWorkflowStepResponse()
 	}
 	if m.mode == ModeWorkflows {
 		if m.workflowCursor < len(m.workflows) {
@@ -957,7 +968,11 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.mode == ModeResponse {
-		m.mode = ModeRequests
+		if m.previousMode != 0 {
+			m.mode = m.previousMode
+		} else {
+			m.mode = ModeRequests
+		}
 		m.scrollOffset = 0
 		m.statusMessage = "Closed response view"
 		return m, nil
@@ -1333,6 +1348,17 @@ func (m Model) newWorkflow(id string) (Model, tea.Cmd) {
 	m, cmd := m.loadWorkflows()
 	m.statusMessage = fmt.Sprintf("Created workflow: %s", id)
 	return m, cmd
+}
+
+func handleDeleteWorkflowStepKey(m Model) (Model, tea.Cmd) {
+	return m.deleteWorkflowStep()
+}
+
+func handleRunFullWorkflowKey(m Model) (Model, tea.Cmd) {
+	if m.activeWorkflow != nil {
+		return m.startWorkflow(m.activeWorkflow)
+	}
+	return m, nil
 }
 
 func handleWorkflowStepEditKey(m Model) (Model, tea.Cmd) {

@@ -90,10 +90,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMessage = fmt.Sprintf("Workflow %q %s: %s", msg.State.WorkflowName, msg.State.Status, errMsg)
 			}
 			m.workflowChan = nil
-			m = m.refreshWorkflowView()
+			if m.collection != nil {
+				for _, ss := range msg.State.Steps {
+					if ss.LastResponse != nil {
+						itemID := m.collection.Info.Name + "/" + ss.Request
+						m.requestExecutions[itemID] = &RequestExecution{
+							Status:    ss.LastResponse.Status,
+							Timestamp: time.Now(),
+							Duration:  ss.LastResponse.Duration,
+							Response:  ss.LastResponse,
+						}
+					}
+				}
+			}
 			return m, nil
 		}
-		m = m.refreshWorkflowView()
 		return m, waitForWorkflow(m.workflowChan)
 
 	case GRPCReflectMsg:
@@ -1974,7 +1985,7 @@ func (m Model) openWorkflowDetail(wf *workflow.Workflow) (Model, tea.Cmd) {
 	if steps == 0 {
 		m.statusMessage = fmt.Sprintf("%s — no steps defined  <:wf new> to scaffold", wf.Name)
 	} else {
-		m.statusMessage = fmt.Sprintf("%s — %d step(s)  j/k navigate  1/2/3 partial run  ctrl+r full run", wf.Name, steps)
+		m.statusMessage = fmt.Sprintf("%s — %d step(s)  j/k navigate  1/2/3 partial run  R full run  ctrl+r view response", wf.Name, steps)
 	}
 	return m, nil
 }
@@ -2099,6 +2110,86 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 	return m, nil
 }
 
+// showWorkflowStepResponse opens the Response view for the step's last executed response.
+func (m Model) showWorkflowStepResponse() (Model, tea.Cmd) {
+	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
+		m.statusMessage = "No step selected"
+		return m, nil
+	}
+	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
+		m.statusMessage = "No step selected"
+		return m, nil
+	}
+	if m.collection == nil {
+		m.statusMessage = "No collection loaded"
+		return m, nil
+	}
+
+	step := m.activeWorkflow.Steps[m.workflowStepCursor]
+	itemID := m.collection.Info.Name + "/" + step.Request
+
+	exec, exists := m.requestExecutions[itemID]
+	if !exists || exec.Response == nil {
+		m.statusMessage = "No response for this step. Run the workflow first."
+		return m, nil
+	}
+
+	m.lastResponse = exec.Response
+	m.lastTestResult = exec.TestResult
+	m.lastExecutedItemID = itemID
+	m.scrollOffset = 0
+	m.previousMode = ModeWorkflowDetail
+	m.mode = ModeResponse
+
+	m.responseViewport.Width = m.width - 8
+	m.responseViewport.Height = m.height - 8
+	lines := m.buildResponseLines()
+	m.responseViewport.SetContent(strings.Join(lines, "\n"))
+	m.statusMessage = fmt.Sprintf("Response for %s (esc to return)", step.ID)
+	return m, nil
+}
+
+// deleteWorkflowStep removes the currently selected step and saves the workflow.
+func (m Model) deleteWorkflowStep() (Model, tea.Cmd) {
+	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
+		m.statusMessage = "No step to delete"
+		return m, nil
+	}
+	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
+		m.statusMessage = "No step selected"
+		return m, nil
+	}
+	if m.collection == nil {
+		m.statusMessage = "No collection loaded"
+		return m, nil
+	}
+
+	deletedID := m.activeWorkflow.Steps[m.workflowStepCursor].ID
+	m.activeWorkflow.Steps = append(
+		m.activeWorkflow.Steps[:m.workflowStepCursor],
+		m.activeWorkflow.Steps[m.workflowStepCursor+1:]...,
+	)
+
+	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) && m.workflowStepCursor > 0 {
+		m.workflowStepCursor--
+	}
+
+	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+	if !exists {
+		m.statusMessage = fmt.Sprintf("Deleted step %q but collection path not found — not saved", deletedID)
+		return m, nil
+	}
+
+	wfPath := workflow.WorkflowPath(collectionPath, m.activeWorkflow.ID)
+	if err := workflow.SaveWorkflow(m.activeWorkflow, wfPath); err != nil {
+		m.statusMessage = fmt.Sprintf("Deleted step %q but failed to save: %v", deletedID, err)
+		return m, nil
+	}
+
+	m.statusMessage = fmt.Sprintf("Deleted step %q", deletedID)
+	return m, nil
+}
+
 func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
 	if m.collection == nil {
 		m.statusMessage = "Load a collection first"
@@ -2118,10 +2209,17 @@ func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
 		m.workflowState.StepIndex[s.ID] = ss
 	}
 
-	m.previousMode = m.mode
-	m.mode = ModeWorkflowRun
+	if m.workflowChan != nil {
+		m.statusMessage = "Workflow already running"
+		return m, nil
+	}
+
+	if m.mode != ModeWorkflowDetail {
+		m.previousMode = m.mode
+		m.mode = ModeWorkflowDetail
+		m.workflowStepCursor = 0
+	}
 	m.statusMessage = fmt.Sprintf("Running workflow: %s", wf.Name)
-	m = m.refreshWorkflowView()
 
 	progressChan := make(chan workflow.ExecutionState, 20)
 	m.workflowChan = progressChan

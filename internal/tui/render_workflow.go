@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"postOffice/internal/workflow"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -57,89 +58,131 @@ func (m Model) renderWorkflowDetail() string {
 
 	wf := m.activeWorkflow
 	if wf == nil {
-		return m.padToHeight(subtleStyle.Render("No workflow selected."), h)
+		return mainWindowStyle.
+			Height(h).
+			Width(m.width - 4).
+			Render(subtleStyle.Render("No workflow selected."))
 	}
-
-	var sb strings.Builder
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
-	sb.WriteString(headerStyle.Render(wf.Name) + "\n")
+	var headerLines []string
+	headerLines = append(headerLines, headerStyle.Render(wf.Name))
 	if wf.Description != "" {
-		sb.WriteString(subtleStyle.Render(wf.Description) + "\n")
+		headerLines = append(headerLines, subtleStyle.Render(wf.Description))
 	}
-
 	meta := fmt.Sprintf("Steps: %d", len(wf.Steps))
 	if wf.Version > 0 {
-		meta += fmt.Sprintf("  Version: %d", wf.Version)
+		meta += fmt.Sprintf("  v%d", wf.Version)
 	}
-	sb.WriteString(dimStyle.Render(meta) + "\n\n")
+	headerLines = append(headerLines, dimStyle.Render(meta))
+	headerLines = append(headerLines, "")
 
 	if len(wf.Steps) == 0 {
-		sb.WriteString(subtleStyle.Render("No steps defined.") + "\n")
-	} else {
-		sb.WriteString(labelStyle.Render("Steps:") + "\n")
-		for i, step := range wf.Steps {
-			selected := i == m.workflowStepCursor
-			prefix := "  "
-			if selected {
-				prefix = "> "
+		content := strings.Join(headerLines, "\n") + subtleStyle.Render("No steps defined.")
+		return mainWindowStyle.
+			Height(h).
+			Width(m.width - 4).
+			Render(content)
+	}
+
+	visibleLines := h - len(headerLines) - 1
+	startIdx, endIdx := calculateVisibleWindow(m.workflowStepCursor, len(wf.Steps), visibleLines)
+
+	runningIndicator := ""
+	if m.workflowChan != nil {
+		runningIndicator = " " + workflowStatusStyle(workflow.StatusRunning).Render("● running")
+	} else if m.workflowState.WorkflowID == wf.ID && m.workflowState.Status != "" {
+		runningIndicator = " " + workflowStatusStyle(m.workflowState.Status).Render("["+m.workflowState.Status+"]")
+	}
+	if runningIndicator != "" {
+		headerLines[0] = headerLines[0] + runningIndicator
+	}
+
+	lines := append([]string{}, headerLines...)
+
+	for i := startIdx; i < endIdx; i++ {
+		step := wf.Steps[i]
+		selected := i == m.workflowStepCursor
+
+		cursor := "  "
+		if selected {
+			cursor = "> "
+		}
+
+		num := dimStyle.Render(fmt.Sprintf("[%d]", i+1))
+		stepIDStr := fmt.Sprintf("%-20s", step.ID)
+		requestStr := step.Request
+		if len(requestStr) > 40 {
+			requestStr = requestStr[:37] + "..."
+		}
+		requestStr = fmt.Sprintf("%-40s", requestStr)
+
+		var annotations []string
+		if step.PreScript != "" {
+			annotations = append(annotations, "[pre]")
+		}
+		if step.PostScript != "" {
+			annotations = append(annotations, "[post]")
+		}
+		annotationStr := ""
+		if len(annotations) > 0 {
+			annotationStr = " " + dimStyle.Render(strings.Join(annotations, " "))
+		}
+
+		// Step run state icon (from current/last workflow execution)
+		runStateStr := ""
+		if m.workflowState.StepIndex != nil {
+			if ss, ok := m.workflowState.StepIndex[step.ID]; ok && ss.Status != workflow.StatusPending {
+				icon := stepIcon(ss.Status)
+				runStateStr = "  " + workflowStatusStyle(ss.Status).Render(icon+" "+ss.Status)
+				if ss.Total > 1 {
+					runStateStr += dimStyle.Render(fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total))
+				}
 			}
-			num := fmt.Sprintf("[%d]", i+1)
-			idStr := fmt.Sprintf("%-20s", step.ID)
-			line := prefix + dimStyle.Render(num) + " "
-			if selected {
-				line += lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).Render(idStr)
-			} else {
-				line += normalItemStyle.Render(idStr)
+		}
+
+		// HTTP execution info (from requestExecutions, shown when no active run state)
+		executionInfo := ""
+		if runStateStr == "" && m.collection != nil {
+			itemID := m.collection.Info.Name + "/" + step.Request
+			if exec, exists := m.requestExecutions[itemID]; exists {
+				statusColor := "8"
+				if strings.HasPrefix(exec.Status, "2") {
+					statusColor = "10"
+				} else if strings.HasPrefix(exec.Status, "3") {
+					statusColor = "11"
+				} else if strings.HasPrefix(exec.Status, "4") {
+					statusColor = "9"
+				} else if strings.HasPrefix(exec.Status, "5") {
+					statusColor = "1"
+				}
+				statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor))
+				timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
+				executionInfo = "  " + statusStyle.Render(exec.Status) + " " + timeStyle.Render(formatTimeAgo(time.Since(exec.Timestamp)))
 			}
-			line += "  " + subtleStyle.Render(step.Request)
-			if step.PreScript != "" {
-				line += " " + dimStyle.Render("[pre]")
-			}
-			if step.PostScript != "" {
-				line += " " + dimStyle.Render("[post]")
-			}
-			sb.WriteString(line + "\n")
+		}
+
+		if selected {
+			fullLine := cursor + num + " " +
+				lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).Render(stepIDStr) +
+				"  " + subtleStyle.Render(requestStr) +
+				annotationStr + runStateStr + executionInfo
+			lines = append(lines, selectedItemStyle.Render(fullLine))
+		} else {
+			fullLine := cursor + num + " " + normalItemStyle.Render(stepIDStr) +
+				"  " + subtleStyle.Render(requestStr) +
+				annotationStr + runStateStr + executionInfo
+			lines = append(lines, normalItemStyle.Render(fullLine))
 		}
 	}
 
-	// Inline key guide
-	sb.WriteString("\n")
-	separator := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(strings.Repeat("─", 40))
-	sb.WriteString(separator + "\n")
-	keys := []struct{ key, desc string }{
-		{"j/k", "navigate steps"},
-		{"a", "add step"},
-		{"e", "edit step request"},
-		{"E", "edit step scripts"},
-		{"i", "inspect step"},
-		{"1", "run up to this step"},
-		{"2", "run from this step"},
-		{"3", "run this step only"},
-		{"ctrl+r", "run full workflow"},
-		{"esc", "back to workflows"},
-	}
-	col := 0
-	for _, k := range keys {
-		entry := lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("<"+k.key+">") + " " + dimStyle.Render(k.desc)
-		if col > 0 {
-			sb.WriteString("   ")
-		}
-		sb.WriteString(entry)
-		col++
-		if col == 2 {
-			sb.WriteString("\n")
-			col = 0
-		}
-	}
-	if col != 0 {
-		sb.WriteString("\n")
-	}
-
-	return m.padToHeight(sb.String(), h)
+	content := strings.Join(lines, "\n")
+	return mainWindowStyle.
+		Height(h).
+		Width(m.width - 4).
+		Render(content)
 }
 
 func (m Model) renderWorkflowRunView() string {
