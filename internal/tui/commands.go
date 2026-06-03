@@ -1306,8 +1306,9 @@ func (m Model) newWorkflow(id string) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.statusMessage = fmt.Sprintf("Created workflow: %s", wfPath)
-	return m, nil
+	m, cmd := m.loadWorkflows()
+	m.statusMessage = fmt.Sprintf("Created workflow: %s", id)
+	return m, cmd
 }
 
 func handleWorkflowStepEditKey(m Model) (Model, tea.Cmd) {
