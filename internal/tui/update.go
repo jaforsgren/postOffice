@@ -1712,25 +1712,6 @@ func (m Model) enterScriptSelectionMode(item postman.Item) Model {
 		}
 	}
 
-	if preReqCount == 0 && testCount == 0 {
-		m.editScript = &postman.Script{
-			Type: "text/javascript",
-			Exec: []string{},
-		}
-		m.editScriptType = ScriptTypeTest
-		m.editScriptItemName = item.Name
-		m.editItemPath = append([]string{}, m.breadcrumb...)
-		m.editCollectionName = m.collection.Info.Name
-		m.editType = EditTypeScript
-		m.previousMode = m.mode
-		m.mode = ModeEdit
-		m.scriptSelectionMode = false
-		m.editFieldTextArea.SetValue("")
-		m.editFieldTextArea.Focus()
-		m.statusMessage = "Creating new test script (no existing scripts found)"
-		return m
-	}
-
 	m.scriptSelectionMode = true
 	m.editScriptItemName = item.Name
 	m.editItemPath = append([]string{}, m.breadcrumb...)
