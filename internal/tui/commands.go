@@ -468,10 +468,7 @@ func (cr *CommandRegistry) GenerateHelpText() string {
 	seen := make(map[string]bool)
 
 	for name, cmd := range cr.commands {
-		if name != cmd.Name {
-			continue
-		}
-		if seen[cmd.Name] {
+		if name != cmd.Name || seen[cmd.Name] {
 			continue
 		}
 		seen[cmd.Name] = true
@@ -480,7 +477,11 @@ func (cr *CommandRegistry) GenerateHelpText() string {
 		if len(cmd.Aliases) > 0 {
 			nameWithAliases += "/:" + strings.Join(cmd.Aliases, "/:")
 		}
-		parts = append(parts, nameWithAliases)
+		if cmd.Description != "" {
+			parts = append(parts, nameWithAliases+" ("+cmd.Description+")")
+		} else {
+			parts = append(parts, nameWithAliases)
+		}
 	}
 
 	return "Commands: " + strings.Join(parts, " | ") + " | /search"
@@ -510,17 +511,21 @@ func (cr *CommandRegistry) GetContextualShortcuts(mode ViewMode) []string {
 func (cr *CommandRegistry) GetAutocompleteSuggestion(input string, mode ViewMode) string {
 	input = strings.ToLower(input)
 	var matches []string
+	seen := make(map[string]bool)
 
-	for name, cmd := range cr.commands {
-		if name != cmd.Name {
+	for _, cmd := range cr.commands {
+		if seen[cmd.Name] {
 			continue
 		}
 		if !isInModes(mode, cmd.AvailableIn) {
 			continue
 		}
-
-		if strings.HasPrefix(strings.ToLower(cmd.Name), input) {
-			matches = append(matches, cmd.Name)
+		for _, name := range append([]string{cmd.Name}, cmd.Aliases...) {
+			if strings.HasPrefix(strings.ToLower(name), input) {
+				seen[cmd.Name] = true
+				matches = append(matches, name)
+				break
+			}
 		}
 	}
 
@@ -605,21 +610,7 @@ func handleVariablesCommand(m Model, args []string) (Model, tea.Cmd) {
 }
 
 func handleInfoCommand(m Model, args []string) (Model, tea.Cmd) {
-	if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
-		m.currentInfoItem = &m.currentItems[m.cursor]
-		m.scrollOffset = 0
-		m.previousMode = m.mode
-		m.mode = ModeInfo
-
-		m.configureViewport(&m.infoViewport, strings.Join(m.buildItemInfoLines(), "\n"))
-
-		m.statusMessage = "Showing item info (q to close)"
-	} else if m.mode == ModeCollections {
-		m.statusMessage = "Info command is only available in requests mode"
-	} else {
-		m.statusMessage = "No item selected"
-	}
-	return m, nil
+	return handleInfoKey(m)
 }
 
 func handleEditCommand(m Model, args []string) (Model, tea.Cmd) {
@@ -679,31 +670,11 @@ func handleChangesCommand(m Model, args []string) (Model, tea.Cmd) {
 }
 
 func handleDuplicateCommand(m Model, args []string) (Model, tea.Cmd) {
-	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
-		item := m.currentItems[m.cursor]
-		if item.IsRequest() {
-			m = m.duplicateRequest(item)
-		} else {
-			m.statusMessage = "Can only duplicate requests, not folders"
-		}
-	} else {
-		m.statusMessage = "No request selected to duplicate"
-	}
-	return m, nil
+	return handleDuplicateKey(m)
 }
 
 func handleDeleteCommand(m Model, args []string) (Model, tea.Cmd) {
-	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
-		item := m.currentItems[m.cursor]
-		if item.IsRequest() {
-			m = m.deleteRequest(item)
-		} else {
-			m.statusMessage = "Can only delete requests, not folders"
-		}
-	} else {
-		m.statusMessage = "No request selected to delete"
-	}
-	return m, nil
+	return handleDeleteRequestKey(m)
 }
 
 func handleQuitCommand(m Model, args []string) (Model, tea.Cmd) {
@@ -938,7 +909,9 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = ""
 		return m, nil
 	}
-	if m.mode == ModeResponse {
+
+	switch m.mode {
+	case ModeResponse:
 		if m.previousMode != modeUnset {
 			m.mode = m.previousMode
 		} else {
@@ -947,14 +920,12 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.scrollOffset = 0
 		m.statusMessage = "Closed response view"
 		return m, nil
-	}
-	if m.mode == ModeSavedResponses {
+	case ModeSavedResponses:
 		m.mode = ModeRequests
 		m.savedResponseCursor = 0
 		m.statusMessage = "Closed saved responses"
 		return m, nil
-	}
-	if m.mode == ModeInfo {
+	case ModeInfo:
 		if m.previousMode != modeUnset {
 			m.mode = m.previousMode
 		} else {
@@ -964,8 +935,7 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.scrollOffset = 0
 		m.statusMessage = "Closed info view"
 		return m, nil
-	}
-	if m.mode == ModeJSON {
+	case ModeJSON:
 		if m.previousMode != modeUnset {
 			m.mode = m.previousMode
 		} else {
@@ -975,8 +945,7 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.scrollOffset = 0
 		m.statusMessage = "Closed JSON view"
 		return m, nil
-	}
-	if m.mode == ModeLog {
+	case ModeLog:
 		if m.previousMode != modeUnset {
 			m.mode = m.previousMode
 		} else {
@@ -985,23 +954,19 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.scrollOffset = 0
 		m.statusMessage = "Closed logs view"
 		return m, nil
-	}
-	if m.mode == ModeChanges {
+	case ModeChanges:
 		m.mode = m.previousMode
 		m.statusMessage = "Closed changes view"
 		return m, nil
-	}
-	if m.mode == ModeWorkflows {
+	case ModeWorkflows:
 		m.mode = m.previousMode
 		m.statusMessage = "Closed workflows view"
 		return m, nil
-	}
-	if m.mode == ModeWorkflowDetail {
+	case ModeWorkflowDetail:
 		m.mode = ModeWorkflows
 		m.statusMessage = "Returned to workflows list"
 		return m, nil
-	}
-	if m.mode == ModeWorkflowRun {
+	case ModeWorkflowRun:
 		if m.previousMode == ModeWorkflowDetail {
 			m.mode = ModeWorkflowDetail
 		} else {
@@ -1010,6 +975,7 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Returned to workflow"
 		return m, nil
 	}
+
 	if m.addingWorkflowStep {
 		m.addingWorkflowStep = false
 		m.breadcrumb = []string{}
