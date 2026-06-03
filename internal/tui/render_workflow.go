@@ -106,6 +106,7 @@ func (m Model) renderWorkflowDetail() string {
 	sb.WriteString(separator + "\n")
 	keys := []struct{ key, desc string }{
 		{"j/k", "navigate steps"},
+		{"a", "add step"},
 		{"e", "edit step request"},
 		{"i", "inspect step"},
 		{"1", "run up to this step"},

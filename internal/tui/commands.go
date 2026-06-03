@@ -295,6 +295,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses},
 		},
 		{
+			Keys:        []string{"a"},
+			Description: "Add step",
+			ShortHelp:   "a",
+			Handler:     handleAddWorkflowStepKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
+		},
+		{
 			Keys:        []string{"e"},
 			Description: "Edit step request",
 			ShortHelp:   "e",
@@ -748,6 +755,9 @@ func handleEnterKey(m Model) (Model, tea.Cmd) {
 			if item.IsFolder() {
 				m = m.navigateInto(item)
 			} else if item.IsRequest() {
+				if m.addingWorkflowStep {
+					return m.confirmAddWorkflowStep(item)
+				}
 				return m.executeRequest(item)
 			}
 		}
@@ -1005,6 +1015,13 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 			m.mode = ModeWorkflows
 		}
 		m.statusMessage = "Returned to workflow"
+		return m, nil
+	}
+	if m.addingWorkflowStep {
+		m.addingWorkflowStep = false
+		m.breadcrumb = []string{}
+		m.mode = ModeWorkflowDetail
+		m.statusMessage = "Add step cancelled"
 		return m, nil
 	}
 	if m.searchActive {
@@ -1494,6 +1511,57 @@ func handleDeleteSavedResponseKey(m Model) (Model, tea.Cmd) {
 		m.savedResponseCursor--
 	}
 	m.statusMessage = fmt.Sprintf("%d saved response(s) remaining", len(m.savedResponses))
+	return m, nil
+}
+
+func handleAddWorkflowStepKey(m Model) (Model, tea.Cmd) {
+	if m.activeWorkflow == nil {
+		m.statusMessage = "No workflow open"
+		return m, nil
+	}
+	if m.collection == nil {
+		m.statusMessage = "Load a collection first"
+		return m, nil
+	}
+	m.addingWorkflowStep = true
+	m.previousMode = ModeWorkflowDetail
+	m.mode = ModeRequests
+	m.breadcrumb = []string{}
+	m = m.loadRequestsList()
+	m.statusMessage = fmt.Sprintf("Select a request to add to %q  (esc to cancel)", m.activeWorkflow.ID)
+	return m, nil
+}
+
+func (m Model) confirmAddWorkflowStep(item postman.Item) (Model, tea.Cmd) {
+	m.addingWorkflowStep = false
+
+	// Build step request path relative to collection (no collection name prefix).
+	parts := append([]string{}, m.breadcrumb...)
+	parts = append(parts, item.Name)
+	requestPath := strings.Join(parts, "/")
+
+	stepID := fmt.Sprintf("step-%d", len(m.activeWorkflow.Steps)+1)
+	m.activeWorkflow.Steps = append(m.activeWorkflow.Steps, workflow.Step{
+		ID:      stepID,
+		Request: requestPath,
+	})
+
+	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+	if !exists {
+		m.statusMessage = "Collection path not found — step not saved"
+		m.mode = ModeWorkflowDetail
+		return m, nil
+	}
+
+	wfPath := workflow.WorkflowPath(collectionPath, m.activeWorkflow.ID)
+	if err := workflow.SaveWorkflow(m.activeWorkflow, wfPath); err != nil {
+		m.statusMessage = fmt.Sprintf("Added step but failed to save: %v", err)
+	} else {
+		m.statusMessage = fmt.Sprintf("Added step %q → %s", stepID, requestPath)
+	}
+
+	m.breadcrumb = []string{}
+	m.mode = ModeWorkflowDetail
 	return m, nil
 }
 

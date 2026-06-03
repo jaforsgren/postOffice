@@ -150,13 +150,14 @@ type Model struct {
 	grpcSelectedService int
 	grpcReflectPhase    int // 0 = services list, 1 = methods list
 
-	workflows          []*workflow.Workflow
-	workflowCursor     int
-	workflowStepCursor int
-	activeWorkflow     *workflow.Workflow
-	workflowState      workflow.ExecutionState
-	workflowChan       <-chan workflow.ExecutionState
-	workflowViewport   viewport.Model
+	workflows            []*workflow.Workflow
+	workflowCursor       int
+	workflowStepCursor   int
+	activeWorkflow       *workflow.Workflow
+	workflowState        workflow.ExecutionState
+	workflowChan         <-chan workflow.ExecutionState
+	workflowViewport     viewport.Model
+	addingWorkflowStep   bool
 
 	savedResponses         []postman.SavedResponse
 	savedResponseCursor    int
