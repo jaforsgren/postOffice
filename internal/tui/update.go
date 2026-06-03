@@ -50,6 +50,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		if m.mode == ModeVariables {
+			m = m.loadVariablesList()
+		}
+
 		if msg.Environment != nil && msg.TestResult != nil {
 			if err := m.parser.SaveEnvironment(msg.Environment.Name); err != nil {
 				m.statusMessage = fmt.Sprintf("Warning: failed to save environment variables: %v", err)

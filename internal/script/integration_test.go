@@ -280,6 +280,69 @@ func TestIntegration_FullScriptLifecycle(t *testing.T) {
 	}
 }
 
+func TestIntegration_ConsoleLogCaptureAndCollectionVarFromResponse(t *testing.T) {
+	script := postman.Script{
+		Type: "text/javascript",
+		Exec: []string{
+			`pm.test("response is ok", () => { pm.response.to.have.status(201) })`,
+			`console.log('setting claim id')`,
+			`var jsonData = JSON.parse(responseBody);`,
+			`if (jsonData?.claimId) {`,
+			`   pm.collectionVariables.set("claimId", jsonData.claimId)`,
+			`}`,
+		},
+	}
+
+	ctx := &ExecutionContext{
+		Response: &ResponseData{
+			StatusCode: 201,
+			Body:       `{"claimId": "abc-123", "status": "created"}`,
+		},
+		CollectionVars:  []postman.Variable{},
+		EnvironmentVars: []postman.EnvVariable{},
+	}
+
+	result := NewRuntime().ExecuteTestScript(script, ctx)
+
+	if len(result.Errors) > 0 {
+		t.Fatalf("unexpected script errors: %v", result.Errors)
+	}
+	if len(result.Tests) != 1 || !result.Tests[0].Passed {
+		t.Errorf("expected test to pass, got: %+v", result.Tests)
+	}
+
+	found := false
+	for _, v := range ctx.CollectionVars {
+		if v.Key == "claimId" && v.Value == "abc-123" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected claimId to be set in collection vars, got: %+v", ctx.CollectionVars)
+	}
+
+	if len(result.ConsoleLogs) < 2 {
+		t.Errorf("expected at least 2 console log entries, got %d: %v", len(result.ConsoleLogs), result.ConsoleLogs)
+	}
+
+	hasConsoleLog := false
+	hasVarLog := false
+	for _, log := range result.ConsoleLogs {
+		if log == "[log] setting claim id" {
+			hasConsoleLog = true
+		}
+		if log == "[collection] claimId = abc-123" {
+			hasVarLog = true
+		}
+	}
+	if !hasConsoleLog {
+		t.Errorf("expected '[log] setting claim id' in console logs, got: %v", result.ConsoleLogs)
+	}
+	if !hasVarLog {
+		t.Errorf("expected '[collection] claimId = abc-123' in console logs, got: %v", result.ConsoleLogs)
+	}
+}
+
 func TestIntegration_TimeoutDoesNotCorruptVariables(t *testing.T) {
 	runtime := NewRuntimeWithTimeout(100 * time.Millisecond)
 

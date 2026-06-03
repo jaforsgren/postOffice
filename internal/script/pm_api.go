@@ -3,6 +3,7 @@ package script
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/dop251/goja"
 	"github.com/tidwall/gjson"
@@ -55,6 +56,7 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) err
 		key := call.Arguments[0].String()
 		value := call.Arguments[1].String()
 		collectionVarSetter(key, value)
+		result.AddLog(fmt.Sprintf("[collection] %s = %s", key, value))
 		return goja.Undefined()
 	}); err != nil {
 		return fmt.Errorf("failed to set collectionVariables.set: %w", err)
@@ -292,9 +294,16 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) err
 	}
 
 	consoleObj := vm.NewObject()
-	noop := func(call goja.FunctionCall) goja.Value { return goja.Undefined() }
 	for _, method := range []string{"log", "warn", "error", "info", "debug"} {
-		if err := consoleObj.Set(method, noop); err != nil {
+		method := method
+		if err := consoleObj.Set(method, func(call goja.FunctionCall) goja.Value {
+			args := make([]string, len(call.Arguments))
+			for i, arg := range call.Arguments {
+				args[i] = arg.String()
+			}
+			result.AddLog("[" + method + "] " + strings.Join(args, " "))
+			return goja.Undefined()
+		}); err != nil {
 			return fmt.Errorf("failed to set console.%s: %w", method, err)
 		}
 	}

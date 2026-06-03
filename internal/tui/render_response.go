@@ -49,7 +49,8 @@ func (m Model) buildResponseLines() []string {
 	lines = append(lines, "")
 	lines = append(lines, m.buildResponseSection()...)
 
-	if m.lastTestResult != nil && (len(m.lastTestResult.Tests) > 0 || len(m.lastTestResult.Errors) > 0) {
+	if m.lastTestResult != nil &&
+		(len(m.lastTestResult.Tests) > 0 || len(m.lastTestResult.Errors) > 0 || len(m.lastTestResult.ConsoleLogs) > 0) {
 		lines = append(lines, "")
 		lines = append(lines, m.buildTestResultsSection()...)
 	}
@@ -217,6 +218,16 @@ func (m Model) buildTestResultsSection() []string {
 		lines = append(lines, errorStyle.Render("Script Errors:"))
 		for _, err := range m.lastTestResult.Errors {
 			lines = append(lines, errorStyle.Render("  • "+err))
+		}
+	}
+
+	if len(m.lastTestResult.ConsoleLogs) > 0 {
+		lines = append(lines, "")
+		logLabelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Bold(true)
+		logStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		lines = append(lines, logLabelStyle.Render("Console:"))
+		for _, log := range m.lastTestResult.ConsoleLogs {
+			lines = append(lines, logStyle.Render("  "+log))
 		}
 	}
 

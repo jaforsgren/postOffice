@@ -200,6 +200,10 @@ func (e *Executor) buildRequest(req *postman.Request, variables []postman.Variab
 		httpReq.Header.Set(header.Key, resolvedValue)
 	}
 
+	if body != nil && httpReq.Header.Get("Content-Type") == "" {
+		httpReq.Header.Set("Content-Type", "application/json")
+	}
+
 	return httpReq, nil
 }
 

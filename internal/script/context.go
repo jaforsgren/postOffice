@@ -19,8 +19,9 @@ type ExecutionContext struct {
 }
 
 type TestResult struct {
-	Tests  []Test
-	Errors []string
+	Tests       []Test
+	Errors      []string
+	ConsoleLogs []string
 }
 
 type Test struct {
@@ -39,6 +40,10 @@ func (tr *TestResult) AddTest(name string, passed bool, err string) {
 
 func (tr *TestResult) AddError(err string) {
 	tr.Errors = append(tr.Errors, err)
+}
+
+func (tr *TestResult) AddLog(msg string) {
+	tr.ConsoleLogs = append(tr.ConsoleLogs, msg)
 }
 
 func (tr *TestResult) HasFailures() bool {
