@@ -137,6 +137,13 @@ type Model struct {
 	editCollectionName   string
 	editEnvironmentName  string
 
+	pathParams           map[string]string
+	requestPathParams    map[string]map[string]string
+
+	varSuggestions       []postman.VariableSource
+	varSuggestionCursor  int
+	varSuggestionActive  bool
+
 	editScript          *postman.Script
 	editScriptType      ScriptType
 	editScriptItemName  string
@@ -237,6 +244,8 @@ func NewModel(parser *postman.Parser) Model {
 		modifiedCollections:  make(map[string]bool),
 		modifiedEnvironments: make(map[string]bool),
 		modifiedRequests:     make(map[string]*postman.Request),
+		pathParams:           make(map[string]string),
+		requestPathParams:    make(map[string]map[string]string),
 		responseViewport:     viewport.New(0, 0),
 		infoViewport:         viewport.New(0, 0),
 		jsonViewport:         viewport.New(0, 0),

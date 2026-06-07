@@ -842,6 +842,7 @@ func handleResponseViewKey(m Model) (Model, tea.Cmd) {
 					m.lastExecutedItemID = itemID
 
 					m.scrollOffset = 0
+					m.previousMode = m.mode
 					m.mode = ModeResponse
 
 					m.configureViewport(&m.responseViewport, strings.Join(m.buildResponseLines(), "\n"))

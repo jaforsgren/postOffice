@@ -11,6 +11,9 @@ A terminal UI for browsing and executing Postman collections with vim-style navi
 - Environment variable support
 - Request and collection editing
 - gRPC request editing with live server reflection
+- Workflow automation with inline JavaScript orchestration
+- Path parameter editing (`:id` style) per request
+- Variable autocomplete with resolved value preview when typing `{{`
 
 ## Installation
 
@@ -34,50 +37,78 @@ go build -o postOffice
 
 ### Navigation
 
-**Normal Mode:**
-- `j/k` or `↓/↑` - Navigate items
-- `enter` - Select item (load collection, open folder, execute request)
-- `i` - Show info for selected item
-- `j` - Show JSON view of selected item
-- `/` - Search items
-- `e` - Edit selected request or collection
-- `v` - Manage variables/environments
-- `esc/h/backspace` - Go back/up
-- `q` or `ctrl+c` - Quit
+**Lists (Collections / Requests / Environments / Variables):**
+- `j/k` or `↓/↑` — navigate items
+- `g/G` — jump to top / bottom
+- `enter` — select item (open folder, execute request)
+- `e` — edit selected request
+- `E` — edit scripts for selected request
+- `d` — delete selected request
+- `D` — duplicate selected request
+- `i` — show info for selected item
+- `J` — show raw JSON for selected item
+- `H` — view saved responses for selected request
+- `r` — refresh current view
+- `/` — search / filter items
+- `?` — show help
+- `h/esc/backspace` — go back / up one folder level
+- `q` or `ctrl+c` — quit
 
-**Viewport Scrolling (Response/Info/JSON views):**
-- `j/k` or `↓/↑` - Scroll down/up one line
-- `d` or `Page Down` - Scroll down half page
-- `u` or `Page Up` - Scroll up half page
-- `g` or `Home` - Jump to top
-- `G` or `End` - Jump to bottom
-- `esc/h/backspace` - Close view
+**Overlay views (Response / Info / JSON / Log):**
+- `j/k` or `↓/↑` — scroll
+- `g/G` or `Home/End` — jump to top / bottom
+- `d/u` or `Page Down/Up` — scroll half page
+- `q` or `esc/h/backspace` — close view
+
+**Request execution:**
+- `enter` — execute selected request
+- `ctrl+e` — re-execute selected request
+- `ctrl+r` — view last response for selected request (without re-executing)
+- `y` — copy response body (in response view)
+- `Y` — copy full response (in response view)
+- `s` — save response (in response view)
+
+**Workflow detail view:**
+- `j/k` — navigate steps
+- `g/G` — jump to first / last step
+- `a` — add step
+- `e` — edit step request
+- `E` — edit step scripts
+- `u` — run workflow up to this step
+- `f` — run workflow from this step
+- `r` — run this step only
+- `R` — run full workflow
+- `ctrl+r` — view last response for this step
+- `ctrl+d` — delete step
+- `i` — inspect step request info
 
 **Command Mode:**
 
 Press `:` to enter command mode:
 
-- `:load <path>` or `:l <path>` - Load a Postman collection
-- `:loadenv <path>` or `:le <path>` - Load an environment file
-- `:collections` or `:c` - Switch to collections view
-- `:requests` or `:r` - Switch to requests view
-- `:environments` or `:env` - Switch to environments view
-- `:variables` or `:var` - Show all variables
-- `:info` or `:i` - Display item info
-- `:edit` - Edit selected request
-- `:w` - Save changes to file
-- `:wq` - Save changes and quit
-- `:changes` or `:ch` - Show unsaved changes
-- `:help` or `:h` - Show help
-- `:quit` or `:q` - Exit
+- `:load <path>` or `:l <path>` — load a Postman collection
+- `:loadenv <path>` or `:le <path>` — load an environment file
+- `:collections` or `:c` — switch to collections view
+- `:requests` or `:r` — switch to requests view
+- `:environments` or `:env` — switch to environments view
+- `:variables` or `:var` — show all variables
+- `:info` or `:i` — display item info
+- `:edit` — edit selected request
+- `:wf` — browse workflows
+- `:wf run <id>` — run a workflow by ID
+- `:wf new <id>` — create a new workflow
+- `:w` — save changes to file
+- `:wq` — save changes and quit
+- `:changes` or `:ch` — show unsaved changes
+- `:help` or `:h` or `?` — show help
+- `:quit` or `:q` — exit
 
 **Search Mode:**
 
 Press `/` to enter search mode:
-- Type to filter items
-- Press `enter` to confirm search
-- Press `esc` to cancel search
-- Results update as you type
+- type to filter items (results update as you type)
+- `enter` — confirm search
+- `esc` — cancel search
 
 ### File Paths
 
@@ -92,17 +123,17 @@ When loading files, `~/` is expanded to your home directory:
 ## Request Execution
 
 1. Navigate to a request using `j/k`
-2. Press `enter` to execute (or `ctrl+r`)
-3. View the response in the viewport
-4. Use `j/k` to scroll the response (or `d/u` for half-page scrolling)
-5. Press `esc` to close
+2. Press `enter` to execute
+3. View the response — use `j/k` to scroll, `d/u` for half-page scrolling
+4. Press `q` or `esc` to close
+5. Press `ctrl+r` to view the last response without re-executing
 
 ## Editing Requests
 
 1. Navigate to a request and press `e` or use `:edit`
-2. Use `j/k` to navigate between fields (Name, Method, URL, Headers, Body)
+2. Use `j/k` to navigate between fields (Name, Method, URL, path params, Headers, Body)
 3. Press `enter` to edit a field
-4. **For single-line fields (Name, Method, URL):**
+4. **For single-line fields (Name, Method, URL, path params):**
    - Type your changes
    - Press `enter` to save
    - Press `esc` to cancel
@@ -115,6 +146,14 @@ When loading files, `~/` is expanded to your home directory:
 7. Use `:w` to write changes to file
 8. Use `:wq` to write changes and quit
 
+**Path Parameters:**
+
+Requests with URL path parameters (e.g. `/api/v1/claims/:id`) show each `:param` as a dedicated editable field below the URL. Set a value and it will be substituted into the URL before the request is sent. Values persist for the session — executing the request from the list will reuse the last-set values.
+
+**Variable Autocomplete:**
+
+Type `{{` in any field (URL, path params, headers, body) to trigger variable autocomplete. Matching variables from the active environment and collection are shown with their resolved values. Press `Tab` to insert the highlighted suggestion; press `Tab` again to cycle through alternatives. The URL field also shows a resolved preview (`→ full-url`) combining variable substitution and path param values.
+
 **Managing Unsaved Changes:**
 
 - `:changes` - View all unsaved changes
@@ -123,6 +162,60 @@ When loading files, `~/` is expanded to your home directory:
   - `ctrl+d` - Discard all changes
   - `esc` - Close changes view
 
+## Workflows
+
+Workflows automate multi-request sequences with inline JavaScript. Each workflow is a single YAML file stored in a `workflows/` directory next to the collection file.
+
+```yaml
+id: login-and-fetch-users
+name: Login and Fetch Users
+description: Authenticate and fetch users
+version: 1
+
+steps:
+  - id: login
+    request: Auth/Login
+  - id: list-users
+    request: Users/List Users
+
+script: |
+  export default async function (wf, pm) {
+    const loginResult = await wf.run("login");
+
+    if (loginResult.response.code !== 201) {
+      wf.fail("Login failed");
+      return;
+    }
+
+    const data = loginResult.response.json();
+    pm.collectionVariables.set("authToken", "token-" + data.id);
+
+    const listResult = await wf.run("list-users");
+    const users = listResult.response.json();
+    console.log("Found " + users.length + " users");
+  }
+```
+
+**TUI commands:**
+- `:wf` — browse available workflows
+- `:wf run <id>` — run a workflow by ID
+- `:wf new <id>` — create a new workflow skeleton
+
+**Workflow list keys:**
+- `enter` — open workflow detail
+- `ctrl+r` — run selected workflow
+
+**Workflow detail keys:**
+- `R` — run full workflow
+- `u` — run up to selected step
+- `f` — run from selected step
+- `r` — run selected step only
+- `ctrl+r` — view last response for selected step
+
+The workflow script receives `wf` (workflow control API) and `pm` (full Postman-compatible scripting API). Pre/post request scripts attached to collection requests are triggered automatically on each step.
+
+See [docs/workflows.md](docs/workflows.md) for full documentation.
+
 ## gRPC Requests
 
 PostOffice supports gRPC requests stored in Postman collections (method `GRPC` or URL scheme `grpc://`). A dedicated edit form replaces the standard HTTP edit fields.
@@ -130,16 +223,13 @@ PostOffice supports gRPC requests stored in Postman collections (method `GRPC` o
 ### Editing a gRPC Request
 
 1. Navigate to a gRPC request and press `e` or use `:edit`
-2. Use `j/k` to navigate between the five fields:
-
-| Field | Description |
-|-------|-------------|
-| **Name** | Request name in the collection |
-| **Endpoint** | Server address, e.g. `localhost:50051` |
-| **Service/Method** | Fully-qualified method path, e.g. `helloworld.Greeter/SayHello` |
-| **Metadata** | gRPC metadata headers, one `Key: Value` per line |
-| **Message** | JSON request body sent as the protobuf message |
-| **TLS** | `Enabled` / `Disabled (insecure)` — press `Enter` to toggle |
+2. Use `j/k` to navigate between fields:
+   - **Name** — request name in the collection
+   - **Endpoint** — server address, e.g. `localhost:50051`
+   - **Service/Method** — fully-qualified method path, e.g. `helloworld.Greeter/SayHello`
+   - **Metadata** — gRPC metadata headers, one `Key: Value` per line
+   - **Message** — JSON request body sent as the protobuf message
+   - **TLS** — `Enabled` / `Disabled (insecure)` — press `Enter` to toggle
 
 TLS state is stored in the URL scheme: `grpc://` for insecure, `grpcs://` for TLS with system certificate roots.
 

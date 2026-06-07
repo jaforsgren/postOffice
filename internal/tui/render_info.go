@@ -331,11 +331,48 @@ func (m Model) buildURLSection(req *postman.Request, variables []postman.Variabl
 	lines = append(lines, "  "+url)
 
 	resolvedURL := postman.ResolveVariables(url, variables)
+
+	// Apply stored path params for this item
+	var storedParams map[string]string
+	if m.currentInfoItem != nil && m.collection != nil {
+		itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.breadcrumb, m.currentInfoItem.Name)
+		storedParams = m.requestPathParams[itemID]
+		for name, val := range storedParams {
+			if val != "" {
+				resolvedVal := postman.ResolveVariables(val, variables)
+				resolvedURL = strings.ReplaceAll(resolvedURL, ":"+name, resolvedVal)
+			}
+		}
+	}
+	resolvedURL = postman.ResolveVariables(resolvedURL, variables)
+
 	if url != resolvedURL {
 		resolvedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 		lines = append(lines, "  → "+resolvedStyle.Render(resolvedURL))
 	}
 	lines = append(lines, "")
+
+	// Path parameters section
+	paramNames := postman.ExtractPathParams(req.URL)
+	if len(paramNames) > 0 {
+		lines = append(lines, requestStyle.Render("Path Parameters:"))
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		resolvedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+		for _, name := range paramNames {
+			val := storedParams[name]
+			if val == "" {
+				lines = append(lines, fmt.Sprintf("  :%s  %s", name, dimStyle.Render("(not set)")))
+			} else {
+				resolvedVal := postman.ResolveVariables(val, variables)
+				if val != resolvedVal {
+					lines = append(lines, fmt.Sprintf("  :%s = %s  → %s", name, val, resolvedStyle.Render(resolvedVal)))
+				} else {
+					lines = append(lines, fmt.Sprintf("  :%s = %s", name, resolvedStyle.Render(val)))
+				}
+			}
+		}
+		lines = append(lines, "")
+	}
 
 	return lines
 }

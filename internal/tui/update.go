@@ -541,6 +541,10 @@ func (m Model) executeRequest(item postman.Item) (Model, tea.Cmd) {
 		m.statusMessage = fmt.Sprintf("Sending: %s %s", item.Request.Method, item.Name)
 	}
 
+	if stored, ok := m.requestPathParams[itemID]; ok && len(stored) > 0 {
+		requestToExecute = applyPathParamsToReq(requestToExecute, stored)
+	}
+
 	m.requestExecutions[itemID] = &RequestExecution{
 		Status:     "Sending...",
 		Timestamp:  time.Now(),
@@ -770,6 +774,18 @@ func (m Model) enterEditMode(item postman.Item) Model {
 	m.mode = ModeEdit
 	m.scrollOffset = 0
 
+	// Load stored path params for this item, or initialize empty
+	itemID := m.getRequestIdentifier(item)
+	m.pathParams = make(map[string]string)
+	if stored, ok := m.requestPathParams[itemID]; ok {
+		for k, v := range stored {
+			m.pathParams[k] = v
+		}
+	}
+	m.varSuggestions = nil
+	m.varSuggestionActive = false
+	m.varSuggestionCursor = 0
+
 	if item.IsGRPC() {
 		endpoint, service, method, tls := parseGRPCURL(item.Request.URL.Raw)
 		m.grpcEditEndpoint = endpoint
@@ -815,6 +831,7 @@ func (m Model) saveEdit() (Model, error) {
 		m.modifiedRequests[itemID] = m.editRequest
 		m.modifiedItems[itemID] = true
 		m.modifiedCollections[m.editCollectionName] = true
+		m = m.saveCurrentPathParams()
 
 		if err := m.parser.SaveCollection(m.editCollectionName); err != nil {
 			m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
@@ -893,6 +910,7 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.modifiedRequests[itemID] = m.editRequest
 		m.modifiedItems[itemID] = true
 		m.modifiedCollections[m.editCollectionName] = true
+		m = m.saveCurrentPathParams()
 		m.mode = m.previousMode
 		m.editType = EditTypeNone
 		m.editFieldMode = false
@@ -946,7 +964,15 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		fieldNames := m.editFieldNames()
 		fieldName := fieldNames[m.editFieldCursor]
 
-		if m.editFieldCursor >= 3 {
+		isMultiLine := false
+		if m.editType == EditTypeGRPCRequest {
+			isMultiLine = m.editFieldCursor >= 3
+		} else if m.editType == EditTypeRequest {
+			headersIdx, _ := m.requestFieldIndices()
+			isMultiLine = m.editFieldCursor >= headersIdx
+		}
+
+		if isMultiLine {
 			m.editFieldTextArea.SetValue(fieldValue)
 			m.editFieldTextArea.Focus()
 			m.statusMessage = fmt.Sprintf("Editing %s... (Ctrl+S to save, Esc to cancel)", fieldName)
@@ -954,7 +980,7 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.editFieldInput.SetValue(fieldValue)
 			m.editFieldInput.Focus()
-			m.statusMessage = fmt.Sprintf("Editing %s... (Enter to save, Esc to cancel)", fieldName)
+			m.statusMessage = fmt.Sprintf("Editing %s... (Enter to save, Tab for {{var}}, Esc to cancel)", fieldName)
 			return m, m.editFieldInput.Focus()
 		}
 	}
@@ -1163,11 +1189,21 @@ func (m Model) handleScriptEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
-	isMultiLineField := m.editFieldCursor == 3 || m.editFieldCursor == 4
+
+	isMultiLineField := false
+	if m.editType == EditTypeGRPCRequest {
+		isMultiLineField = m.editFieldCursor == 3 || m.editFieldCursor == 4
+	} else if m.editType == EditTypeRequest && m.editRequest != nil {
+		headersIdx, bodyIdx := m.requestFieldIndices()
+		isMultiLineField = m.editFieldCursor == headersIdx || m.editFieldCursor == bodyIdx
+	}
 
 	switch msg.Type {
 	case tea.KeyEsc:
 		m.editFieldMode = false
+		m.varSuggestionActive = false
+		m.varSuggestions = nil
+		m.varSuggestionCursor = 0
 		if isMultiLineField {
 			m.editFieldTextArea.Blur()
 			m.editFieldTextArea.SetValue("")
@@ -1180,12 +1216,13 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyCtrlS:
 		if isMultiLineField && m.editRequest != nil {
+			headersIdx, bodyIdx := m.requestFieldIndices()
 			switch m.editType {
 			case EditTypeRequest:
 				switch m.editFieldCursor {
-				case 3:
+				case headersIdx:
 					m.editRequest.Header = m.parseHeaders(m.editFieldTextArea.Value())
-				case 4:
+				case bodyIdx:
 					if m.editRequest.Body == nil {
 						m.editRequest.Body = &postman.Body{}
 					}
@@ -1203,9 +1240,50 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.editFieldMode = false
+			m.varSuggestionActive = false
+			m.varSuggestions = nil
 			m.editFieldTextArea.Blur()
 			m.statusMessage = "Field updated (use :w to save to file)"
 			return m, nil
+		}
+		return m, nil
+
+	case tea.KeyTab:
+		if m.varSuggestionActive && len(m.varSuggestions) > 0 {
+			selected := m.varSuggestions[m.varSuggestionCursor]
+			if isMultiLineField {
+				value := m.editFieldTextArea.Value()
+				idx := strings.LastIndex(value, "{{")
+				if idx != -1 {
+					m.editFieldTextArea.SetValue(value[:idx] + "{{" + selected.Key + "}}")
+				}
+			} else {
+				currentVal := m.editFieldInput.Value()
+				idx := strings.LastIndex(currentVal, "{{")
+				if idx != -1 {
+					m.editFieldInput.SetValue(currentVal[:idx] + "{{" + selected.Key + "}}")
+					m.editFieldInput.CursorEnd()
+				}
+			}
+			m.varSuggestionCursor = (m.varSuggestionCursor + 1) % len(m.varSuggestions)
+			// Re-check: after inserting {{key}}, the closing }} means no active suggestion
+			var checkVal string
+			if isMultiLineField {
+				checkVal = m.editFieldTextArea.Value()
+			} else {
+				checkVal = m.editFieldInput.Value()
+			}
+			prefix, active := detectVarPrefix(checkVal)
+			m.varSuggestionActive = active
+			if active {
+				m.varSuggestions = m.computeVarSuggestions(prefix)
+				if m.varSuggestionCursor >= len(m.varSuggestions) {
+					m.varSuggestionCursor = 0
+				}
+			} else {
+				m.varSuggestions = nil
+				m.varSuggestionCursor = 0
+			}
 		}
 		return m, nil
 
@@ -1213,6 +1291,7 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !isMultiLineField && m.editRequest != nil {
 			switch m.editType {
 			case EditTypeRequest:
+				headersIdx, _ := m.requestFieldIndices()
 				switch m.editFieldCursor {
 				case 0:
 					m.editItemName = m.editFieldInput.Value()
@@ -1220,6 +1299,12 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.editRequest.Method = m.editFieldInput.Value()
 				case 2:
 					m.editRequest.URL.Raw = m.editFieldInput.Value()
+				default:
+					params := postman.ExtractPathParams(m.editRequest.URL)
+					paramIdx := m.editFieldCursor - 3
+					if paramIdx >= 0 && paramIdx < len(params) && m.editFieldCursor < headersIdx {
+						m.pathParams[params[paramIdx]] = m.editFieldInput.Value()
+					}
 				}
 			case EditTypeGRPCRequest:
 				switch m.editFieldCursor {
@@ -1234,6 +1319,9 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.editFieldMode = false
+			m.varSuggestionActive = false
+			m.varSuggestions = nil
+			m.varSuggestionCursor = 0
 			m.editFieldInput.Blur()
 			m.statusMessage = "Field updated (use :w to save to file)"
 			return m, nil
@@ -1244,8 +1332,30 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		if isMultiLineField {
 			m.editFieldTextArea, cmd = m.editFieldTextArea.Update(msg)
+			prefix, active := detectVarPrefix(m.editFieldTextArea.Value())
+			m.varSuggestionActive = active
+			if active {
+				m.varSuggestions = m.computeVarSuggestions(prefix)
+				if m.varSuggestionCursor >= len(m.varSuggestions) {
+					m.varSuggestionCursor = 0
+				}
+			} else {
+				m.varSuggestions = nil
+				m.varSuggestionCursor = 0
+			}
 		} else {
 			m.editFieldInput, cmd = m.editFieldInput.Update(msg)
+			prefix, active := detectVarPrefix(m.editFieldInput.Value())
+			m.varSuggestionActive = active
+			if active {
+				m.varSuggestions = m.computeVarSuggestions(prefix)
+				if m.varSuggestionCursor >= len(m.varSuggestions) {
+					m.varSuggestionCursor = 0
+				}
+			} else {
+				m.varSuggestions = nil
+				m.varSuggestionCursor = 0
+			}
 		}
 		return m, cmd
 	}
@@ -1311,6 +1421,9 @@ func (m Model) isItemModified(itemID string) bool {
 func (m Model) getEditFieldCount() int {
 	switch m.editType {
 	case EditTypeRequest:
+		if m.editRequest != nil {
+			return 5 + len(postman.ExtractPathParams(m.editRequest.URL))
+		}
 		return 5
 	case EditTypeGRPCRequest:
 		return 6
@@ -1323,7 +1436,22 @@ func (m Model) editFieldNames() []string {
 	if m.editType == EditTypeGRPCRequest {
 		return []string{"Name", "Endpoint", "Service/Method", "Metadata", "Message", "TLS"}
 	}
-	return []string{"Name", "Method", "URL", "Headers", "Body"}
+	names := []string{"Name", "Method", "URL"}
+	if m.editRequest != nil {
+		for _, name := range postman.ExtractPathParams(m.editRequest.URL) {
+			names = append(names, ":"+name)
+		}
+	}
+	names = append(names, "Headers", "Body")
+	return names
+}
+
+func (m Model) requestFieldIndices() (headersIdx, bodyIdx int) {
+	pathParamCount := 0
+	if m.editRequest != nil {
+		pathParamCount = len(postman.ExtractPathParams(m.editRequest.URL))
+	}
+	return 3 + pathParamCount, 4 + pathParamCount
 }
 
 func (m Model) buildGRPCURL() string {
@@ -1441,6 +1569,7 @@ func (m Model) getCurrentFieldValue() string {
 	}
 	switch m.editType {
 	case EditTypeRequest:
+		headersIdx, bodyIdx := m.requestFieldIndices()
 		switch m.editFieldCursor {
 		case 0:
 			return m.editItemName
@@ -1448,11 +1577,17 @@ func (m Model) getCurrentFieldValue() string {
 			return m.editRequest.Method
 		case 2:
 			return m.editRequest.URL.Raw
-		case 3:
+		case headersIdx:
 			return headersToText(m.editRequest.Header)
-		case 4:
+		case bodyIdx:
 			if m.editRequest.Body != nil {
 				return m.editRequest.Body.Raw
+			}
+		default:
+			params := postman.ExtractPathParams(m.editRequest.URL)
+			paramIdx := m.editFieldCursor - 3
+			if paramIdx >= 0 && paramIdx < len(params) {
+				return m.pathParams[params[paramIdx]]
 			}
 		}
 	case EditTypeGRPCRequest:
@@ -2198,4 +2333,96 @@ func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
 
 func splitLines(text string) []string {
 	return strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+}
+
+// saveCurrentPathParams persists the current edit session path params into requestPathParams.
+func (m Model) saveCurrentPathParams() Model {
+	if len(m.pathParams) == 0 {
+		return m
+	}
+	itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
+	if m.requestPathParams == nil {
+		m.requestPathParams = make(map[string]map[string]string)
+	}
+	stored := make(map[string]string)
+	for k, v := range m.pathParams {
+		if v != "" {
+			stored[k] = v
+		}
+	}
+	if len(stored) > 0 {
+		m.requestPathParams[itemID] = stored
+	}
+	return m
+}
+
+// detectVarPrefix checks if value contains an unclosed {{ and returns the partial name after it.
+func detectVarPrefix(value string) (prefix string, active bool) {
+	idx := strings.LastIndex(value, "{{")
+	if idx == -1 {
+		return "", false
+	}
+	afterOpen := value[idx+2:]
+	if strings.Contains(afterOpen, "}}") {
+		return "", false
+	}
+	return afterOpen, true
+}
+
+// computeVarSuggestions returns variables matching the given prefix from the current context.
+func (m Model) computeVarSuggestions(prefix string) []postman.VariableSource {
+	all := postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+	if prefix == "" {
+		return all
+	}
+	lowerPrefix := strings.ToLower(prefix)
+	var filtered []postman.VariableSource
+	for _, v := range all {
+		if strings.HasPrefix(strings.ToLower(v.Key), lowerPrefix) {
+			filtered = append(filtered, v)
+		}
+	}
+	return filtered
+}
+
+// applyPathParamsToReq returns a copy of req with :paramName replaced by stored values.
+func applyPathParamsToReq(req *postman.Request, params map[string]string) *postman.Request {
+	if req == nil || len(params) == 0 {
+		return req
+	}
+	modified := &postman.Request{
+		Method: req.Method,
+		URL: postman.URL{
+			Raw:      req.URL.Raw,
+			Port:     req.URL.Port,
+			Protocol: req.URL.Protocol,
+		},
+	}
+	if req.URL.Host != nil {
+		modified.URL.Host = make([]string, len(req.URL.Host))
+		copy(modified.URL.Host, req.URL.Host)
+	}
+	if req.URL.Path != nil {
+		modified.URL.Path = make([]string, len(req.URL.Path))
+		copy(modified.URL.Path, req.URL.Path)
+	}
+	if req.Header != nil {
+		modified.Header = make([]postman.Header, len(req.Header))
+		copy(modified.Header, req.Header)
+	}
+	if req.Body != nil {
+		modified.Body = &postman.Body{Mode: req.Body.Mode, Raw: req.Body.Raw}
+	}
+	for name, value := range params {
+		if value == "" {
+			continue
+		}
+		modified.URL.Raw = strings.ReplaceAll(modified.URL.Raw, ":"+name, value)
+		for i, seg := range modified.URL.Path {
+			if seg == ":"+name {
+				modified.URL.Path[i] = value
+			}
+		}
+	}
+	return modified
 }

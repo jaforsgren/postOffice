@@ -12,6 +12,7 @@ type VariableSource struct {
 }
 
 var variablePattern = regexp.MustCompile(`\{\{([^}]+)\}\}`)
+var pathParamSegmentPattern = regexp.MustCompile(`:([\w]+)`)
 
 // GetAllVariables collects variables from environment, collection, and folder scopes in
 // precedence order (environment overrides collection, collection overrides folders).
@@ -69,6 +70,35 @@ func GetAllVariables(collection *Collection, breadcrumb []string, environment *E
 	}
 
 	return variables
+}
+
+// ExtractPathParams returns ordered path parameter names (without leading colon) from a URL.
+// Checks URL.Path segments first, then scans URL.Raw as fallback.
+func ExtractPathParams(url URL) []string {
+	seen := make(map[string]bool)
+	var params []string
+
+	for _, segment := range url.Path {
+		if strings.HasPrefix(segment, ":") {
+			name := segment[1:]
+			if name != "" && !seen[name] {
+				params = append(params, name)
+				seen[name] = true
+			}
+		}
+	}
+
+	if len(params) == 0 && url.Raw != "" {
+		for _, match := range pathParamSegmentPattern.FindAllStringSubmatch(url.Raw, -1) {
+			name := match[1]
+			if !seen[name] {
+				params = append(params, name)
+				seen[name] = true
+			}
+		}
+	}
+
+	return params
 }
 
 func ResolveVariables(text string, variables []VariableSource) string {
