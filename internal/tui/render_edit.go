@@ -276,6 +276,18 @@ func (m Model) buildEditFields() []string {
 			}
 		}
 
+		// Resolved body preview below Body field
+		if f.label == "Body" && !m.editFieldMode && f.value != "" {
+			vars := postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+			resolved := postman.ResolveVariables(f.value, vars)
+			if resolved != f.value {
+				lines = append(lines, "    "+dimStyle.Render("── resolved ──"))
+				for _, rl := range strings.Split(resolved, "\n") {
+					lines = append(lines, "    "+dimStyle.Italic(true).Render(rl))
+				}
+			}
+		}
+
 		lines = append(lines, "")
 	}
 

@@ -69,6 +69,22 @@ func (i *Item) IsGRPC() bool {
 		strings.HasPrefix(lower, "grpcs://")
 }
 
+func (i *Item) IsServiceBus() bool {
+	if i.Request == nil {
+		return false
+	}
+	lower := strings.ToLower(i.Request.URL.Raw)
+	return strings.HasPrefix(lower, "asb://")
+}
+
+func (i *Item) IsAMQP() bool {
+	if i.Request == nil {
+		return false
+	}
+	lower := strings.ToLower(i.Request.URL.Raw)
+	return strings.HasPrefix(lower, "amqp://") || strings.HasPrefix(lower, "amqps://")
+}
+
 type Environment struct {
 	ID     string        `json:"id"`
 	Name   string        `json:"name"`

@@ -285,7 +285,7 @@ func (m Model) renderCommandBar() string {
 }
 
 func (m Model) renderStatusBar() string {
-	help := ""
+	var help string
 
 	switch m.mode {
 	case ModeResponse:
@@ -298,8 +298,16 @@ func (m Model) renderStatusBar() string {
 		help = "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
 	}
 
-	if m.statusMessage != "" {
-		help = m.statusMessage + " | " + help
+	if m.statusMessage == "" {
+		return statusBarStyle.Width(m.width).Render("\n" + help)
 	}
-	return statusBarStyle.Width(m.width).Render(help)
+
+	// Status message on its own line, full width, truncated only if wider than the terminal.
+	msg := m.statusMessage
+	maxMsgRunes := m.width - 4 // account for padding
+	if maxMsgRunes > 0 && len([]rune(msg)) > maxMsgRunes {
+		msg = string([]rune(msg)[:maxMsgRunes-1]) + "…"
+	}
+
+	return statusBarStyle.Width(m.width).Render(msg + "\n" + help)
 }

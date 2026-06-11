@@ -3,9 +3,13 @@ package tui
 import (
 	"context"
 	"fmt"
+	"postOffice/internal/amqp"
 	"postOffice/internal/grpc"
+	internalhttp "postOffice/internal/http"
 	"postOffice/internal/logger"
 	"postOffice/internal/postman"
+	"postOffice/internal/script"
+	"postOffice/internal/servicebus"
 	"postOffice/internal/workflow"
 	"strings"
 	"time"
@@ -401,6 +405,12 @@ func itemDisplayPrefix(item postman.Item) string {
 	if item.IsFolder() {
 		return "[DIR] "
 	}
+	if item.IsServiceBus() {
+		return "[ASB] "
+	}
+	if item.IsAMQP() {
+		return "[AMQP] "
+	}
 	if item.IsRequest() {
 		return fmt.Sprintf("[%s] ", item.Request.Method)
 	}
@@ -526,6 +536,14 @@ func (m Model) executeRequest(item postman.Item) (Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if item.IsServiceBus() {
+		return m.executeServiceBusRequest(item)
+	}
+
+	if item.IsAMQP() {
+		return m.executeAMQPRequest(item)
+	}
+
 	itemID := m.getRequestIdentifier(item)
 	requestToExecute := item.Request
 	isModified := m.isItemModified(itemID)
@@ -571,6 +589,65 @@ func (m Model) executeRequest(item postman.Item) (Model, tea.Cmd) {
 			Environment: environment,
 			ItemName:    item.Name,
 			IsModified:  isModified,
+		}
+	}
+}
+
+func (m Model) executeServiceBusRequest(item postman.Item) (Model, tea.Cmd) {
+	return m.executeMessageItem(item, "Sending ASB message", func(req *postman.Request, vars []postman.VariableSource) *internalhttp.Response {
+		return servicebus.Send(req, vars)
+	})
+}
+
+func (m Model) executeAMQPRequest(item postman.Item) (Model, tea.Cmd) {
+	return m.executeMessageItem(item, "Publishing AMQP message", func(req *postman.Request, vars []postman.VariableSource) *internalhttp.Response {
+		return amqp.Publish(req, vars)
+	})
+}
+
+func (m Model) executeMessageItem(
+	item postman.Item,
+	statusPrefix string,
+	send func(*postman.Request, []postman.VariableSource) *internalhttp.Response,
+) (Model, tea.Cmd) {
+	itemID := m.getRequestIdentifier(item)
+	m.statusMessage = fmt.Sprintf("%s: %s", statusPrefix, item.Name)
+	m.requestExecutions[itemID] = &RequestExecution{
+		Status:    "Sending...",
+		Timestamp: time.Now(),
+	}
+
+	collection := m.collection
+	environment := m.environment
+	itemCopy := item
+
+	return m, func() tea.Msg {
+		// Run pre-request scripts so they can set variables (e.g. generate IDs).
+		if len(itemCopy.Events) > 0 {
+			ctx := &script.ExecutionContext{}
+			if collection != nil {
+				ctx.CollectionVars = collection.Variables
+			}
+			if environment != nil {
+				ctx.EnvironmentVars = environment.Values
+			}
+			_ = script.ExecutePreRequestScripts(itemCopy.Events, ctx)
+			if collection != nil {
+				collection.Variables = ctx.CollectionVars
+			}
+			if environment != nil {
+				environment.Values = ctx.EnvironmentVars
+			}
+		}
+
+		variables := postman.GetAllVariables(collection, nil, environment)
+		resp := send(itemCopy.Request, variables)
+		return RequestCompleteMsg{
+			ItemID:      itemID,
+			Response:    resp,
+			Collection:  collection,
+			Environment: environment,
+			ItemName:    itemCopy.Name,
 		}
 	}
 }
@@ -1200,18 +1277,71 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.Type {
 	case tea.KeyEsc:
+		// Commit whatever is in the field before exiting edit mode.
+		if isMultiLineField && m.editRequest != nil {
+			headersIdx, bodyIdx := m.requestFieldIndices()
+			switch m.editType {
+			case EditTypeRequest:
+				switch m.editFieldCursor {
+				case headersIdx:
+					m.editRequest.Header = m.parseHeaders(m.editFieldTextArea.Value())
+				case bodyIdx:
+					if m.editRequest.Body == nil {
+						m.editRequest.Body = &postman.Body{}
+					}
+					m.editRequest.Body.Raw = m.editFieldTextArea.Value()
+				}
+			case EditTypeGRPCRequest:
+				switch m.editFieldCursor {
+				case 3:
+					m.editRequest.Header = m.parseHeaders(m.editFieldTextArea.Value())
+				case 4:
+					if m.editRequest.Body == nil {
+						m.editRequest.Body = &postman.Body{Mode: "raw"}
+					}
+					m.editRequest.Body.Raw = m.editFieldTextArea.Value()
+				}
+			}
+			m.editFieldTextArea.Blur()
+			m.editFieldTextArea.SetValue("")
+		} else if !isMultiLineField && m.editRequest != nil {
+			headersIdx, _ := m.requestFieldIndices()
+			switch m.editType {
+			case EditTypeRequest:
+				switch m.editFieldCursor {
+				case 0:
+					m.editItemName = m.editFieldInput.Value()
+				case 1:
+					m.editRequest.Method = m.editFieldInput.Value()
+				case 2:
+					m.editRequest.URL.Raw = m.editFieldInput.Value()
+				default:
+					params := postman.ExtractPathParams(m.editRequest.URL)
+					paramIdx := m.editFieldCursor - 3
+					if paramIdx >= 0 && paramIdx < len(params) && m.editFieldCursor < headersIdx {
+						m.pathParams[params[paramIdx]] = m.editFieldInput.Value()
+					}
+				}
+			case EditTypeGRPCRequest:
+				switch m.editFieldCursor {
+				case 0:
+					m.editItemName = m.editFieldInput.Value()
+				case 1:
+					m.grpcEditEndpoint = m.editFieldInput.Value()
+					m.editRequest.URL.Raw = m.buildGRPCURL()
+				case 2:
+					m.grpcEditMethod = m.editFieldInput.Value()
+					m.editRequest.URL.Raw = m.buildGRPCURL()
+				}
+			}
+			m.editFieldInput.Blur()
+			m.editFieldInput.SetValue("")
+		}
 		m.editFieldMode = false
 		m.varSuggestionActive = false
 		m.varSuggestions = nil
 		m.varSuggestionCursor = 0
-		if isMultiLineField {
-			m.editFieldTextArea.Blur()
-			m.editFieldTextArea.SetValue("")
-		} else {
-			m.editFieldInput.Blur()
-			m.editFieldInput.SetValue("")
-		}
-		m.statusMessage = "Field edit cancelled"
+		m.statusMessage = "Field updated (use :w to save to file)"
 		return m, nil
 
 	case tea.KeyCtrlS:

@@ -8,10 +8,12 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
+	"postOffice/internal/amqp"
 	internalgrpc "postOffice/internal/grpc"
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
+	"postOffice/internal/servicebus"
 )
 
 const defaultScriptTimeout = 30 * time.Second
@@ -61,6 +63,10 @@ func (r *Runner) Run(wf *Workflow, onChange func(ExecutionState)) ExecutionState
 
 	if err := r.setupPmAPI(); err != nil {
 		return r.finalize(StatusFailed, fmt.Sprintf("pm API setup failed: %v", err))
+	}
+
+	if err := script.SetupCryptoJS(r.vm); err != nil {
+		return r.finalize(StatusFailed, fmt.Sprintf("CryptoJS setup failed: %v", err))
 	}
 
 	if err := r.setupWFAPI(); err != nil {
@@ -294,6 +300,19 @@ func (r *Runner) setupWFAPI() error {
 		return err
 	}
 
+	if err := wfObj.Set("sleep", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) == 0 {
+			return goja.Undefined()
+		}
+		ms := call.Arguments[0].ToInteger()
+		if ms > 0 {
+			time.Sleep(time.Duration(ms) * time.Millisecond)
+		}
+		return goja.Undefined()
+	}); err != nil {
+		return err
+	}
+
 	if err := wfObj.Set("context", r.vm.NewObject()); err != nil {
 		return err
 	}
@@ -487,6 +506,14 @@ func (r *Runner) executeItem(item *postman.Item) (*StepResponse, *http.Response,
 		return stepResp, nil, err
 	}
 
+	if item.IsServiceBus() {
+		return r.executeMessageBus(item, "ASB")
+	}
+
+	if item.IsAMQP() {
+		return r.executeMessageBus(item, "AMQP")
+	}
+
 	if !item.IsRequest() || item.Request == nil {
 		return nil, nil, fmt.Errorf("item %q is not a request", item.Name)
 	}
@@ -505,6 +532,47 @@ func (r *Runner) executeItem(item *postman.Item) (*StepResponse, *http.Response,
 
 	if resp.Error != nil {
 		r.addLog(fmt.Sprintf("[HTTP ERROR] %v", resp.Error))
+	}
+
+	return stepResp, resp, nil
+}
+
+func (r *Runner) executeMessageBus(item *postman.Item, protocol string) (*StepResponse, *http.Response, error) {
+	if item.Request == nil {
+		return nil, nil, fmt.Errorf("item %q has no request", item.Name)
+	}
+
+	// Run Postman pre-request scripts (e.g. to generate IDs before the send).
+	if len(item.Events) > 0 {
+		errs := script.ExecutePreRequestScripts(item.Events, r.ctx)
+		for _, e := range errs {
+			r.addLog(fmt.Sprintf("[%s PRE-SCRIPT ERROR] %s", protocol, e))
+		}
+		r.syncFromCollection()
+	}
+
+	variables := r.getVariables()
+
+	var resp *http.Response
+	switch protocol {
+	case "ASB":
+		resp = servicebus.Send(item.Request, variables)
+	case "AMQP":
+		resp = amqp.Publish(item.Request, variables)
+	default:
+		return nil, nil, fmt.Errorf("unknown message bus protocol: %s", protocol)
+	}
+
+	r.syncFromCollection()
+
+	stepResp := &StepResponse{
+		Code: resp.StatusCode,
+		Body: resp.Body,
+		Time: resp.Duration.Milliseconds(),
+	}
+
+	if resp.Error != nil {
+		r.addLog(fmt.Sprintf("[%s ERROR] %v", protocol, resp.Error))
 	}
 
 	return stepResp, resp, nil

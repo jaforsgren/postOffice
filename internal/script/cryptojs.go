@@ -9,6 +9,10 @@ import (
 	"github.com/dop251/goja"
 )
 
+// SetupCryptoJS registers CryptoJS, atob, and btoa on the given VM.
+// It is exported so the workflow runtime can equip its own VM with the same globals.
+func SetupCryptoJS(vm *goja.Runtime) error { return setupCryptoJS(vm) }
+
 func setupCryptoJS(vm *goja.Runtime) error {
 	newWordArray := func(data []byte) goja.Value {
 		obj := vm.NewObject()
@@ -62,6 +66,18 @@ func setupCryptoJS(vm *goja.Runtime) error {
 	}); err != nil {
 		return fmt.Errorf("CryptoJS.enc.Base64.stringify: %w", err)
 	}
+	if err := base64Obj.Set("parse", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			return goja.Undefined()
+		}
+		decoded, err := base64.StdEncoding.DecodeString(call.Arguments[0].String())
+		if err != nil {
+			return goja.Undefined()
+		}
+		return newWordArray(decoded)
+	}); err != nil {
+		return fmt.Errorf("CryptoJS.enc.Base64.parse: %w", err)
+	}
 
 	encObj := vm.NewObject()
 	if err := encObj.Set("Utf8", utf8Obj); err != nil {
@@ -94,6 +110,29 @@ func setupCryptoJS(vm *goja.Runtime) error {
 
 	if err := vm.Set("CryptoJS", cryptoJSObj); err != nil {
 		return fmt.Errorf("failed to set CryptoJS global: %w", err)
+	}
+
+	// atob / btoa — standard browser globals for base64 encoding/decoding.
+	if err := vm.Set("atob", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			return goja.Undefined()
+		}
+		decoded, err := base64.StdEncoding.DecodeString(call.Arguments[0].String())
+		if err != nil {
+			panic(vm.NewGoError(fmt.Errorf("atob: invalid base64: %w", err)))
+		}
+		return vm.ToValue(string(decoded))
+	}); err != nil {
+		return fmt.Errorf("failed to set atob: %w", err)
+	}
+
+	if err := vm.Set("btoa", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			return goja.Undefined()
+		}
+		return vm.ToValue(base64.StdEncoding.EncodeToString([]byte(call.Arguments[0].String())))
+	}); err != nil {
+		return fmt.Errorf("failed to set btoa: %w", err)
 	}
 
 	return nil

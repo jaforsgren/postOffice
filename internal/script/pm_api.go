@@ -111,6 +111,11 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult) err
 		return fmt.Errorf("failed to set pm.environmentVariables: %w", err)
 	}
 
+	// pm.environment is the standard Postman API name — alias to environmentVariables.
+	if err := pmObj.Set("environment", envVarsObj); err != nil {
+		return fmt.Errorf("failed to set pm.environment: %w", err)
+	}
+
 	variablesObj := vm.NewObject()
 	if err := variablesObj.Set("get", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
