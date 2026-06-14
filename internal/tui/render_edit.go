@@ -59,7 +59,7 @@ func (m Model) buildEditLines() []string {
 }
 
 func (m Model) buildEditShortcuts() string {
-	base := "<Enter> Edit field  <j/k> Navigate  <Tab> {{var}} autocomplete  <Esc> Cancel  <:w> Save  <:wq> Save & Exit"
+	base := "<Enter> Edit field  <j/k> Navigate  <Tab> {{var}} autocomplete  <Ctrl+G> Open in vim  <Esc> Cancel  <:w> Save  <:wq> Save & Exit"
 	if m.editType == EditTypeGRPCRequest {
 		return base + "  <Ctrl+R> Reflect"
 	}

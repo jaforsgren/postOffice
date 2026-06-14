@@ -105,6 +105,11 @@ func (p *Parser) GetCollectionPath(name string) (string, bool) {
 	return path, exists
 }
 
+func (p *Parser) GetEnvironmentPath(name string) (string, bool) {
+	path, exists := p.envPathMap[name]
+	return path, exists
+}
+
 func (p *Parser) ListCollections() []string {
 	names := make([]string, 0, len(p.collections))
 	for name := range p.collections {

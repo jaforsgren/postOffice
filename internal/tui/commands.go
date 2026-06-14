@@ -462,6 +462,27 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Handler:     handleDeleteSavedResponseKey,
 			AvailableIn: []ViewMode{ModeSavedResponses},
 		},
+		{
+			Keys:        []string{"ctrl+g"},
+			Description: "Open in editor",
+			ShortHelp:   "ctrl+g",
+			Handler:     handleVimEditKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"ctrl+g"},
+			Description: "Open in editor",
+			ShortHelp:   "ctrl+g",
+			Handler:     handleVimEditEnvKey,
+			AvailableIn: []ViewMode{ModeEnvironments},
+		},
+		{
+			Keys:        []string{"ctrl+g"},
+			Description: "Open in editor",
+			ShortHelp:   "ctrl+g",
+			Handler:     handleVimEditWorkflowKey,
+			AvailableIn: []ViewMode{ModeWorkflows, ModeWorkflowDetail},
+		},
 	}
 }
 
@@ -1498,6 +1519,26 @@ func handleSaveResponseKey(m Model) (Model, tea.Cmd) {
 	}
 	m.statusMessage = fmt.Sprintf("Response saved (%s)", saved.Status)
 	return m, nil
+}
+
+func handleVimEditEnvKey(m Model) (Model, tea.Cmd) {
+	return m.openVimForEnvironment()
+}
+
+func handleVimEditWorkflowKey(m Model) (Model, tea.Cmd) {
+	return m.openVimForWorkflow()
+}
+
+func handleVimEditKey(m Model) (Model, tea.Cmd) {
+	if m.mode != ModeRequests || m.cursor >= len(m.currentItems) {
+		return m, nil
+	}
+	item := m.currentItems[m.cursor]
+	if !item.IsRequest() {
+		m.statusMessage = "Select a request to open in editor"
+		return m, nil
+	}
+	return m.openVimForItem(item)
 }
 
 func handleDeleteSavedResponseKey(m Model) (Model, tea.Cmd) {

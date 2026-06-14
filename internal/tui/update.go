@@ -130,6 +130,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case VimEditCompleteMsg:
+		m = m.applyVimEdit(msg)
+		return m, nil
+
+	case VimEnvEditCompleteMsg:
+		m = m.applyVimEnvEdit(msg)
+		return m, nil
+
+	case VimWorkflowEditCompleteMsg:
+		m = m.applyVimWorkflowEdit(msg)
+		return m, nil
+
 	case tea.KeyMsg:
 		if m.commandMode {
 			return m.handleCommandMode(msg)
@@ -1013,6 +1025,9 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case "ctrl+g":
+		return m.openVimForEditState()
+
 	case "ctrl+r":
 		if m.editType == EditTypeGRPCRequest {
 			return m.startGRPCReflection()
@@ -1501,6 +1516,8 @@ func (m Model) deepCopyRequest(req *postman.Request) *postman.Request {
 	}
 
 	copied.URL.Raw = req.URL.Raw
+	copied.URL.Port = req.URL.Port
+	copied.URL.Protocol = req.URL.Protocol
 	if req.URL.Host != nil {
 		copied.URL.Host = make([]string, len(req.URL.Host))
 		copy(copied.URL.Host, req.URL.Host)
