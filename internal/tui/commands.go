@@ -464,21 +464,28 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		},
 		{
 			Keys:        []string{"ctrl+g"},
-			Description: "Open in editor",
+			Description: "Open in editor (request) / bulk edit folder (folder)",
 			ShortHelp:   "ctrl+g",
 			Handler:     handleVimEditKey,
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
 			Keys:        []string{"ctrl+g"},
-			Description: "Open in editor",
+			Description: "Open collection file in editor",
+			ShortHelp:   "ctrl+g",
+			Handler:     handleVimEditCollectionKey,
+			AvailableIn: []ViewMode{ModeCollections},
+		},
+		{
+			Keys:        []string{"ctrl+g"},
+			Description: "Open environment file in editor",
 			ShortHelp:   "ctrl+g",
 			Handler:     handleVimEditEnvKey,
 			AvailableIn: []ViewMode{ModeEnvironments},
 		},
 		{
 			Keys:        []string{"ctrl+g"},
-			Description: "Open in editor",
+			Description: "Open workflow file in editor",
 			ShortHelp:   "ctrl+g",
 			Handler:     handleVimEditWorkflowKey,
 			AvailableIn: []ViewMode{ModeWorkflows, ModeWorkflowDetail},
@@ -1530,15 +1537,17 @@ func handleVimEditWorkflowKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleVimEditKey(m Model) (Model, tea.Cmd) {
-	if m.mode != ModeRequests || m.cursor >= len(m.currentItems) {
+	if m.mode != ModeRequests {
 		return m, nil
 	}
-	item := m.currentItems[m.cursor]
-	if !item.IsRequest() {
-		m.statusMessage = "Select a request to open in editor"
-		return m, nil
+	if m.cursor < len(m.currentItems) && m.currentItems[m.cursor].IsRequest() {
+		return m.openVimForItem(m.currentItems[m.cursor])
 	}
-	return m.openVimForItem(item)
+	return m.openVimForCurrentLevel()
+}
+
+func handleVimEditCollectionKey(m Model) (Model, tea.Cmd) {
+	return m.openVimForCollection()
 }
 
 func handleDeleteSavedResponseKey(m Model) (Model, tea.Cmd) {

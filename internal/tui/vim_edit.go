@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"postOffice/internal/postman"
@@ -336,5 +337,140 @@ func (m Model) applyVimWorkflowEdit(msg VimWorkflowEditCompleteMsg) Model {
 	}
 
 	m.statusMessage = fmt.Sprintf("Reloaded workflow: %s", wf.Name)
+	return m
+}
+
+// ── bulk level editing (open all items at current folder depth as JSON) ───────
+
+// VimBulkEditCompleteMsg is sent when the editor exits after editing a folder's item array.
+type VimBulkEditCompleteMsg struct {
+	TempFile   string
+	FolderPath []string
+	Err        error
+}
+
+func (m Model) openVimForCurrentLevel() (Model, tea.Cmd) {
+	if m.collection == nil {
+		m.statusMessage = "No collection loaded"
+		return m, nil
+	}
+	folderPath := append([]string{}, m.breadcrumb...)
+	items := traverseToDepth(m.collection.Items, folderPath)
+	if items == nil {
+		m.statusMessage = "Cannot resolve current folder in collection"
+		return m, nil
+	}
+	data, err := json.MarshalIndent(items, "", "  ")
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to serialize items: %v", err)
+		return m, nil
+	}
+	tmpFile, err := os.CreateTemp("", "postoffice-bulk-*.json")
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to create temp file: %v", err)
+		return m, nil
+	}
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		m.statusMessage = fmt.Sprintf("Failed to write temp file: %v", err)
+		return m, nil
+	}
+	tmpFile.Close()
+	tempFilePath := tmpFile.Name()
+	return m, tea.ExecProcess(exec.Command(editorBin(), tempFilePath), func(err error) tea.Msg {
+		return VimBulkEditCompleteMsg{
+			TempFile:   tempFilePath,
+			FolderPath: folderPath,
+			Err:        err,
+		}
+	})
+}
+
+func (m Model) applyVimBulkEdit(msg VimBulkEditCompleteMsg) Model {
+	defer os.Remove(msg.TempFile)
+
+	if msg.Err != nil {
+		m.statusMessage = fmt.Sprintf("Editor error: %v", msg.Err)
+		return m
+	}
+
+	data, err := os.ReadFile(msg.TempFile)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to read edited file: %v", err)
+		return m
+	}
+
+	var items []postman.Item
+	if err := json.Unmarshal(data, &items); err != nil {
+		m.statusMessage = fmt.Sprintf("Invalid JSON in edited file: %v", err)
+		return m
+	}
+
+	target := traverseToDepthPtr(&m.collection.Items, msg.FolderPath)
+	if target == nil {
+		m.statusMessage = "Cannot resolve folder path in collection"
+		return m
+	}
+	*target = items
+
+	m.modifiedCollections[m.collection.Info.Name] = true
+	m = m.refreshCurrentView()
+
+	depth := "root"
+	if len(msg.FolderPath) > 0 {
+		depth = strings.Join(msg.FolderPath, "/")
+	}
+	m.statusMessage = fmt.Sprintf("Updated items at %s (use :w to save)", depth)
+	return m
+}
+
+// ── collection file editing (open the actual collection JSON file) ────────────
+
+// VimCollectionEditCompleteMsg is sent when the editor exits after editing a collection file.
+type VimCollectionEditCompleteMsg struct {
+	CollectionName string
+	FilePath       string
+	Err            error
+}
+
+func (m Model) openVimForCollection() (Model, tea.Cmd) {
+	if m.cursor >= len(m.items) {
+		m.statusMessage = "No collection selected"
+		return m, nil
+	}
+	collectionName := m.items[m.cursor]
+	path, exists := m.parser.GetCollectionPath(collectionName)
+	if !exists {
+		m.statusMessage = fmt.Sprintf("Path not found for collection: %s", collectionName)
+		return m, nil
+	}
+	return m, tea.ExecProcess(exec.Command(editorBin(), path), func(err error) tea.Msg {
+		return VimCollectionEditCompleteMsg{
+			CollectionName: collectionName,
+			FilePath:       path,
+			Err:            err,
+		}
+	})
+}
+
+func (m Model) applyVimCollectionEdit(msg VimCollectionEditCompleteMsg) Model {
+	if msg.Err != nil {
+		m.statusMessage = fmt.Sprintf("Editor error: %v", msg.Err)
+		return m
+	}
+
+	newCollection, err := m.parser.LoadCollection(msg.FilePath)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to reload collection: %v", err)
+		return m
+	}
+
+	if m.collection != nil && m.collection.Info.Name == msg.CollectionName {
+		m.collection = newCollection
+		m = m.refreshCurrentView()
+	}
+
+	m.statusMessage = fmt.Sprintf("Reloaded collection: %s", newCollection.Info.Name)
 	return m
 }

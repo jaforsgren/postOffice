@@ -142,6 +142,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.applyVimWorkflowEdit(msg)
 		return m, nil
 
+	case VimBulkEditCompleteMsg:
+		m = m.applyVimBulkEdit(msg)
+		return m, nil
+
+	case VimCollectionEditCompleteMsg:
+		m = m.applyVimCollectionEdit(msg)
+		return m, nil
+
 	case tea.KeyMsg:
 		if m.commandMode {
 			return m.handleCommandMode(msg)
