@@ -222,7 +222,28 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Quit application",
 			ShortHelp:   "q",
 			Handler:     handleQuitKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables},
+			AvailableIn: []ViewMode{ModeCollections, ModeEnvironments, ModeVariables},
+		},
+		{
+			Keys:        []string{"q"},
+			Description: "Quit application",
+			ShortHelp:   "q",
+			Handler:     handleQuitKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"ctrl+c"},
+			Description: "Copy request as curl",
+			ShortHelp:   "ctrl+c",
+			Handler:     handleCopyCurlKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"ctrl+v"},
+			Description: "Paste curl as request",
+			ShortHelp:   "ctrl+v",
+			Handler:     handlePasteCurlKey,
+			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
 			Keys:        []string{"enter"},
@@ -1584,6 +1605,71 @@ func handleEditRequestKey(m Model) (Model, tea.Cmd) {
 	} else {
 		m.statusMessage = "No editable item selected"
 	}
+	return m, nil
+}
+
+func handleCopyCurlKey(m Model) (Model, tea.Cmd) {
+	if m.mode != ModeRequests || m.cursor >= len(m.currentItems) {
+		return m, nil
+	}
+	item := m.currentItems[m.cursor]
+	if !item.IsRequest() {
+		m.statusMessage = "Select a request to copy"
+		return m, nil
+	}
+
+	vars := postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+
+	var curlCmd string
+	if item.IsGRPC() {
+		curlCmd = buildGRPCCurlCommand(item, vars)
+	} else {
+		curlCmd = buildCurlCommand(item.Request, vars)
+	}
+
+	if err := clipboard.WriteAll(curlCmd); err != nil {
+		m.statusMessage = fmt.Sprintf("Copy failed: %v", err)
+		return m, nil
+	}
+
+	kind := "curl"
+	if item.IsGRPC() {
+		kind = "grpcurl"
+	}
+	m.statusMessage = fmt.Sprintf("Copied as %s: %s", kind, item.Name)
+	return m, nil
+}
+
+func handlePasteCurlKey(m Model) (Model, tea.Cmd) {
+	if m.collection == nil {
+		m.statusMessage = "Load a collection first"
+		return m, nil
+	}
+
+	text, err := clipboard.ReadAll()
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Paste failed: %v", err)
+		return m, nil
+	}
+
+	curlType := detectCurlType(text)
+	if curlType == "" {
+		m.statusMessage = "Clipboard does not contain a curl or grpcurl command"
+		return m, nil
+	}
+
+	var item *postman.Item
+	if curlType == "grpcurl" {
+		item, err = parseGRPCCurlToItem(text)
+	} else {
+		item, err = parseCurlToItem(text)
+	}
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to parse %s: %v", curlType, err)
+		return m, nil
+	}
+
+	m = m.insertItemAtCursor(*item)
 	return m, nil
 }
 

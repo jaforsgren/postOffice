@@ -1951,6 +1951,42 @@ func (m Model) updateRequestInCollection(path []string, originalName string, new
 	return false
 }
 
+// insertItemAtCursor inserts item after the current cursor position (or at the end when
+// search is active or the list is empty), saves the collection, and refreshes the view.
+func (m Model) insertItemAtCursor(item postman.Item) Model {
+	if m.collection == nil {
+		m.statusMessage = "No collection loaded"
+		return m
+	}
+
+	items := traverseToDepthPtr(&m.collection.Items, m.breadcrumb)
+	if items == nil {
+		m.statusMessage = "Error: Could not find folder"
+		return m
+	}
+
+	insertIdx := len(*items)
+	if !m.searchActive && m.cursor < len(*items) {
+		insertIdx = m.cursor + 1
+	}
+
+	*items = append(*items, postman.Item{})
+	copy((*items)[insertIdx+1:], (*items)[insertIdx:])
+	(*items)[insertIdx] = item
+
+	m.modifiedCollections[m.collection.Info.Name] = true
+
+	if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {
+		m.statusMessage = fmt.Sprintf("Added %q but failed to save: %v", item.Name, err)
+		return m
+	}
+
+	m = m.refreshCurrentView()
+	m.cursor = insertIdx
+	m.statusMessage = fmt.Sprintf("Added: %s", item.Name)
+	return m
+}
+
 func (m Model) duplicateRequest(item postman.Item) Model {
 	if m.collection == nil || !item.IsRequest() || item.Request == nil {
 		m.statusMessage = "Error: Cannot duplicate request"
