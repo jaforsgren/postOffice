@@ -351,6 +351,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
+			Keys:        []string{"a"},
+			Description: "Add new request",
+			ShortHelp:   "a",
+			Handler:     handleAddNewRequestKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Keys:        []string{"e"},
 			Description: "Edit request",
 			ShortHelp:   "e",
@@ -1578,6 +1585,25 @@ func handleEditRequestKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "No editable item selected"
 	}
 	return m, nil
+}
+
+func handleAddNewRequestKey(m Model) (Model, tea.Cmd) {
+	if m.collection == nil {
+		m.statusMessage = "Load a collection first"
+		return m, nil
+	}
+	m = m.enterRequestTypeSelectionMode()
+	return m, nil
+}
+
+func (m Model) enterRequestTypeSelectionMode() Model {
+	m.requestTypeSelectionMode = true
+	m.previousMode = m.mode
+	m.mode = ModeEdit
+	m.cursor = 0
+	m.items = []string{"HTTP", "gRPC", "Service Bus (ASB)", "AMQP"}
+	m.statusMessage = "Select request type (j/k navigate, Enter select, Esc cancel)"
+	return m
 }
 
 func handleHelpKey(m Model) (Model, tea.Cmd) {

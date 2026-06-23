@@ -144,10 +144,12 @@ type Model struct {
 	varSuggestionCursor  int
 	varSuggestionActive  bool
 
-	editScript          *postman.Script
-	editScriptType      ScriptType
-	editScriptItemName  string
-	scriptSelectionMode bool
+	editScript               *postman.Script
+	editScriptType           ScriptType
+	editScriptItemName       string
+	scriptSelectionMode      bool
+	editIsNewItem            bool
+	requestTypeSelectionMode bool
 
 	responseViewport viewport.Model
 	infoViewport     viewport.Model

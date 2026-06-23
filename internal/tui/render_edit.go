@@ -29,6 +29,14 @@ func (m Model) buildEditLines() []string {
 	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11")).Render(title))
 	lines = append(lines, "")
 
+	if m.requestTypeSelectionMode {
+		lines = append(lines, m.buildScriptSelectionList()...)
+		shortcuts := "<Enter> Select  <j/k> Navigate  <Esc> Cancel"
+		lines = append(lines, "")
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(shortcuts))
+		return lines
+	}
+
 	if m.scriptSelectionMode {
 		lines = append(lines, m.buildScriptSelectionList()...)
 		shortcuts := "<Enter> Select  <j/k> Navigate  <Esc> Cancel"
@@ -67,7 +75,13 @@ func (m Model) buildEditShortcuts() string {
 }
 
 func (m Model) buildEditTitle() string {
+	if m.requestTypeSelectionMode {
+		return "Add New Request — Select Type"
+	}
 	title := "Edit "
+	if m.editIsNewItem {
+		title = "New "
+	}
 	switch m.editType {
 	case EditTypeRequest:
 		if m.editRequest != nil {
@@ -75,9 +89,9 @@ func (m Model) buildEditTitle() string {
 		}
 	case EditTypeGRPCRequest:
 		if m.grpcEditMethod != "" {
-			title = "Edit gRPC Request: " + m.grpcEditMethod
+			title += "gRPC Request: " + m.grpcEditMethod
 		} else {
-			title = "Edit gRPC Request"
+			title += "gRPC Request"
 		}
 	case EditTypeEnvVariable:
 		title += "Environment Variable"

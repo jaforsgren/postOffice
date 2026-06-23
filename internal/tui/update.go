@@ -918,7 +918,20 @@ func (m Model) saveEdit() (Model, error) {
 			return m, err
 		}
 
-		if !m.updateRequestInCollection(m.editItemPath, m.editOriginalName, m.editItemName, m.editRequest) {
+		if m.editIsNewItem {
+			items := traverseToDepthPtr(&m.collection.Items, m.editItemPath)
+			if items == nil {
+				err := fmt.Errorf("failed to find folder in collection")
+				m.statusMessage = "Error: " + err.Error()
+				return m, err
+			}
+			*items = append(*items, postman.Item{
+				Name:    m.editItemName,
+				Request: m.editRequest,
+			})
+			m.editIsNewItem = false
+			m.editOriginalName = m.editItemName
+		} else if !m.updateRequestInCollection(m.editItemPath, m.editOriginalName, m.editItemName, m.editRequest) {
 			err := fmt.Errorf("failed to update request in collection")
 			m.statusMessage = "Error: " + err.Error()
 			return m, err
@@ -988,6 +1001,9 @@ func (m Model) saveAllModifiedRequests() (Model, error) {
 }
 
 func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.requestTypeSelectionMode {
+		return m.handleRequestTypeSelectionKeys(msg)
+	}
 	if m.scriptSelectionMode {
 		return m.handleScriptSelectionKeys(msg)
 	}
@@ -998,6 +1014,16 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "esc":
+		if m.editIsNewItem {
+			m.editIsNewItem = false
+			m.mode = m.previousMode
+			m.editType = EditTypeNone
+			m.editFieldMode = false
+			m = m.refreshCurrentView()
+			m.statusMessage = "New request discarded"
+			return m, nil
+		}
+
 		if !m.updateRequestInCollection(m.editItemPath, m.editOriginalName, m.editItemName, m.editRequest) {
 			m.statusMessage = "Error: Failed to update request in collection"
 			return m, nil
@@ -1189,6 +1215,102 @@ func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m Model) handleRequestTypeSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.requestTypeSelectionMode = false
+		m.mode = m.previousMode
+		m.statusMessage = "Add request cancelled"
+		return m, nil
+
+	case "j", "down":
+		if m.cursor < len(m.items)-1 {
+			m.cursor++
+		}
+
+	case "k", "up":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+
+	case "enter":
+		if m.cursor < len(m.items) {
+			requestType := m.items[m.cursor]
+			m.requestTypeSelectionMode = false
+			m = m.enterNewItemEditMode(requestType)
+		}
+	}
+
+	return m, nil
+}
+
+func (m Model) enterNewItemEditMode(requestType string) Model {
+	var req *postman.Request
+	var editType EditType
+
+	switch requestType {
+	case "gRPC":
+		req = &postman.Request{
+			Method: "GRPC",
+			URL:    postman.URL{Raw: "grpc://"},
+			Header: []postman.Header{},
+			Body:   &postman.Body{Mode: "raw", Raw: "{}"},
+		}
+		editType = EditTypeGRPCRequest
+	case "Service Bus (ASB)":
+		req = &postman.Request{
+			Method: "POST",
+			URL:    postman.URL{Raw: "asb://"},
+			Header: []postman.Header{},
+			Body:   &postman.Body{Mode: "raw", Raw: "{}"},
+		}
+		editType = EditTypeRequest
+	case "AMQP":
+		req = &postman.Request{
+			Method: "POST",
+			URL:    postman.URL{Raw: "amqp://"},
+			Header: []postman.Header{},
+			Body:   &postman.Body{Mode: "raw", Raw: "{}"},
+		}
+		editType = EditTypeRequest
+	default: // HTTP
+		req = &postman.Request{
+			Method: "GET",
+			URL:    postman.URL{Raw: "https://"},
+			Header: []postman.Header{},
+		}
+		editType = EditTypeRequest
+	}
+
+	m.editRequest = m.deepCopyRequest(req)
+	m.editItemName = "New Request"
+	m.editOriginalName = ""
+	m.editFieldCursor = 0
+	m.editFieldMode = false
+	m.editCollectionName = m.collection.Info.Name
+	m.editItemPath = append([]string{}, m.breadcrumb...)
+	m.editType = editType
+	m.editIsNewItem = true
+	m.previousMode = ModeRequests
+	m.mode = ModeEdit
+	m.scrollOffset = 0
+	m.pathParams = make(map[string]string)
+	m.varSuggestions = nil
+	m.varSuggestionActive = false
+	m.varSuggestionCursor = 0
+
+	if editType == EditTypeGRPCRequest {
+		m.grpcEditEndpoint = ""
+		m.grpcEditMethod = ""
+		m.grpcEditTLS = false
+		m.statusMessage = "New gRPC request: set fields, :w to save, Esc to discard"
+	} else {
+		m.statusMessage = "New request: set fields, :w to save, Esc to discard"
+	}
+
+	return m
 }
 
 func (m Model) handleScriptSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
