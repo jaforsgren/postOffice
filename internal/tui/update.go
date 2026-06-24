@@ -167,25 +167,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleEditModeKeys(msg)
 		}
 
-		if m.mode == ModeResponse || m.mode == ModeInfo || m.mode == ModeJSON {
+		if m.mode == ModeResponse || m.mode == ModeInfo || m.mode == ModeJSON || m.mode == ModeHelp {
 			key := msg.String()
 			if key == "esc" || key == "h" || key == "backspace" || key == "q" {
 				return m.handleNormalMode(msg)
 			}
 
-			if m.mode == ModeResponse {
+			switch m.mode {
+			case ModeResponse:
 				m.responseViewport, cmd = m.responseViewport.Update(msg)
-				return m, cmd
-			} else if m.mode == ModeInfo {
+			case ModeInfo:
 				m.infoViewport, cmd = m.infoViewport.Update(msg)
-				return m, cmd
-			} else if m.mode == ModeJSON {
+			case ModeJSON:
 				m.jsonViewport, cmd = m.jsonViewport.Update(msg)
-				return m, cmd
-			} else if m.mode == ModeLog {
+			case ModeLog:
 				m.logsViewport, cmd = m.logsViewport.Update(msg)
-				return m, cmd
+			case ModeHelp:
+				m.helpViewport, cmd = m.helpViewport.Update(msg)
 			}
+			return m, cmd
 		}
 
 		return m.handleNormalMode(msg)

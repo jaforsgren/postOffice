@@ -97,16 +97,19 @@ func (m Model) buildContextInfo() []string {
 	envName := "none"
 	envEmoji := "🌍"
 	totalEnvs := len(m.parser.ListEnvironments())
+	envStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")) // red = no env
 	if m.environment != nil {
 		envName = m.environment.Name
 		if len(envName) > 25 {
 			envName = envName[:22] + "..."
 		}
+		envStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true) // green = active
 	}
 	lines = append(lines,
 		envEmoji+" "+
-			titleOrangeStyle.Render("Environment: ")+
-			valueWhiteStyle.Render(fmt.Sprintf("%s <%d>", envName, totalEnvs)))
+			titleOrangeStyle.Render("Env: ")+
+			envStyle.Render(fmt.Sprintf("%s", envName))+
+			lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(fmt.Sprintf(" <%d loaded>", totalEnvs)))
 
 	unsavedCount := len(m.modifiedCollections) + len(m.modifiedEnvironments)
 	unsavedEmoji := "💾"
@@ -186,6 +189,8 @@ func (m Model) getModeString() string {
 		return "File Browser"
 	case ModeSavedResponses:
 		return "Saved Responses"
+	case ModeHelp:
+		return "Help"
 	default:
 		return ""
 	}

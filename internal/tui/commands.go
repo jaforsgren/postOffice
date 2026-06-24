@@ -306,7 +306,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHelp},
+		},
+		{
+			Keys:        []string{"q"},
+			Description: "Close help",
+			ShortHelp:   "q",
+			Handler:     handleBackKey,
+			AvailableIn: []ViewMode{ModeHelp},
 		},
 		{
 			Keys:        []string{"up", "k"},
@@ -425,7 +432,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Show help",
 			ShortHelp:   "?",
 			Handler:     handleHelpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail, ModeResponse, ModeInfo, ModeChanges},
 		},
 		{
 			Keys:        []string{"q"},
@@ -528,8 +535,7 @@ func (cr *CommandRegistry) ExecuteCommand(m Model, cmdName string, args []string
 	}
 
 	if cmdName == "help" || cmdName == "h" || cmdName == "?" {
-		m.statusMessage = cr.GenerateHelpText()
-		return m, nil
+		return m.openHelp(true)
 	}
 
 	cmd, exists := cr.commands[cmdName]
@@ -1072,6 +1078,10 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 			m.mode = ModeWorkflows
 		}
 		m.statusMessage = "Returned to workflow"
+		return m, nil
+	case ModeHelp:
+		m.mode = m.previousMode
+		m.statusMessage = ""
 		return m, nil
 	}
 
@@ -1673,6 +1683,19 @@ func handlePasteCurlKey(m Model) (Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) openHelp(showAll bool) (Model, tea.Cmd) {
+	m.helpShowAll = showAll
+	m.previousMode = m.mode
+	m.mode = ModeHelp
+	m.configureViewport(&m.helpViewport, m.buildHelpContent())
+	if showAll {
+		m.statusMessage = "All shortcuts  (j/k scroll, q/esc close)"
+	} else {
+		m.statusMessage = fmt.Sprintf("%s shortcuts  (j/k scroll, q/esc close)", m.getModeString())
+	}
+	return m, nil
+}
+
 func handleAddNewRequestKey(m Model) (Model, tea.Cmd) {
 	if m.collection == nil {
 		m.statusMessage = "Load a collection first"
@@ -1693,8 +1716,7 @@ func (m Model) enterRequestTypeSelectionMode() Model {
 }
 
 func handleHelpKey(m Model) (Model, tea.Cmd) {
-	m.statusMessage = m.commandRegistry.GenerateHelpText()
-	return m, nil
+	return m.openHelp(false)
 }
 
 func handleGoTopKey(m Model) (Model, tea.Cmd) {

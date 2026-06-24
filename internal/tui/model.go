@@ -33,6 +33,7 @@ const (
 	ModeWorkflowRun
 	ModeWorkflowDetail
 	ModeSavedResponses
+	ModeHelp
 )
 
 type GRPCReflectPhase int
@@ -186,6 +187,9 @@ type Model struct {
 	savedResponseItemID    string
 	savedResponseViewport  viewport.Model
 	viewingSavedResponse   bool
+
+	helpViewport  viewport.Model
+	helpShowAll   bool
 }
 
 // GRPCReflectMsg carries the result of an async gRPC server reflection call.
@@ -254,6 +258,7 @@ func NewModel(parser *postman.Parser) Model {
 		logsViewport:         viewport.New(0, 0),
 		workflowViewport:      viewport.New(0, 0),
 		savedResponseViewport: viewport.New(0, 0),
+		helpViewport:          viewport.New(0, 0),
 		requestExecutions:     make(map[string]*RequestExecution),
 	}
 	m = m.restoreSession()
