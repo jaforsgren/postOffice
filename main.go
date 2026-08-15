@@ -19,6 +19,15 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "-m", "--merge":
+			return runMerge(os.Args[2:])
+		case "alias":
+			return runAlias(os.Args[2:])
+		}
+	}
+
 	logPath := flag.String("log", "", "path to log file for debugging file operations")
 	flag.Parse()
 

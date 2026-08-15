@@ -44,3 +44,16 @@ func DetectFormat(data []byte) CollectionFormat {
 
 	return FormatUnknown
 }
+
+// IsEnvironmentFormat reports whether data looks like a Postman environment
+// file: it has a "values" array and no "item" array (which would make it a collection).
+func IsEnvironmentFormat(data []byte) bool {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return false
+	}
+
+	_, hasValues := raw["values"]
+	_, hasItem := raw["item"]
+	return hasValues && !hasItem
+}

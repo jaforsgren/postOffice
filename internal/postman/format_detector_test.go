@@ -64,3 +64,46 @@ func TestDetectFormat(t *testing.T) {
 		})
 	}
 }
+
+func TestIsEnvironmentFormat(t *testing.T) {
+	tests := []struct {
+		name     string
+		jsonData string
+		expected bool
+	}{
+		{
+			name:     "Postman environment",
+			jsonData: `{"id":"1","name":"Local","values":[{"key":"host","value":"localhost","enabled":true}]}`,
+			expected: true,
+		},
+		{
+			name:     "Postman collection with item array",
+			jsonData: `{"info":{"name":"Test"},"item":[]}`,
+			expected: false,
+		},
+		{
+			name:     "Collection with both item and values",
+			jsonData: `{"item":[],"values":[]}`,
+			expected: false,
+		},
+		{
+			name:     "Invalid JSON",
+			jsonData: `{invalid}`,
+			expected: false,
+		},
+		{
+			name:     "Empty JSON object",
+			jsonData: `{}`,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsEnvironmentFormat([]byte(tt.jsonData))
+			if result != tt.expected {
+				t.Errorf("Expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}

@@ -39,18 +39,7 @@ func (p *Parser) LoadCollection(path string) (*Collection, error) {
 		return nil, fmt.Errorf("failed to read collection file: %w", err)
 	}
 
-	format := DetectFormat(data)
-
-	var collection *Collection
-	switch format {
-	case FormatPostman:
-		collection, err = parsePostmanCollection(data)
-	case FormatOpenAPI:
-		collection, err = parseOpenAPISpec(data)
-	default:
-		err = fmt.Errorf("unknown collection format")
-	}
-
+	collection, err := ParseCollectionData(data)
 	if err != nil {
 		logger.LogError("LoadCollection", expandedPath, err)
 		return nil, fmt.Errorf("failed to parse collection: %w", err)
@@ -59,6 +48,18 @@ func (p *Parser) LoadCollection(path string) (*Collection, error) {
 	p.collections[collection.Info.Name] = collection
 	p.pathMap[collection.Info.Name] = expandedPath
 	return collection, nil
+}
+
+// ParseCollectionData parses raw collection bytes, auto-detecting Postman vs OpenAPI format.
+func ParseCollectionData(data []byte) (*Collection, error) {
+	switch DetectFormat(data) {
+	case FormatPostman:
+		return parsePostmanCollection(data)
+	case FormatOpenAPI:
+		return parseOpenAPISpec(data)
+	default:
+		return nil, fmt.Errorf("unknown collection format")
+	}
 }
 
 func parsePostmanCollection(data []byte) (*Collection, error) {

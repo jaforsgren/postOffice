@@ -1,0 +1,139 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"postOffice/internal/postman"
+	"strings"
+)
+
+type mergeOptions struct {
+	file1    string
+	file2    string
+	output   string
+	strategy postman.MergeStrategy
+}
+
+// parseMergeArgs parses the arguments following "-m"/"--merge", e.g.
+// "a.json b.json --forceMerge" or "a.json b.json --keep-original -o out.json".
+func parseMergeArgs(args []string) (*mergeOptions, error) {
+	var positional []string
+	var output string
+	forceMerge := false
+	keepOriginal := false
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--forceMerge":
+			forceMerge = true
+		case "--keep-original":
+			keepOriginal = true
+		case "-o", "--output":
+			i++
+			if i >= len(args) {
+				return nil, fmt.Errorf("%s requires a value", arg)
+			}
+			output = args[i]
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return nil, fmt.Errorf("unknown flag: %s", arg)
+			}
+			positional = append(positional, arg)
+		}
+	}
+
+	if len(positional) != 2 {
+		return nil, fmt.Errorf("merge requires exactly two input files, got %d", len(positional))
+	}
+
+	if forceMerge == keepOriginal {
+		return nil, fmt.Errorf("exactly one of --forceMerge or --keep-original must be specified")
+	}
+
+	strategy := postman.MergeKeepOriginal
+	if forceMerge {
+		strategy = postman.MergeForce
+	}
+
+	return &mergeOptions{
+		file1:    positional[0],
+		file2:    positional[1],
+		output:   output,
+		strategy: strategy,
+	}, nil
+}
+
+func runMerge(args []string) error {
+	opts, err := parseMergeArgs(args)
+	if err != nil {
+		return err
+	}
+
+	data1, err := os.ReadFile(opts.file1)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %w", opts.file1, err)
+	}
+
+	data2, err := os.ReadFile(opts.file2)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %w", opts.file2, err)
+	}
+
+	isEnv1 := postman.IsEnvironmentFormat(data1)
+	isEnv2 := postman.IsEnvironmentFormat(data2)
+	if isEnv1 != isEnv2 {
+		return fmt.Errorf("cannot merge a collection with an environment")
+	}
+
+	output := opts.output
+	if output == "" {
+		output = opts.file1
+	}
+
+	var merged any
+	if isEnv1 {
+		merged, err = mergeEnvironmentFiles(data1, data2, opts.strategy)
+	} else {
+		merged, err = mergeCollectionFiles(data1, data2, opts.strategy)
+	}
+	if err != nil {
+		return err
+	}
+
+	bytes, err := json.MarshalIndent(merged, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal merged result: %w", err)
+	}
+
+	if err := os.WriteFile(output, bytes, 0644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", output, err)
+	}
+
+	fmt.Printf("Merged %s and %s -> %s\n", opts.file1, opts.file2, output)
+	return nil
+}
+
+func mergeEnvironmentFiles(data1, data2 []byte, strategy postman.MergeStrategy) (*postman.Environment, error) {
+	var env1, env2 postman.Environment
+	if err := json.Unmarshal(data1, &env1); err != nil {
+		return nil, fmt.Errorf("failed to parse environment: %w", err)
+	}
+	if err := json.Unmarshal(data2, &env2); err != nil {
+		return nil, fmt.Errorf("failed to parse environment: %w", err)
+	}
+	return postman.MergeEnvironments(&env1, &env2, strategy), nil
+}
+
+func mergeCollectionFiles(data1, data2 []byte, strategy postman.MergeStrategy) (*postman.Collection, error) {
+	col1, err := postman.ParseCollectionData(data1)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse collection: %w", err)
+	}
+	col2, err := postman.ParseCollectionData(data2)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse collection: %w", err)
+	}
+	return postman.MergeCollections(col1, col2, strategy), nil
+}
