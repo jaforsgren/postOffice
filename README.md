@@ -277,6 +277,34 @@ Merge two Postman collections or two environment files headlessly, without start
 - Folders with the same name are merged recursively; same-named requests or variables are resolved by the chosen strategy. Items unique to either file are kept.
 - Without `-o`, the merged result overwrites the first input file.
 
+### Headless Aliases
+
+Save a headless command (currently `merge`) with its arguments as a named alias in `~/.postoffice_aliases.json`, then run it by name:
+
+```bash
+./postOffice alias add <name> <command> [args...]   # e.g. alias add sapi-testenv-merge merge a.json b.json --forceMerge -o merged.json
+./postOffice alias list                              # list saved aliases
+./postOffice alias remove <name>                      # delete a saved alias
+./postOffice alias run <name>                         # run a saved alias
+```
+
+`~/.postoffice_aliases.json`:
+
+```json
+{
+  "aliases": {
+    "sapi-testenv-merge": {
+      "command": "merge",
+      "args": ["a.json", "b.json", "--forceMerge", "-o", "merged.json"]
+    }
+  }
+}
+```
+
+- `command` selects the headless command to run (`merge` today); `args` are passed through exactly as if typed after `-m`.
+- Paths in `args` are resolved relative to the current working directory when the alias runs.
+- The command registry (`headlessCommands` in `alias.go`) is designed to grow — adding a future headless command only requires registering it there, and it becomes usable from any alias.
+
 ## Debugging
 
 Enable file operation logging to troubleshoot issues:
