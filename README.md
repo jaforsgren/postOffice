@@ -257,6 +257,26 @@ The reflection connection is insecure (no TLS). For TLS-enabled servers, edit th
 3. Edit variable values directly in the UI
 4. Variables are automatically applied to requests
 
+## Merging Collections and Environments
+
+Merge two Postman collections or two environment files headlessly, without starting the TUI:
+
+```bash
+# file2's conflicting items/variables win, result written back to file1
+./postOffice -m file1.json file2.json --forceMerge
+
+# file1's conflicting items/variables are kept instead
+./postOffice -m file1.json file2.json --keep-original
+
+# write the merged result elsewhere instead of overwriting file1
+./postOffice -m file1.json file2.json --forceMerge -o merged.json
+```
+
+- Exactly one of `--forceMerge` or `--keep-original` is required.
+- Both inputs must be the same type (two collections, or two environments) — mixing a collection with an environment is an error.
+- Folders with the same name are merged recursively; same-named requests or variables are resolved by the chosen strategy. Items unique to either file are kept.
+- Without `-o`, the merged result overwrites the first input file.
+
 ## Debugging
 
 Enable file operation logging to troubleshoot issues:
