@@ -100,6 +100,13 @@ func (m Model) formatItemLine(index int) string {
 		}
 	}
 
+	locationInfo := ""
+	if m.mode == ModeCollections || m.mode == ModeEnvironments {
+		if path, exists := m.itemLocation(line); exists {
+			locationInfo = "  " + subtleStyle.Render(path)
+		}
+	}
+
 	cursor := "  "
 	if index == m.cursor {
 		cursor = "> "
@@ -112,7 +119,7 @@ func (m Model) formatItemLine(index int) string {
 		line = line + strings.Repeat(" ", nameWidth-len(line))
 	}
 
-	fullLine := cursor + modifiedPrefix + line + executionInfo
+	fullLine := cursor + modifiedPrefix + line + executionInfo + locationInfo
 
 	if index == m.cursor {
 		return selectedItemStyle.Render(fullLine)
@@ -143,6 +150,19 @@ func formatTimeAgo(d time.Duration) string {
 			return "1 day ago"
 		}
 		return fmt.Sprintf("%d days ago", days)
+	}
+}
+
+// itemLocation returns the source file path for a collections/environments list
+// entry, so formatItemLine can render it as a location column.
+func (m Model) itemLocation(name string) (string, bool) {
+	switch m.mode {
+	case ModeCollections:
+		return m.parser.GetCollectionPath(name)
+	case ModeEnvironments:
+		return m.parser.GetEnvironmentPath(name)
+	default:
+		return "", false
 	}
 }
 

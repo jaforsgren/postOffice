@@ -519,6 +519,20 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeEnvironments},
 		},
 		{
+			Keys:        []string{"ctrl+o"},
+			Description: "Open collection file location (Finder/Explorer)",
+			ShortHelp:   "ctrl+o",
+			Handler:     handleOpenCollectionLocationKey,
+			AvailableIn: []ViewMode{ModeCollections},
+		},
+		{
+			Keys:        []string{"ctrl+o"},
+			Description: "Open environment file location (Finder/Explorer)",
+			ShortHelp:   "ctrl+o",
+			Handler:     handleOpenEnvironmentLocationKey,
+			AvailableIn: []ViewMode{ModeEnvironments},
+		},
+		{
 			Keys:        []string{"ctrl+g"},
 			Description: "Open workflow file in editor",
 			ShortHelp:   "ctrl+g",
