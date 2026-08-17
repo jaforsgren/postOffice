@@ -470,6 +470,20 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
+			Keys:        []string{"."},
+			Description: "Expand/collapse folder tree",
+			ShortHelp:   ".",
+			Handler:     handleToggleExpandKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{">"},
+			Description: "Expand/collapse all folders",
+			ShortHelp:   ">",
+			Handler:     handleToggleExpandAllKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Keys:        []string{"y"},
 			Description: "Copy response body",
 			ShortHelp:   "y",
@@ -735,7 +749,7 @@ func handleEditCommand(m Model, args []string) (Model, tea.Cmd) {
 	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
 		item := m.currentItems[m.cursor]
 		if item.IsRequest() {
-			m = m.enterEditMode(item)
+			m = m.enterEditMode(item, m.folderPathForCursor())
 		} else {
 			m.statusMessage = "Can only edit requests, not folders"
 		}
@@ -854,12 +868,12 @@ func handleEnterKey(m Model) (Model, tea.Cmd) {
 		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
 			item := m.currentItems[m.cursor]
 			if item.IsFolder() {
-				m = m.navigateInto(item)
+				m = m.navigateIntoAt(item, m.folderPathForCursor())
 			} else if item.IsRequest() {
 				if m.addingWorkflowStep {
 					return m.confirmAddWorkflowStep(item)
 				}
-				return m.executeRequest(item)
+				return m.executeRequest(item, m.folderPathForCursor())
 			}
 		}
 		return m, nil
@@ -878,7 +892,7 @@ func handleExecuteKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
 		item := m.currentItems[m.cursor]
 		if item.IsRequest() {
-			return m.executeRequest(item)
+			return m.executeRequest(item, m.folderPathForCursor())
 		}
 	}
 	return m, nil
@@ -904,14 +918,14 @@ func handleResponseViewKey(m Model) (Model, tea.Cmd) {
 		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
 			item := m.currentItems[m.cursor]
 			if item.IsRequest() {
-				return m.executeRequest(item)
+				return m.executeRequest(item, m.breadcrumb)
 			}
 		}
 	} else if m.mode == ModeRequests {
 		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
 			item := m.currentItems[m.cursor]
 			if item.IsRequest() {
-				itemID := m.getRequestIdentifier(item)
+				itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForCursor(), item.Name)
 				if exec, exists := m.requestExecutions[itemID]; exists && exec.Response != nil {
 					m.lastResponse = exec.Response
 					m.lastTestResult = exec.TestResult
@@ -1201,7 +1215,7 @@ func handleDuplicateKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
 		item := m.currentItems[m.cursor]
 		if item.IsRequest() {
-			m = m.duplicateRequest(item)
+			m = m.duplicateRequest(item, m.folderPathForCursor())
 		} else {
 			m.statusMessage = "Can only duplicate requests, not folders"
 		}
@@ -1215,7 +1229,7 @@ func handleEditScriptKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
 		item := m.currentItems[m.cursor]
 		if item.IsRequest() {
-			m = m.enterScriptSelectionMode(item)
+			m = m.enterScriptSelectionMode(item, m.folderPathForCursor())
 		} else {
 			m.statusMessage = "Can only edit scripts for requests, not folders"
 		}
@@ -1481,13 +1495,23 @@ func handleEditScriptCommand(m Model, args []string) (Model, tea.Cmd) {
 	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
 		item := m.currentItems[m.cursor]
 		if item.IsRequest() {
-			m = m.enterScriptSelectionMode(item)
+			m = m.enterScriptSelectionMode(item, m.folderPathForCursor())
 		} else {
 			m.statusMessage = "Can only edit scripts for requests, not folders"
 		}
 	} else {
 		m.statusMessage = "No request selected"
 	}
+	return m, nil
+}
+
+func handleToggleExpandKey(m Model) (Model, tea.Cmd) {
+	m = m.toggleExpandAtCursor()
+	return m, nil
+}
+
+func handleToggleExpandAllKey(m Model) (Model, tea.Cmd) {
+	m = m.toggleExpandAllAtCurrentLevel()
 	return m, nil
 }
 
@@ -1500,7 +1524,7 @@ func handleDeleteRequestKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Can only delete requests, not folders"
 		return m, nil
 	}
-	return m.deleteRequest(item), nil
+	return m.deleteRequest(item, m.folderPathForCursor()), nil
 }
 
 func handleSavedResponsesKey(m Model) (Model, tea.Cmd) {
@@ -1512,7 +1536,7 @@ func handleSavedResponsesKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Select a request to view saved responses"
 		return m, nil
 	}
-	itemID := m.getRequestIdentifier(item)
+	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForCursor(), item.Name)
 	responses, err := m.parser.GetSavedResponses(itemID)
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Failed to load saved responses: %v", err)
@@ -1593,7 +1617,7 @@ func handleVimEditKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.cursor < len(m.currentItems) && m.currentItems[m.cursor].IsRequest() {
-		return m.openVimForItem(m.currentItems[m.cursor])
+		return m.openVimForItem(m.currentItems[m.cursor], m.folderPathForCursor())
 	}
 	return m.openVimForCurrentLevel()
 }
@@ -1622,7 +1646,7 @@ func handleEditRequestKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
 		item := m.currentItems[m.cursor]
 		if item.IsRequest() {
-			m = m.enterEditMode(item)
+			m = m.enterEditMode(item, m.folderPathForCursor())
 		} else {
 			m.statusMessage = "Can only edit requests, not folders"
 		}

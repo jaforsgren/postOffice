@@ -71,7 +71,7 @@ func (m Model) formatItemLine(index int) string {
 	if m.mode == ModeRequests && index < len(m.currentItems) {
 		item := m.currentItems[index]
 		if item.IsRequest() {
-			itemID := m.getRequestIdentifier(item)
+			itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForIndex(index), item.Name)
 			if m.isItemModified(itemID) {
 				modifiedPrefix = "* "
 			}
@@ -167,6 +167,7 @@ func (m Model) itemLocation(name string) (string, bool) {
 }
 
 func (m Model) getItemStyle(itemText string) lipgloss.Style {
+	itemText = strings.TrimLeft(itemText, " ")
 	if strings.HasPrefix(itemText, "[DIR]") {
 		return folderStyle
 	}

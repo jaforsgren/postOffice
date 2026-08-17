@@ -676,7 +676,7 @@ func TestEnterEditMode(t *testing.T) {
 		t.Fatal("Expected item to be a request")
 	}
 
-	m = m.enterEditMode(request)
+	m = m.enterEditMode(request, m.breadcrumb)
 
 	if m.mode != ModeEdit {
 		t.Errorf("Expected mode ModeEdit, got %v", m.mode)
@@ -703,7 +703,7 @@ func TestEnterEditMode_NotRequest(t *testing.T) {
 		t.Fatal("Expected item to be a folder")
 	}
 
-	m = m.enterEditMode(folder)
+	m = m.enterEditMode(folder, m.breadcrumb)
 
 	if m.mode == ModeEdit {
 		t.Error("Expected mode to not change to ModeEdit for folder")
@@ -979,7 +979,7 @@ func TestHandleEditModeKeys_Esc(t *testing.T) {
 	m := createTestModel()
 	m = m.navigateInto(m.currentItems[0])
 	request := m.currentItems[0]
-	m = m.enterEditMode(request)
+	m = m.enterEditMode(request, m.breadcrumb)
 	m.previousMode = ModeRequests
 
 	msg := tea.KeyMsg{Type: tea.KeyEsc}
@@ -1247,7 +1247,7 @@ func TestDuplicateRequest(t *testing.T) {
 		t.Fatal("Expected item to be a request")
 	}
 
-	m = m.duplicateRequest(request)
+	m = m.duplicateRequest(request, m.breadcrumb)
 
 	if !contains(m.statusMessage, "Duplicated") && !contains(m.statusMessage, "Failed") {
 		t.Errorf("Expected success or failure message, got: %s", m.statusMessage)
@@ -1262,7 +1262,7 @@ func TestDuplicateRequest_Folder(t *testing.T) {
 		t.Fatal("Expected item to be a folder")
 	}
 
-	m = m.duplicateRequest(folder)
+	m = m.duplicateRequest(folder, m.breadcrumb)
 
 	if !contains(m.statusMessage, "Cannot duplicate") {
 		t.Error("Expected error message for duplicating folder")
@@ -1278,7 +1278,7 @@ func TestDeleteRequest(t *testing.T) {
 		t.Fatal("Expected item to be a request")
 	}
 
-	m = m.deleteRequest(request)
+	m = m.deleteRequest(request, m.breadcrumb)
 
 	if !contains(m.statusMessage, "Deleted") && !contains(m.statusMessage, "Failed") {
 		t.Errorf("Expected success or failure message, got: %s", m.statusMessage)
@@ -1293,7 +1293,7 @@ func TestDeleteRequest_Folder(t *testing.T) {
 		t.Fatal("Expected item to be a folder")
 	}
 
-	m = m.deleteRequest(folder)
+	m = m.deleteRequest(folder, m.breadcrumb)
 
 	if !contains(m.statusMessage, "Cannot delete") {
 		t.Error("Expected error message for deleting folder")
@@ -1562,7 +1562,7 @@ func TestExecuteRequest_GRPCReturnsUnsupported(t *testing.T) {
 		},
 	}
 
-	newM, cmd := m.executeRequest(grpcItem)
+	newM, cmd := m.executeRequest(grpcItem, m.breadcrumb)
 	if cmd != nil {
 		t.Error("Expected no command for gRPC request execution")
 	}

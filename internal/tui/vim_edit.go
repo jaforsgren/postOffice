@@ -50,7 +50,7 @@ type VimEditCompleteMsg struct {
 	Err          error
 }
 
-func (m Model) openVimForItem(item postman.Item) (Model, tea.Cmd) {
+func (m Model) openVimForItem(item postman.Item, folderPath []string) (Model, tea.Cmd) {
 	if item.Request == nil {
 		m.statusMessage = "No request data to edit"
 		return m, nil
@@ -71,9 +71,8 @@ func (m Model) openVimForItem(item postman.Item) (Model, tea.Cmd) {
 		payload.Body = item.Request.Body.Raw
 	}
 
-	itemID := m.getRequestIdentifier(item)
-	folderPath := append([]string{}, m.breadcrumb...)
-	return m, openVimEditorForRequest(payload, itemID, folderPath, item.Name, false)
+	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, folderPath, item.Name)
+	return m, openVimEditorForRequest(payload, itemID, append([]string{}, folderPath...), item.Name, false)
 }
 
 func (m Model) openVimForEditState() (Model, tea.Cmd) {

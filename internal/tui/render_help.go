@@ -23,7 +23,7 @@ func (m Model) buildHelpContent() string {
 	if m.helpShowAll {
 		sb.WriteString(headingStyle.Render("Keyboard Shortcuts — All Contexts"))
 	} else {
-		sb.WriteString(headingStyle.Render(fmt.Sprintf("Keyboard Shortcuts — %s", m.getModeString())))
+		sb.WriteString(headingStyle.Render(fmt.Sprintf("Keyboard Shortcuts — %s", helpModeTitle(m.helpContextMode()))))
 	}
 	sb.WriteString("\n\n")
 
@@ -66,35 +66,52 @@ type helpGroup struct {
 	entries []helpEntry
 }
 
-func (m Model) buildHelpGroups() []helpGroup {
-	modeNames := map[ViewMode]string{
-		ModeCollections:    "Collections",
-		ModeRequests:       "Requests",
-		ModeResponse:       "Response",
-		ModeInfo:           "Info / JSON / Logs",
-		ModeEnvironments:   "Environments",
-		ModeVariables:      "Variables",
-		ModeEdit:           "Edit",
-		ModeChanges:        "Changes",
-		ModeWorkflows:      "Workflows",
-		ModeWorkflowDetail: "Workflow Detail",
-		ModeSavedResponses: "Saved Responses",
-	}
+// helpModeTitles maps each mode with its own help section to a display title,
+// in the order sections should appear in the "All Contexts" view.
+var helpModeTitles = []struct {
+	mode  ViewMode
+	title string
+}{
+	{ModeCollections, "Collections"},
+	{ModeRequests, "Requests"},
+	{ModeResponse, "Response"},
+	{ModeInfo, "Info / JSON / Logs"},
+	{ModeEnvironments, "Environments"},
+	{ModeVariables, "Variables"},
+	{ModeEdit, "Edit"},
+	{ModeChanges, "Changes"},
+	{ModeWorkflows, "Workflows"},
+	{ModeWorkflowDetail, "Workflow Detail"},
+	{ModeSavedResponses, "Saved Responses"},
+}
 
-	// Order of sections
-	orderedModes := []ViewMode{
-		ModeCollections,
-		ModeRequests,
-		ModeResponse,
-		ModeInfo,
-		ModeEnvironments,
-		ModeVariables,
-		ModeEdit,
-		ModeChanges,
-		ModeWorkflows,
-		ModeWorkflowDetail,
-		ModeSavedResponses,
+// helpModeTitle returns the section title for mode, or a numeric fallback for
+// modes without a dedicated help section (e.g. ModeHelp itself).
+func helpModeTitle(mode ViewMode) string {
+	for _, m := range helpModeTitles {
+		if m.mode == mode {
+			return m.title
+		}
 	}
+	return fmt.Sprintf("Mode %d", int(mode))
+}
+
+// helpContextMode returns the mode the help view should be scoped to when not
+// showing all contexts. m.mode is ModeHelp while help is open, so the actual
+// context is whatever mode was active right before ':h'/'?' was pressed.
+func (m Model) helpContextMode() ViewMode {
+	if m.mode == ModeHelp {
+		return m.previousMode
+	}
+	return m.mode
+}
+
+func (m Model) buildHelpGroups() []helpGroup {
+	orderedModes := make([]ViewMode, len(helpModeTitles))
+	for i, entry := range helpModeTitles {
+		orderedModes[i] = entry.mode
+	}
+	contextMode := m.helpContextMode()
 
 	// Track seen shorthelp per group to deduplicate
 	type dedupeKey struct {
@@ -106,7 +123,7 @@ func (m Model) buildHelpGroups() []helpGroup {
 	var groups []helpGroup
 
 	for _, mode := range orderedModes {
-		if !m.helpShowAll && mode != m.mode {
+		if !m.helpShowAll && mode != contextMode {
 			continue
 		}
 
@@ -132,11 +149,7 @@ func (m Model) buildHelpGroups() []helpGroup {
 		}
 
 		if len(entries) > 0 {
-			title := modeNames[mode]
-			if title == "" {
-				title = fmt.Sprintf("Mode %d", int(mode))
-			}
-			groups = append(groups, helpGroup{title: title, entries: entries})
+			groups = append(groups, helpGroup{title: helpModeTitle(mode), entries: entries})
 		}
 	}
 

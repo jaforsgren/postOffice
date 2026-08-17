@@ -98,6 +98,8 @@ type Model struct {
 	cursor            int
 	items             []string
 	currentItems      []postman.Item
+	currentItemPaths  [][]string
+	expandedFolders   map[string]bool
 	collection        *postman.Collection
 	breadcrumb        []string
 	width             int
@@ -115,6 +117,7 @@ type Model struct {
 	filteredIndices   []int
 	allItems          []string
 	allCurrentItems   []postman.Item
+	allCurrentItemPaths [][]string
 	environment       *postman.Environment
 	previousMode      ViewMode
 	variables         []postman.VariableSource
@@ -241,6 +244,7 @@ func NewModel(parser *postman.Parser) Model {
 		cursor:               0,
 		items:                []string{},
 		currentItems:         []postman.Item{},
+		expandedFolders:      make(map[string]bool),
 		breadcrumb:           []string{},
 		previousMode:         modeUnset,
 		searchInput:          searchInput,

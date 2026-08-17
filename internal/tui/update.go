@@ -11,6 +11,7 @@ import (
 	"postOffice/internal/script"
 	"postOffice/internal/servicebus"
 	"postOffice/internal/workflow"
+	"slices"
 	"strings"
 	"time"
 
@@ -412,13 +413,188 @@ func (m Model) configureViewport(vp *viewport.Model, content string) {
 	vp.SetContent(content)
 }
 
-// buildDisplayList converts a slice of items into display strings with method/type prefixes.
-func buildDisplayList(items []postman.Item) []string {
-	list := make([]string, len(items))
-	for i, item := range items {
-		list[i] = itemDisplayPrefix(item) + item.Name
+// treeFolderKey identifies a folder for expand/collapse tracking: the path to
+// its parent joined with its own name.
+func treeFolderKey(parentPath []string, name string) string {
+	return strings.Join(append(slices.Clone(parentPath), name), "/")
+}
+
+// buildTreeView flattens items into a display list, recursing into any folder
+// whose treeFolderKey is present in expanded. It returns display strings and,
+// in parallel, the folder path each flattened entry actually lives in (which
+// differs from the caller's own breadcrumb once a nested folder is expanded).
+func buildTreeView(items []postman.Item, parentPath []string, depth int, expanded map[string]bool) ([]string, []postman.Item, [][]string) {
+	var display []string
+	var flat []postman.Item
+	var paths [][]string
+
+	indent := strings.Repeat("  ", depth)
+
+	for _, item := range items {
+		marker := ""
+		isExpandedFolder := false
+		if item.IsFolder() {
+			isExpandedFolder = expanded[treeFolderKey(parentPath, item.Name)]
+			if isExpandedFolder {
+				marker = "▾ "
+			} else {
+				marker = "▸ "
+			}
+		}
+
+		display = append(display, indent+itemDisplayPrefix(item)+marker+item.Name)
+		flat = append(flat, item)
+		paths = append(paths, slices.Clone(parentPath))
+
+		if isExpandedFolder {
+			childPath := append(slices.Clone(parentPath), item.Name)
+			childDisplay, childFlat, childPaths := buildTreeView(item.Items, childPath, depth+1, expanded)
+			display = append(display, childDisplay...)
+			flat = append(flat, childFlat...)
+			paths = append(paths, childPaths...)
+		}
 	}
-	return list
+
+	return display, flat, paths
+}
+
+// applyTreeItems rebuilds m.items/m.currentItems/m.currentItemPaths for the
+// requests view, flattening any folders under itemsFolderPath that are
+// expanded in m.expandedFolders.
+func (m Model) applyTreeItems(items []postman.Item, itemsFolderPath []string) Model {
+	display, flat, paths := buildTreeView(items, itemsFolderPath, 0, m.expandedFolders)
+	m.items = display
+	m.currentItems = flat
+	m.currentItemPaths = paths
+	return m
+}
+
+// folderPathForIndex returns the real folder path of the entry at index in
+// the requests view — which is only different from m.breadcrumb when index
+// refers to a row revealed by expanding a nested folder with ".".
+func (m Model) folderPathForIndex(index int) []string {
+	if m.mode == ModeRequests && index >= 0 && index < len(m.currentItemPaths) {
+		return m.currentItemPaths[index]
+	}
+	return m.breadcrumb
+}
+
+func (m Model) folderPathForCursor() []string {
+	return m.folderPathForIndex(m.cursor)
+}
+
+// toggleExpandAtCursor expands or collapses the folder under the cursor in
+// the requests tree view. Requests are left untouched.
+func (m Model) toggleExpandAtCursor() Model {
+	if m.mode != ModeRequests || m.cursor >= len(m.currentItems) {
+		return m
+	}
+	item := m.currentItems[m.cursor]
+	if !item.IsFolder() {
+		m.statusMessage = "Only folders can be expanded"
+		return m
+	}
+
+	folderPath := m.folderPathForIndex(m.cursor)
+	key := treeFolderKey(folderPath, item.Name)
+	cursorItem := item.Name
+
+	if m.expandedFolders[key] {
+		delete(m.expandedFolders, key)
+		m.statusMessage = fmt.Sprintf("Collapsed: %s", item.Name)
+	} else {
+		m.expandedFolders[key] = true
+		m.statusMessage = fmt.Sprintf("Expanded: %s", item.Name)
+	}
+
+	current := m.currentRequestsBase()
+	m = m.applyTreeItems(current, m.breadcrumb)
+
+	for i, path := range m.currentItemPaths {
+		if i < len(m.currentItems) && m.currentItems[i].Name == cursorItem && slices.Equal(path, folderPath) {
+			m.cursor = i
+			break
+		}
+	}
+	if m.cursor >= len(m.currentItems) && len(m.currentItems) > 0 {
+		m.cursor = len(m.currentItems) - 1
+	}
+
+	return m
+}
+
+// collectFolderKeys recursively gathers the treeFolderKey of every folder
+// under items (whose parent path is parentPath) into keys.
+func collectFolderKeys(items []postman.Item, parentPath []string, keys map[string]bool) {
+	for _, item := range items {
+		if !item.IsFolder() {
+			continue
+		}
+		keys[treeFolderKey(parentPath, item.Name)] = true
+		collectFolderKeys(item.Items, append(slices.Clone(parentPath), item.Name), keys)
+	}
+}
+
+// toggleExpandAllAtCurrentLevel expands every folder in the current requests
+// view (recursively, down to leaf requests) if any are collapsed, or
+// collapses them all back if every folder is already expanded.
+func (m Model) toggleExpandAllAtCurrentLevel() Model {
+	if m.mode != ModeRequests || m.collection == nil {
+		return m
+	}
+
+	base := m.currentRequestsBase()
+	allKeys := make(map[string]bool)
+	collectFolderKeys(base, m.breadcrumb, allKeys)
+
+	if len(allKeys) == 0 {
+		m.statusMessage = "No folders to expand"
+		return m
+	}
+
+	allExpanded := true
+	for key := range allKeys {
+		if !m.expandedFolders[key] {
+			allExpanded = false
+			break
+		}
+	}
+
+	if allExpanded {
+		for key := range allKeys {
+			delete(m.expandedFolders, key)
+		}
+		m.statusMessage = "Collapsed all folders"
+	} else {
+		for key := range allKeys {
+			m.expandedFolders[key] = true
+		}
+		m.statusMessage = "Expanded all folders"
+	}
+
+	m = m.applyTreeItems(base, m.breadcrumb)
+	if m.cursor >= len(m.currentItems) {
+		m.cursor = 0
+	}
+
+	return m
+}
+
+// currentRequestsBase returns the one-level item slice for the folder the
+// user is browsing (m.breadcrumb), i.e. the un-flattened base that
+// applyTreeItems expands from.
+func (m Model) currentRequestsBase() []postman.Item {
+	if m.collection == nil {
+		return nil
+	}
+	if len(m.breadcrumb) == 0 {
+		return m.collection.Items
+	}
+	base := traverseToDepth(m.collection.Items, m.breadcrumb)
+	if base == nil {
+		return m.collection.Items
+	}
+	return base
 }
 
 func itemDisplayPrefix(item postman.Item) string {
@@ -444,8 +620,6 @@ func (m Model) loadRequestsList() Model {
 		return m
 	}
 
-	m.items = []string{}
-	m.currentItems = m.collection.Items
 	m.breadcrumb = []string{}
 
 	folderCount := 0
@@ -461,7 +635,7 @@ func (m Model) loadRequestsList() Model {
 			otherCount++
 		}
 	}
-	m.items = buildDisplayList(m.collection.Items)
+	m = m.applyTreeItems(m.collection.Items, []string{})
 	m.cursor = 0
 
 	if len(m.items) == 0 {
@@ -546,7 +720,7 @@ func (m Model) handleSelection() Model {
 	return m
 }
 
-func (m Model) executeRequest(item postman.Item) (Model, tea.Cmd) {
+func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
 	if item.IsGRPC() {
 		m.statusMessage = "gRPC execution not yet supported — use :info to inspect the request"
 		return m, nil
@@ -557,14 +731,14 @@ func (m Model) executeRequest(item postman.Item) (Model, tea.Cmd) {
 	}
 
 	if item.IsServiceBus() {
-		return m.executeServiceBusRequest(item)
+		return m.executeServiceBusRequest(item, folderPath)
 	}
 
 	if item.IsAMQP() {
-		return m.executeAMQPRequest(item)
+		return m.executeAMQPRequest(item, folderPath)
 	}
 
-	itemID := m.getRequestIdentifier(item)
+	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, folderPath, item.Name)
 	requestToExecute := item.Request
 	isModified := m.isItemModified(itemID)
 
@@ -591,7 +765,7 @@ func (m Model) executeRequest(item postman.Item) (Model, tea.Cmd) {
 		TestResult: nil,
 	}
 
-	variables := postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+	variables := postman.GetAllVariables(m.collection, folderPath, m.environment)
 
 	executor := m.executor
 	collection := m.collection
@@ -613,24 +787,25 @@ func (m Model) executeRequest(item postman.Item) (Model, tea.Cmd) {
 	}
 }
 
-func (m Model) executeServiceBusRequest(item postman.Item) (Model, tea.Cmd) {
-	return m.executeMessageItem(item, "Sending ASB message", func(req *postman.Request, vars []postman.VariableSource) *internalhttp.Response {
+func (m Model) executeServiceBusRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
+	return m.executeMessageItem(item, folderPath, "Sending ASB message", func(req *postman.Request, vars []postman.VariableSource) *internalhttp.Response {
 		return servicebus.Send(req, vars)
 	})
 }
 
-func (m Model) executeAMQPRequest(item postman.Item) (Model, tea.Cmd) {
-	return m.executeMessageItem(item, "Publishing AMQP message", func(req *postman.Request, vars []postman.VariableSource) *internalhttp.Response {
+func (m Model) executeAMQPRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
+	return m.executeMessageItem(item, folderPath, "Publishing AMQP message", func(req *postman.Request, vars []postman.VariableSource) *internalhttp.Response {
 		return amqp.Publish(req, vars)
 	})
 }
 
 func (m Model) executeMessageItem(
 	item postman.Item,
+	folderPath []string,
 	statusPrefix string,
 	send func(*postman.Request, []postman.VariableSource) *internalhttp.Response,
 ) (Model, tea.Cmd) {
-	itemID := m.getRequestIdentifier(item)
+	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, folderPath, item.Name)
 	m.statusMessage = fmt.Sprintf("%s: %s", statusPrefix, item.Name)
 	m.requestExecutions[itemID] = &RequestExecution{
 		Status:    "Sending...",
@@ -673,9 +848,15 @@ func (m Model) executeMessageItem(
 }
 
 func (m Model) navigateInto(item postman.Item) Model {
-	m.breadcrumb = append(m.breadcrumb, item.Name)
-	m.currentItems = item.Items
-	m.items = buildDisplayList(item.Items)
+	return m.navigateIntoAt(item, m.breadcrumb)
+}
+
+// navigateIntoAt navigates into item as if browsing were currently at
+// parentPath. This matters when item was reached via the tree-expand view
+// ("."), where item's real parent can be deeper than m.breadcrumb.
+func (m Model) navigateIntoAt(item postman.Item, parentPath []string) Model {
+	m.breadcrumb = append(append([]string{}, parentPath...), item.Name)
+	m = m.applyTreeItems(item.Items, m.breadcrumb)
 	m.cursor = 0
 	m.searchActive = false
 	m.searchInput.SetValue("")
@@ -696,8 +877,7 @@ func (m Model) navigateUp() Model {
 		if current == nil {
 			current = m.collection.Items
 		}
-		m.currentItems = current
-		m.items = buildDisplayList(current)
+		m = m.applyTreeItems(current, m.breadcrumb)
 		m.cursor = 0
 	}
 
@@ -711,17 +891,7 @@ func (m Model) refreshCurrentView() Model {
 		return m
 	}
 
-	if len(m.breadcrumb) == 0 {
-		m.currentItems = m.collection.Items
-	} else {
-		current := traverseToDepth(m.collection.Items, m.breadcrumb)
-		if current == nil {
-			current = m.collection.Items
-		}
-		m.currentItems = current
-	}
-
-	m.items = buildDisplayList(m.currentItems)
+	m = m.applyTreeItems(m.currentRequestsBase(), m.breadcrumb)
 	return m
 }
 
@@ -854,7 +1024,7 @@ func (m Model) loadVariablesList() Model {
 	return m
 }
 
-func (m Model) enterEditMode(item postman.Item) Model {
+func (m Model) enterEditMode(item postman.Item, folderPath []string) Model {
 	if !item.IsRequest() || item.Request == nil {
 		m.statusMessage = "Cannot edit: not a request"
 		return m
@@ -866,13 +1036,13 @@ func (m Model) enterEditMode(item postman.Item) Model {
 	m.editFieldCursor = 0
 	m.editFieldMode = false
 	m.editCollectionName = m.collection.Info.Name
-	m.editItemPath = append([]string{}, m.breadcrumb...)
+	m.editItemPath = append([]string{}, folderPath...)
 	m.previousMode = m.mode
 	m.mode = ModeEdit
 	m.scrollOffset = 0
 
 	// Load stored path params for this item, or initialize empty
-	itemID := m.getRequestIdentifier(item)
+	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, folderPath, item.Name)
 	m.pathParams = make(map[string]string)
 	if stored, ok := m.requestPathParams[itemID]; ok {
 		for k, v := range stored {
@@ -1987,7 +2157,7 @@ func (m Model) insertItemAtCursor(item postman.Item) Model {
 	return m
 }
 
-func (m Model) duplicateRequest(item postman.Item) Model {
+func (m Model) duplicateRequest(item postman.Item, folderPath []string) Model {
 	if m.collection == nil || !item.IsRequest() || item.Request == nil {
 		m.statusMessage = "Error: Cannot duplicate request"
 		return m
@@ -1999,7 +2169,7 @@ func (m Model) duplicateRequest(item postman.Item) Model {
 		Description: item.Description,
 	}
 
-	items := traverseToDepthPtr(&m.collection.Items, m.breadcrumb)
+	items := traverseToDepthPtr(&m.collection.Items, folderPath)
 	if items == nil {
 		m.statusMessage = "Error: Could not find folder in breadcrumb"
 		return m
@@ -2021,13 +2191,13 @@ func (m Model) duplicateRequest(item postman.Item) Model {
 	return m
 }
 
-func (m Model) deleteRequest(item postman.Item) Model {
+func (m Model) deleteRequest(item postman.Item, folderPath []string) Model {
 	if m.collection == nil || !item.IsRequest() {
 		m.statusMessage = "Error: Cannot delete request"
 		return m
 	}
 
-	items := traverseToDepthPtr(&m.collection.Items, m.breadcrumb)
+	items := traverseToDepthPtr(&m.collection.Items, folderPath)
 	if items == nil {
 		m.statusMessage = "Error: Could not find folder in breadcrumb"
 		return m
@@ -2119,8 +2289,7 @@ func (m Model) restoreSession() Model {
 					return m
 				}
 				m.breadcrumb = session.Breadcrumb
-				m.currentItems = current
-				m.items = buildDisplayList(current)
+				m = m.applyTreeItems(current, m.breadcrumb)
 			}
 
 			if session.Cursor >= len(m.currentItems) {
@@ -2139,7 +2308,7 @@ func (m Model) restoreSession() Model {
 	return m
 }
 
-func (m Model) enterScriptSelectionMode(item postman.Item) Model {
+func (m Model) enterScriptSelectionMode(item postman.Item, folderPath []string) Model {
 	if !item.IsRequest() {
 		m.statusMessage = "Can only edit scripts for requests"
 		return m
@@ -2157,7 +2326,7 @@ func (m Model) enterScriptSelectionMode(item postman.Item) Model {
 
 	m.scriptSelectionMode = true
 	m.editScriptItemName = item.Name
-	m.editItemPath = append([]string{}, m.breadcrumb...)
+	m.editItemPath = append([]string{}, folderPath...)
 	m.editCollectionName = m.collection.Info.Name
 	m.previousMode = m.mode
 	m.mode = ModeEdit
@@ -2487,7 +2656,7 @@ func (m Model) editWorkflowStepRequest() (Model, tea.Cmd) {
 	// Set breadcrumb so saveEdit() can locate the item in the collection.
 	m.breadcrumb = folderPath
 	m.previousMode = ModeWorkflowDetail
-	m = m.enterEditMode(*item)
+	m = m.enterEditMode(*item, folderPath)
 	return m, nil
 }
 
