@@ -20,6 +20,40 @@ func MergeCollections(dst, src *Collection, strategy MergeStrategy) *Collection 
 	}
 }
 
+// MergeCollectionsGrouped merges src into dst by nesting each collection's
+// items under its own top-level folder (named dstGroupName/srcGroupName)
+// instead of merging same-named items together at the top level. If a
+// collection's items already contain a top-level folder matching its own
+// group name (e.g. it was already grouped by a previous merge), that folder
+// is reused instead of wrapping it again. If the two group names collide —
+// whether from reuse or because both collections share a name — their
+// contents merge into a single folder using the normal name-collision rules
+// (overwrite on --forceMerge, keep on --keep-original) rather than producing
+// duplicate folders. Variables and Events are still merged flat, per
+// strategy, since they have no folder to live under.
+func MergeCollectionsGrouped(dst, src *Collection, dstGroupName, srcGroupName string, strategy MergeStrategy) *Collection {
+	dstItems := groupedItems(dst.Items, dstGroupName)
+	srcItems := groupedItems(src.Items, srcGroupName)
+
+	return &Collection{
+		Info:      dst.Info,
+		Items:     mergeItems(dstItems, srcItems, strategy),
+		Variables: mergeVariables(dst.Variables, src.Variables, strategy),
+		Events:    mergeEvents(dst.Events, src.Events),
+	}
+}
+
+// groupedItems returns items unchanged if it already has a top-level folder
+// named groupName, otherwise wraps items in a single new folder named groupName.
+func groupedItems(items []Item, groupName string) []Item {
+	for _, item := range items {
+		if item.IsFolder() && item.Name == groupName {
+			return items
+		}
+	}
+	return []Item{{Name: groupName, Items: items}}
+}
+
 // MergeEnvironments merges src into dst by variable key. dst's ID/Name are preserved.
 func MergeEnvironments(dst, src *Environment, strategy MergeStrategy) *Environment {
 	return &Environment{

@@ -187,3 +187,139 @@ func TestMergeEnvironments(t *testing.T) {
 		}
 	})
 }
+
+func TestMergeCollectionsGrouped_NestsUnderCollectionNames(t *testing.T) {
+	dst := &Collection{
+		Info:  Info{Name: "Dst Collection"},
+		Items: []Item{{Name: "Get Users", Request: &Request{Method: "GET"}}},
+	}
+	src := &Collection{
+		Info:  Info{Name: "Src Collection"},
+		Items: []Item{{Name: "Get Orders", Request: &Request{Method: "GET"}}},
+	}
+
+	merged := MergeCollectionsGrouped(dst, src, "Dst Collection", "Src Collection", MergeKeepOriginal)
+
+	if merged.Info.Name != "Dst Collection" {
+		t.Errorf("expected merged Info.Name to be preserved, got %q", merged.Info.Name)
+	}
+	if len(merged.Items) != 2 {
+		t.Fatalf("expected 2 top-level group folders, got %d", len(merged.Items))
+	}
+	if merged.Items[0].Name != "Dst Collection" || !merged.Items[0].IsFolder() {
+		t.Errorf("expected first group folder %q, got %+v", "Dst Collection", merged.Items[0])
+	}
+	if merged.Items[1].Name != "Src Collection" || !merged.Items[1].IsFolder() {
+		t.Errorf("expected second group folder %q, got %+v", "Src Collection", merged.Items[1])
+	}
+	if len(merged.Items[0].Items) != 1 || merged.Items[0].Items[0].Name != "Get Users" {
+		t.Errorf("expected Dst Collection folder to contain Get Users, got %+v", merged.Items[0].Items)
+	}
+	if len(merged.Items[1].Items) != 1 || merged.Items[1].Items[0].Name != "Get Orders" {
+		t.Errorf("expected Src Collection folder to contain Get Orders, got %+v", merged.Items[1].Items)
+	}
+}
+
+func TestMergeCollectionsGrouped_SameNameMergesIntoOneFolderWithOverwrite(t *testing.T) {
+	dst := &Collection{
+		Info: Info{Name: "Shared Name"},
+		Items: []Item{
+			{Name: "Get Users", Request: &Request{Method: "GET"}},
+		},
+	}
+	src := &Collection{
+		Info: Info{Name: "Shared Name"},
+		Items: []Item{
+			{Name: "Get Users", Request: &Request{Method: "POST"}},
+			{Name: "Get Orders", Request: &Request{Method: "GET"}},
+		},
+	}
+
+	t.Run("forceMerge overwrites the clashing request inside the shared folder", func(t *testing.T) {
+		merged := MergeCollectionsGrouped(dst, src, "Shared Name", "Shared Name", MergeForce)
+
+		if len(merged.Items) != 1 {
+			t.Fatalf("expected a single merged group folder, got %d", len(merged.Items))
+		}
+		folder := merged.Items[0]
+		if folder.Name != "Shared Name" {
+			t.Errorf("expected folder name Shared Name, got %s", folder.Name)
+		}
+		if len(folder.Items) != 2 {
+			t.Fatalf("expected 2 items inside the merged folder, got %d", len(folder.Items))
+		}
+		if folder.Items[0].Request.Method != "POST" {
+			t.Errorf("expected forceMerge to overwrite Get Users with POST, got %s", folder.Items[0].Request.Method)
+		}
+	})
+
+	t.Run("keep-original keeps the clashing request inside the shared folder", func(t *testing.T) {
+		merged := MergeCollectionsGrouped(dst, src, "Shared Name", "Shared Name", MergeKeepOriginal)
+
+		folder := merged.Items[0]
+		if folder.Items[0].Request.Method != "GET" {
+			t.Errorf("expected keep-original to keep Get Users as GET, got %s", folder.Items[0].Request.Method)
+		}
+	})
+}
+
+func TestMergeCollectionsGrouped_ReusesExistingTopLevelGroupFolder(t *testing.T) {
+	dst := &Collection{
+		Info: Info{Name: "My Collection"},
+		Items: []Item{
+			{
+				Name:  "My Collection",
+				Items: []Item{{Name: "Get Users", Request: &Request{Method: "GET"}}},
+			},
+		},
+	}
+	src := &Collection{
+		Info:  Info{Name: "Other Collection"},
+		Items: []Item{{Name: "Get Orders", Request: &Request{Method: "GET"}}},
+	}
+
+	merged := MergeCollectionsGrouped(dst, src, "My Collection", "Other Collection", MergeKeepOriginal)
+
+	if len(merged.Items) != 2 {
+		t.Fatalf("expected 2 top-level items (existing My Collection folder + new Other Collection folder), got %d", len(merged.Items))
+	}
+	if merged.Items[0].Name != "My Collection" {
+		t.Errorf("expected existing group folder to be reused as-is, got %+v", merged.Items[0])
+	}
+	// It must not have been double-wrapped into My Collection > My Collection > Get Users.
+	if len(merged.Items[0].Items) != 1 || merged.Items[0].Items[0].Name != "Get Users" {
+		t.Errorf("expected existing folder contents untouched, got %+v", merged.Items[0].Items)
+	}
+	if merged.Items[1].Name != "Other Collection" {
+		t.Errorf("expected new group folder for Other Collection, got %+v", merged.Items[1])
+	}
+}
+
+func TestMergeCollectionsGrouped_ReusedFoldersOnBothSidesMergeTogether(t *testing.T) {
+	dst := &Collection{
+		Info: Info{Name: "Shared"},
+		Items: []Item{
+			{Name: "Shared", Items: []Item{{Name: "Get Users", Request: &Request{Method: "GET"}}}},
+		},
+	}
+	src := &Collection{
+		Info: Info{Name: "Shared"},
+		Items: []Item{
+			{Name: "Shared", Items: []Item{{Name: "Get Orders", Request: &Request{Method: "GET"}}}},
+		},
+	}
+
+	merged := MergeCollectionsGrouped(dst, src, "Shared", "Shared", MergeKeepOriginal)
+
+	if len(merged.Items) != 1 {
+		t.Fatalf("expected the two existing 'Shared' folders to merge into one, got %d top-level items", len(merged.Items))
+	}
+	folder := merged.Items[0]
+	if len(folder.Items) != 2 {
+		t.Fatalf("expected merged folder to contain both requests, got %+v", folder.Items)
+	}
+	names := []string{folder.Items[0].Name, folder.Items[1].Name}
+	if names[0] != "Get Users" || names[1] != "Get Orders" {
+		t.Errorf("expected [Get Users, Get Orders], got %v", names)
+	}
+}

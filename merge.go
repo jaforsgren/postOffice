@@ -4,15 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"postOffice/internal/postman"
 	"strings"
 )
 
 type mergeOptions struct {
-	file1    string
-	file2    string
-	output   string
-	strategy postman.MergeStrategy
+	file1             string
+	file2             string
+	output            string
+	strategy          postman.MergeStrategy
+	groupByCollection bool
 }
 
 // parseMergeArgs parses the arguments following "-m"/"--merge", e.g.
@@ -22,6 +24,7 @@ func parseMergeArgs(args []string) (*mergeOptions, error) {
 	var output string
 	forceMerge := false
 	keepOriginal := false
+	groupByCollection := false
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -30,6 +33,8 @@ func parseMergeArgs(args []string) (*mergeOptions, error) {
 			forceMerge = true
 		case "--keep-original":
 			keepOriginal = true
+		case "-g", "--group-by-collection":
+			groupByCollection = true
 		case "-o", "--output":
 			i++
 			if i >= len(args) {
@@ -58,10 +63,11 @@ func parseMergeArgs(args []string) (*mergeOptions, error) {
 	}
 
 	return &mergeOptions{
-		file1:    positional[0],
-		file2:    positional[1],
-		output:   output,
-		strategy: strategy,
+		file1:             positional[0],
+		file2:             positional[1],
+		output:            output,
+		strategy:          strategy,
+		groupByCollection: groupByCollection,
 	}, nil
 }
 
@@ -87,6 +93,10 @@ func runMerge(args []string) error {
 		return fmt.Errorf("cannot merge a collection with an environment")
 	}
 
+	if opts.groupByCollection && isEnv1 {
+		return fmt.Errorf("--group-by-collection only applies to collections, not environments")
+	}
+
 	output := opts.output
 	if output == "" {
 		output = opts.file1
@@ -95,6 +105,8 @@ func runMerge(args []string) error {
 	var merged any
 	if isEnv1 {
 		merged, err = mergeEnvironmentFiles(data1, data2, opts.strategy)
+	} else if opts.groupByCollection {
+		merged, err = mergeCollectionFilesGrouped(data1, data2, opts.file1, opts.file2, opts.strategy)
 	} else {
 		merged, err = mergeCollectionFiles(data1, data2, opts.strategy)
 	}
@@ -136,4 +148,31 @@ func mergeCollectionFiles(data1, data2 []byte, strategy postman.MergeStrategy) (
 		return nil, fmt.Errorf("failed to parse collection: %w", err)
 	}
 	return postman.MergeCollections(col1, col2, strategy), nil
+}
+
+func mergeCollectionFilesGrouped(data1, data2 []byte, path1, path2 string, strategy postman.MergeStrategy) (*postman.Collection, error) {
+	col1, err := postman.ParseCollectionData(data1)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse collection: %w", err)
+	}
+	col2, err := postman.ParseCollectionData(data2)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse collection: %w", err)
+	}
+
+	group1 := collectionGroupName(col1, path1)
+	group2 := collectionGroupName(col2, path2)
+
+	return postman.MergeCollectionsGrouped(col1, col2, group1, group2, strategy), nil
+}
+
+// collectionGroupName names the top-level folder a collection's items get
+// nested under in a grouped merge: the collection's own name, or its
+// filename (without extension) if the collection has no name.
+func collectionGroupName(col *postman.Collection, path string) string {
+	if col.Info.Name != "" {
+		return col.Info.Name
+	}
+	base := filepath.Base(path)
+	return strings.TrimSuffix(base, filepath.Ext(base))
 }
