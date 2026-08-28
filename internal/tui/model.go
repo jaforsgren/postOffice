@@ -76,52 +76,58 @@ type RequestExecution struct {
 }
 
 type RequestCompleteMsg struct {
-	ItemID       string
-	Response     *http.Response
-	TestResult   *script.TestResult
-	Collection   *postman.Collection
-	Environment  *postman.Environment
-	ItemName     string
-	IsModified   bool
+	ItemID      string
+	Response    *http.Response
+	TestResult  *script.TestResult
+	Collection  *postman.Collection
+	Environment *postman.Environment
+	ItemName    string
+	IsModified  bool
 }
 
 type Model struct {
-	parser            *postman.Parser
-	executor          *http.Executor
-	commandRegistry   *CommandRegistry
-	mode              ViewMode
-	commandMode       bool
-	commandInput      textinput.Model
-	commandHistory    []string
-	historyIndex      int
-	commandSuggestion string
-	cursor            int
-	items             []string
-	currentItems      []postman.Item
-	currentItemPaths  [][]string
-	expandedFolders   map[string]bool
-	collection        *postman.Collection
-	breadcrumb        []string
-	width             int
-	height            int
-	statusMessage     string
-	lastResponse      *http.Response
-	lastTestResult    *script.TestResult
-	currentInfoItem   *postman.Item
-	jsonContent       string
-	scrollOffset      int
-	searchMode        bool
-	searchInput       textinput.Model
-	searchActive      bool
-	filteredItems     []string
-	filteredIndices   []int
-	allItems          []string
-	allCurrentItems   []postman.Item
+	parser              *postman.Parser
+	executor            *http.Executor
+	commandRegistry     *CommandRegistry
+	mode                ViewMode
+	commandMode         bool
+	commandInput        textinput.Model
+	commandHistory      []string
+	historyIndex        int
+	commandSuggestion   string
+	cursor              int
+	items               []string
+	currentItems        []postman.Item
+	currentItemPaths    [][]string
+	expandedFolders     map[string]bool
+	collection          *postman.Collection
+	breadcrumb          []string
+	width               int
+	height              int
+	statusMessage       string
+	statusIsError       bool
+	lastResponse        *http.Response
+	lastTestResult      *script.TestResult
+	currentInfoItem     *postman.Item
+	jsonContent         string
+	scrollOffset        int
+	searchMode          bool
+	searchInput         textinput.Model
+	searchActive        bool
+	filteredItems       []string
+	filteredIndices     []int
+	allItems            []string
+	allCurrentItems     []postman.Item
 	allCurrentItemPaths [][]string
-	environment       *postman.Environment
-	previousMode      ViewMode
-	variables         []postman.VariableSource
-	envVarCursor      int
+	environment         *postman.Environment
+	// mergedCollectionActive/mergedEnvironmentActive mark m.collection/m.environment
+	// as the synthetic, read-only result of Parser.MergedCollection/MergedEnvironment
+	// rather than a real loaded one — used to block edits against it.
+	mergedCollectionActive  bool
+	mergedEnvironmentActive bool
+	previousMode            ViewMode
+	variables               []postman.VariableSource
+	envVarCursor            int
 
 	editType             EditType
 	editRequest          *postman.Request
@@ -141,12 +147,12 @@ type Model struct {
 	editCollectionName   string
 	editEnvironmentName  string
 
-	pathParams           map[string]string
-	requestPathParams    map[string]map[string]string
+	pathParams        map[string]string
+	requestPathParams map[string]map[string]string
 
-	varSuggestions       []postman.VariableSource
-	varSuggestionCursor  int
-	varSuggestionActive  bool
+	varSuggestions      []postman.VariableSource
+	varSuggestionCursor int
+	varSuggestionActive bool
 
 	editScript               *postman.Script
 	editScriptType           ScriptType
@@ -185,14 +191,14 @@ type Model struct {
 	addingWorkflowStep     bool
 	editingWorkflowStepIdx int
 
-	savedResponses         []postman.SavedResponse
-	savedResponseCursor    int
-	savedResponseItemID    string
-	savedResponseViewport  viewport.Model
-	viewingSavedResponse   bool
+	savedResponses        []postman.SavedResponse
+	savedResponseCursor   int
+	savedResponseItemID   string
+	savedResponseViewport viewport.Model
+	viewingSavedResponse  bool
 
-	helpViewport  viewport.Model
-	helpShowAll   bool
+	helpViewport viewport.Model
+	helpShowAll  bool
 }
 
 // GRPCReflectMsg carries the result of an async gRPC server reflection call.
@@ -232,34 +238,34 @@ func NewModel(parser *postman.Parser) Model {
 	editFieldTextArea.CharLimit = 50000
 
 	m := Model{
-		parser:               parser,
-		executor:             http.NewExecutor(),
-		commandRegistry:      NewCommandRegistry(),
-		mode:                 ModeCollections,
-		commandMode:          false,
-		commandInput:         cmdInput,
-		commandHistory:       []string{},
-		historyIndex:         -1,
-		commandSuggestion:    "",
-		cursor:               0,
-		items:                []string{},
-		currentItems:         []postman.Item{},
-		expandedFolders:      make(map[string]bool),
-		breadcrumb:           []string{},
-		previousMode:         modeUnset,
-		searchInput:          searchInput,
-		editFieldInput:       editFieldInput,
-		editFieldTextArea:    editFieldTextArea,
-		modifiedItems:        make(map[string]bool),
-		modifiedCollections:  make(map[string]bool),
-		modifiedEnvironments: make(map[string]bool),
-		modifiedRequests:     make(map[string]*postman.Request),
-		pathParams:           make(map[string]string),
-		requestPathParams:    make(map[string]map[string]string),
-		responseViewport:     viewport.New(0, 0),
-		infoViewport:         viewport.New(0, 0),
-		jsonViewport:         viewport.New(0, 0),
-		logsViewport:         viewport.New(0, 0),
+		parser:                parser,
+		executor:              http.NewExecutor(),
+		commandRegistry:       NewCommandRegistry(),
+		mode:                  ModeCollections,
+		commandMode:           false,
+		commandInput:          cmdInput,
+		commandHistory:        []string{},
+		historyIndex:          -1,
+		commandSuggestion:     "",
+		cursor:                0,
+		items:                 []string{},
+		currentItems:          []postman.Item{},
+		expandedFolders:       make(map[string]bool),
+		breadcrumb:            []string{},
+		previousMode:          modeUnset,
+		searchInput:           searchInput,
+		editFieldInput:        editFieldInput,
+		editFieldTextArea:     editFieldTextArea,
+		modifiedItems:         make(map[string]bool),
+		modifiedCollections:   make(map[string]bool),
+		modifiedEnvironments:  make(map[string]bool),
+		modifiedRequests:      make(map[string]*postman.Request),
+		pathParams:            make(map[string]string),
+		requestPathParams:     make(map[string]map[string]string),
+		responseViewport:      viewport.New(0, 0),
+		infoViewport:          viewport.New(0, 0),
+		jsonViewport:          viewport.New(0, 0),
+		logsViewport:          viewport.New(0, 0),
 		workflowViewport:      viewport.New(0, 0),
 		savedResponseViewport: viewport.New(0, 0),
 		helpViewport:          viewport.New(0, 0),

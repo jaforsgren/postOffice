@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -597,7 +598,48 @@ func TestSaveSession_NilSession(t *testing.T) {
 	}
 }
 
-func TestMultipleSaveState_Overwrites(t *testing.T) {
+// TestSaveState_NoLeftoverTempFile guards against reverting to a fixed
+// path+".tmp" temp filename: with concurrent sessions writing to the same
+// config file, a fixed name can collide and corrupt the write. saveToFile
+// now uses a uniquely-named temp file per call, cleaned up via rename.
+func TestSaveState_NoLeftoverTempFile(t *testing.T) {
+	tmpHome := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	defer os.Setenv("HOME", originalHome)
+
+	parser := NewParser()
+	collection := &Collection{Info: Info{Name: "Temp File Test"}}
+	path := createTempCollection(t, collection)
+	parser.LoadCollection(path)
+
+	if err := parser.SaveState(); err != nil {
+		t.Fatalf("SaveState failed: %v", err)
+	}
+
+	entries, err := os.ReadDir(tmpHome)
+	if err != nil {
+		t.Fatalf("failed to read home dir: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".tmp") {
+			t.Errorf("expected no leftover temp files after a successful save, found %q", entry.Name())
+		}
+	}
+
+	configPath := filepath.Join(tmpHome, configFileName)
+	if _, err := os.Stat(configPath); err != nil {
+		t.Errorf("expected final config file to exist at %q: %v", configPath, err)
+	}
+}
+
+// TestMultipleSaveState_MergesAcrossConcurrentSessions verifies SaveState
+// unions with whatever is already on disk instead of overwriting it. Two
+// Parser instances model two postOffice sessions running at the same time,
+// each unaware of what the other loaded — a plain overwrite here would let
+// whichever session saves last silently erase the other's collection, which
+// is exactly the "collections disappear between sessions" bug this guards.
+func TestMultipleSaveState_MergesAcrossConcurrentSessions(t *testing.T) {
 	tmpHome := t.TempDir()
 	originalHome := os.Getenv("HOME")
 	os.Setenv("HOME", tmpHome)
@@ -619,17 +661,17 @@ func TestMultipleSaveState_Overwrites(t *testing.T) {
 	parser3.LoadState()
 
 	collections := parser3.ListCollections()
-	if len(collections) != 1 {
-		t.Errorf("Expected 1 collection (second save should overwrite), got %d", len(collections))
+	if len(collections) != 2 {
+		t.Errorf("Expected 2 collections (both sessions' saves merged), got %d", len(collections))
 	}
 
 	_, exists := parser3.GetCollection("Second Save")
 	if !exists {
-		t.Error("Expected 'Second Save' collection from latest state")
+		t.Error("Expected 'Second Save' collection to be present")
 	}
 
 	_, exists = parser3.GetCollection("First Save")
-	if exists {
-		t.Error("Did not expect 'First Save' collection (should be overwritten)")
+	if !exists {
+		t.Error("Expected 'First Save' collection to still be present (not clobbered by the second session's save)")
 	}
 }

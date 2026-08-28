@@ -11,8 +11,32 @@ const configFileName = ".postoffice_collections.json"
 const sessionFileName = ".postoffice_session.json"
 
 type PersistenceConfig struct {
-	CollectionPaths  []string `json:"collection_paths"`
-	EnvironmentPaths []string `json:"environment_paths"`
+	CollectionPaths        []string `json:"collection_paths"`
+	EnvironmentPaths       []string `json:"environment_paths"`
+	ActiveCollectionNames  []string `json:"active_collection_names,omitempty"`
+	ActiveEnvironmentNames []string `json:"active_environment_names,omitempty"`
+}
+
+// mergeUniqueStrings unions a and b, preserving a's order first, then any of
+// b's entries not already present in a.
+func mergeUniqueStrings(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	result := make([]string, 0, len(a)+len(b))
+
+	for _, v := range a {
+		if !seen[v] {
+			seen[v] = true
+			result = append(result, v)
+		}
+	}
+	for _, v := range b {
+		if !seen[v] {
+			seen[v] = true
+			result = append(result, v)
+		}
+	}
+
+	return result
 }
 
 type Session struct {
@@ -32,6 +56,16 @@ func (p *Parser) SaveState() error {
 
 	configPath := filepath.Join(homeDir, configFileName)
 
+	// Read whatever is currently on disk so a second, concurrently running
+	// session doesn't clobber collections/environments a different session
+	// loaded — paths only ever grow (there's no unload), so it's always safe
+	// to union them rather than overwrite. Missing/corrupt file is fine; it
+	// just means there's nothing to merge with yet.
+	var onDisk PersistenceConfig
+	if data, err := os.ReadFile(configPath); err == nil {
+		_ = json.Unmarshal(data, &onDisk)
+	}
+
 	collectionPaths := make([]string, 0)
 	for name := range p.collections {
 		if path, exists := p.pathMap[name]; exists {
@@ -47,23 +81,13 @@ func (p *Parser) SaveState() error {
 	}
 
 	config := PersistenceConfig{
-		CollectionPaths:  collectionPaths,
-		EnvironmentPaths: environmentPaths,
+		CollectionPaths:        mergeUniqueStrings(onDisk.CollectionPaths, collectionPaths),
+		EnvironmentPaths:       mergeUniqueStrings(onDisk.EnvironmentPaths, environmentPaths),
+		ActiveCollectionNames:  p.ActiveCollections(),
+		ActiveEnvironmentNames: p.ActiveEnvironments(),
 	}
 
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		logger.LogError("SaveState", configPath, err)
-		return err
-	}
-
-	logger.LogFileWrite(configPath)
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
-		logger.LogError("SaveState", configPath, err)
-		return err
-	}
-
-	return nil
+	return saveToFile(config, configPath, "SaveState")
 }
 
 func (p *Parser) LoadState() error {
@@ -99,6 +123,18 @@ func (p *Parser) LoadState() error {
 		_, _ = p.LoadEnvironment(path)
 	}
 
+	for _, name := range config.ActiveCollectionNames {
+		if _, exists := p.collections[name]; exists {
+			p.activeCollections = append(p.activeCollections, name)
+		}
+	}
+
+	for _, name := range config.ActiveEnvironmentNames {
+		if _, exists := p.environments[name]; exists {
+			p.activeEnvironments = append(p.activeEnvironments, name)
+		}
+	}
+
 	return nil
 }
 
@@ -111,19 +147,7 @@ func (p *Parser) SaveSession(session *Session) error {
 
 	sessionPath := filepath.Join(homeDir, sessionFileName)
 
-	data, err := json.MarshalIndent(session, "", "  ")
-	if err != nil {
-		logger.LogError("SaveSession", sessionPath, err)
-		return err
-	}
-
-	logger.LogFileWrite(sessionPath)
-	if err := os.WriteFile(sessionPath, data, 0644); err != nil {
-		logger.LogError("SaveSession", sessionPath, err)
-		return err
-	}
-
-	return nil
+	return saveToFile(session, sessionPath, "SaveSession")
 }
 
 func (p *Parser) LoadSession() (*Session, error) {

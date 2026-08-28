@@ -553,7 +553,63 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Handler:     handleVimEditWorkflowKey,
 			AvailableIn: []ViewMode{ModeWorkflows, ModeWorkflowDetail},
 		},
+		{
+			Keys:        []string{" "},
+			Description: "Toggle active (merge multiple, Enter to view combined)",
+			ShortHelp:   "space",
+			Handler:     handleToggleActiveCollectionKey,
+			AvailableIn: []ViewMode{ModeCollections},
+		},
+		{
+			Keys:        []string{" "},
+			Description: "Toggle active (merge multiple, Enter to view combined)",
+			ShortHelp:   "space",
+			Handler:     handleToggleActiveEnvironmentKey,
+			AvailableIn: []ViewMode{ModeEnvironments},
+		},
 	}
+}
+
+func handleToggleActiveCollectionKey(m Model) (Model, tea.Cmd) {
+	if m.cursor >= len(m.items) {
+		return m, nil
+	}
+	name := m.items[m.cursor]
+	m.parser.ToggleActiveCollection(name)
+
+	if err := m.parser.SaveState(); err != nil {
+		m.statusMessage = fmt.Sprintf("Toggled active: %s (warning: failed to save state)", name)
+		return m, nil
+	}
+
+	if m.parser.IsCollectionActive(name) {
+		m.statusMessage = fmt.Sprintf("Activated: %s (%d active — Enter for combined view)", name, m.parser.ActiveCollectionCount())
+	} else {
+		m.statusMessage = fmt.Sprintf("Deactivated: %s", name)
+	}
+	return m, nil
+}
+
+func handleToggleActiveEnvironmentKey(m Model) (Model, tea.Cmd) {
+	if m.cursor >= len(m.items) {
+		return m, nil
+	}
+	name := m.items[m.cursor]
+	m.parser.ToggleActiveEnvironment(name)
+
+	if err := m.parser.SaveState(); err != nil {
+		m.statusMessage = fmt.Sprintf("Toggled active: %s (warning: failed to save state)", name)
+		return m, nil
+	}
+
+	m.environment = m.parser.MergedEnvironment()
+	m.mergedEnvironmentActive = m.environment != nil
+	if m.parser.IsEnvironmentActive(name) {
+		m.statusMessage = fmt.Sprintf("Activated: %s (%d active, merged)", name, m.parser.ActiveEnvironmentCount())
+	} else {
+		m.statusMessage = fmt.Sprintf("Deactivated: %s", name)
+	}
+	return m, nil
 }
 
 func (cr *CommandRegistry) ExecuteCommand(m Model, cmdName string, args []string) (Model, tea.Cmd) {
@@ -776,6 +832,8 @@ func handleWriteQuitCommand(m Model, args []string) (Model, tea.Cmd) {
 		m, err = m.saveAllModifiedRequests()
 	}
 	if err == nil {
+		_ = m.parser.SaveState()
+		m.saveSession()
 		return m, tea.Quit
 	}
 	return m, nil
@@ -810,8 +868,7 @@ func handleDeleteCommand(m Model, args []string) (Model, tea.Cmd) {
 }
 
 func handleQuitCommand(m Model, args []string) (Model, tea.Cmd) {
-	m.saveSession()
-	return m, tea.Quit
+	return handleQuitKey(m)
 }
 
 func handleDebugCommand(m Model, args []string) (Model, tea.Cmd) {
@@ -840,6 +897,10 @@ func handleLogsCommand(m Model, args []string) (Model, tea.Cmd) {
 }
 
 func handleQuitKey(m Model) (Model, tea.Cmd) {
+	// Final flush on exit: SaveState is already called on every load/toggle,
+	// but this guarantees this session's view of loaded collections/
+	// environments is merged onto disk one last time before it closes.
+	_ = m.parser.SaveState()
 	m.saveSession()
 	return m, tea.Quit
 }
@@ -1738,6 +1799,9 @@ func handleAddNewRequestKey(m Model) (Model, tea.Cmd) {
 	if m.collection == nil {
 		m.statusMessage = "Load a collection first"
 		return m, nil
+	}
+	if m.isViewingMergedCollection() {
+		return m.blockMergedCollectionEdit(), nil
 	}
 	m = m.enterRequestTypeSelectionMode()
 	return m, nil

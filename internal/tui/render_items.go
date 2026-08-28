@@ -68,6 +68,12 @@ func (m Model) formatItemLine(index int) string {
 	modifiedPrefix := ""
 	executionInfo := ""
 
+	if m.mode == ModeCollections && m.parser.IsCollectionActive(line) {
+		modifiedPrefix = "[x] "
+	} else if m.mode == ModeEnvironments && m.parser.IsEnvironmentActive(line) {
+		modifiedPrefix = "[x] "
+	}
+
 	if m.mode == ModeRequests && index < len(m.currentItems) {
 		item := m.currentItems[index]
 		if item.IsRequest() {

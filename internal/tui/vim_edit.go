@@ -51,6 +51,9 @@ type VimEditCompleteMsg struct {
 }
 
 func (m Model) openVimForItem(item postman.Item, folderPath []string) (Model, tea.Cmd) {
+	if m.isViewingMergedCollection() {
+		return m.blockMergedCollectionEdit(), nil
+	}
 	if item.Request == nil {
 		m.statusMessage = "No request data to edit"
 		return m, nil
@@ -262,6 +265,7 @@ func (m Model) applyVimEnvEdit(msg VimEnvEditCompleteMsg) Model {
 
 	if m.environment != nil && m.environment.Name == msg.EnvName {
 		m.environment = env
+		m.mergedEnvironmentActive = false
 	}
 
 	m.statusMessage = fmt.Sprintf("Reloaded environment: %s", env.Name)
@@ -349,6 +353,9 @@ type VimBulkEditCompleteMsg struct {
 }
 
 func (m Model) openVimForCurrentLevel() (Model, tea.Cmd) {
+	if m.isViewingMergedCollection() {
+		return m.blockMergedCollectionEdit(), nil
+	}
 	if m.collection == nil {
 		m.statusMessage = "No collection loaded"
 		return m, nil

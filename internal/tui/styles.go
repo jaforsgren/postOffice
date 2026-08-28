@@ -36,6 +36,10 @@ var (
 			Background(lipgloss.Color("#000000")).
 			Padding(0, 1)
 
+	errorMessageStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("9")).
+				Bold(true)
+
 	mainWindowStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("81")).

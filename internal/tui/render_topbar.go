@@ -26,7 +26,7 @@ func (m Model) renderTopBar() string {
 		maxLines = len(shortcutCol1)
 	}
 
-	const contextColWidth = 45
+	const contextColWidth = 58
 	const colMargin = 4
 
 	for i := 0; i < maxLines; i++ {
@@ -111,6 +111,9 @@ func (m Model) buildContextInfo() []string {
 			envStyle.Render(fmt.Sprintf("%s", envName))+
 			lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(fmt.Sprintf(" <%d loaded>", totalEnvs)))
 
+	lines = append(lines, m.buildLoadedNamesLine("📁", "Collections", m.parser.ListCollections(), m.parser.IsCollectionActive))
+	lines = append(lines, m.buildLoadedNamesLine("🗂️", "Envs", m.parser.ListEnvironments(), m.parser.IsEnvironmentActive))
+
 	unsavedCount := len(m.modifiedCollections) + len(m.modifiedEnvironments)
 	unsavedEmoji := "💾"
 	if unsavedCount > 0 {
@@ -161,6 +164,50 @@ func (m Model) buildContextInfo() []string {
 			valueWhiteStyle.Render(responseValue))
 
 	return lines
+}
+
+// buildLoadedNamesLine renders every loaded collection/environment name for
+// the topbar, so all of them stay visible (not just the currently active
+// one) — active names (per isActive) are highlighted, and the list is
+// truncated with a "+N" count if it doesn't fit the topbar column.
+func (m Model) buildLoadedNamesLine(icon, label string, names []string, isActive func(string) bool) string {
+	titleOrangeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	activeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+	inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+
+	prefix := icon + " " + titleOrangeStyle.Render(label+": ")
+
+	if len(names) == 0 {
+		return prefix + dimStyle.Render("none")
+	}
+
+	const nameBudget = 40 // visible columns available for the joined name list
+	const perNameMax = 18 // longest a single name is shown before truncating
+
+	var shown []string
+	used := 0
+	for i, name := range names {
+		display := name
+		if len(display) > perNameMax {
+			display = display[:perNameMax-1] + "…"
+		}
+		if used+len(display) > nameBudget && i > 0 {
+			break
+		}
+		style := inactiveStyle
+		if isActive(name) {
+			style = activeStyle
+		}
+		shown = append(shown, style.Render(display))
+		used += len(display) + 2 // account for the ", " separator
+	}
+
+	line := prefix + strings.Join(shown, ", ")
+	if len(shown) < len(names) {
+		line += dimStyle.Render(fmt.Sprintf(" +%d", len(names)-len(shown)))
+	}
+	return line
 }
 
 func (m Model) getModeString() string {
@@ -299,6 +346,8 @@ func (m Model) renderStatusBar() string {
 		help = "q: close | j/k: scroll"
 	case ModeSavedResponses:
 		help = "enter: view | d: delete | esc: back | j/k: navigate"
+	case ModeCollections, ModeEnvironments:
+		help = "q: quit | ↑↓/jk: navigate | space: toggle active | enter: select | backspace/h: back | /: search | :: command"
 	default:
 		help = "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
 	}
@@ -312,6 +361,9 @@ func (m Model) renderStatusBar() string {
 	maxMsgRunes := m.width - 4 // account for padding
 	if maxMsgRunes > 0 && len([]rune(msg)) > maxMsgRunes {
 		msg = string([]rune(msg)[:maxMsgRunes-1]) + "…"
+	}
+	if m.statusIsError {
+		msg = errorMessageStyle.Render(msg)
 	}
 
 	return statusBarStyle.Width(m.width).Render(msg + "\n" + help)

@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -308,6 +308,7 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.commandInput.Focus()
 	}
 
+	m.statusIsError = false
 	newModel, cmd, handled := m.commandRegistry.HandleKey(m, key)
 	if handled {
 		return newModel, cmd
@@ -334,6 +335,7 @@ func (m Model) executeCommand() (Model, tea.Cmd) {
 		}
 	}
 
+	m.statusIsError = false
 	return m.commandRegistry.ExecuteCommand(m, cmdName, args)
 }
 
@@ -661,6 +663,7 @@ func (m Model) loadCollection(path string) Model {
 	}
 
 	m.collection = collection
+	m.mergedCollectionActive = false
 	m.mode = ModeRequests
 	m = m.loadRequestsList()
 	return m
@@ -673,11 +676,21 @@ func (m Model) handleSelection() Model {
 
 	switch m.mode {
 	case ModeCollections:
-		if m.cursor < len(m.items) {
+		if m.parser.ActiveCollectionCount() >= 2 {
+			merged := m.parser.MergedCollection()
+			if merged != nil {
+				m.collection = merged
+				m.mergedCollectionActive = true
+				m.mode = ModeRequests
+				m = m.loadRequestsList()
+				m.statusMessage = fmt.Sprintf("Combined view: %d collections merged (read-only — space to unselect, then Enter one to edit)", m.parser.ActiveCollectionCount())
+			}
+		} else if m.cursor < len(m.items) {
 			collectionName := m.items[m.cursor]
 			collection, exists := m.parser.GetCollection(collectionName)
 			if exists {
 				m.collection = collection
+				m.mergedCollectionActive = false
 				m.mode = ModeRequests
 				m = m.loadRequestsList()
 				m.statusMessage = fmt.Sprintf("Switched to collection: %s", collectionName)
@@ -698,11 +711,27 @@ func (m Model) handleSelection() Model {
 		m.statusMessage = "Returned to request list"
 
 	case ModeEnvironments:
-		if m.cursor < len(m.items) {
+		if m.parser.ActiveEnvironmentCount() >= 1 {
+			merged := m.parser.MergedEnvironment()
+			if merged != nil {
+				m.environment = merged
+				m.mergedEnvironmentActive = true
+				m.scrollOffset = 0
+				m.envVarCursor = 0
+				m.previousMode = m.mode
+				m.mode = ModeInfo
+
+				m.configureViewport(&m.infoViewport, strings.Join(m.buildEnvironmentInfoLines(), "\n"))
+
+				names := strings.Join(m.parser.ActiveEnvironments(), ", ")
+				m.statusMessage = fmt.Sprintf("Showing active environment(s): %s (q to close)", names)
+			}
+		} else if m.cursor < len(m.items) {
 			envName := m.items[m.cursor]
 			environment, exists := m.parser.GetEnvironment(envName)
 			if exists {
 				m.environment = environment
+				m.mergedEnvironmentActive = false
 				m.scrollOffset = 0
 				m.envVarCursor = 0
 				m.previousMode = m.mode
@@ -999,6 +1028,7 @@ func (m Model) loadEnvironment(path string) Model {
 	}
 
 	m.environment = environment
+	m.mergedEnvironmentActive = false
 	m.mode = ModeEnvironments
 	m = m.loadEnvironmentsList()
 	return m
@@ -1024,7 +1054,34 @@ func (m Model) loadVariablesList() Model {
 	return m
 }
 
+// isViewingMergedCollection reports whether m.collection is the synthetic,
+// read-only tree built by Parser.MergedCollection rather than a real loaded
+// collection.
+func (m Model) isViewingMergedCollection() bool {
+	return m.mergedCollectionActive && m.collection != nil
+}
+
+// isViewingMergedEnvironment reports whether m.environment is the synthetic
+// result of Parser.MergedEnvironment rather than a real loaded environment.
+func (m Model) isViewingMergedEnvironment() bool {
+	return m.mergedEnvironmentActive && m.environment != nil
+}
+
+const mergedCollectionReadOnlyMessage = "Error: combined view is read-only — deactivate collections (space) down to one to edit"
+
+// blockMergedCollectionEdit reports the standard error for any edit/save/add/
+// delete attempt against the synthetic merged collection tree, so every entry
+// point shows the same message styled as an error (see isViewingMergedCollection).
+func (m Model) blockMergedCollectionEdit() Model {
+	m.statusMessage = mergedCollectionReadOnlyMessage
+	m.statusIsError = true
+	return m
+}
+
 func (m Model) enterEditMode(item postman.Item, folderPath []string) Model {
+	if m.isViewingMergedCollection() {
+		return m.blockMergedCollectionEdit()
+	}
 	if !item.IsRequest() || item.Request == nil {
 		m.statusMessage = "Cannot edit: not a request"
 		return m
@@ -2158,6 +2215,9 @@ func (m Model) insertItemAtCursor(item postman.Item) Model {
 }
 
 func (m Model) duplicateRequest(item postman.Item, folderPath []string) Model {
+	if m.isViewingMergedCollection() {
+		return m.blockMergedCollectionEdit()
+	}
 	if m.collection == nil || !item.IsRequest() || item.Request == nil {
 		m.statusMessage = "Error: Cannot duplicate request"
 		return m
@@ -2192,6 +2252,9 @@ func (m Model) duplicateRequest(item postman.Item, folderPath []string) Model {
 }
 
 func (m Model) deleteRequest(item postman.Item, folderPath []string) Model {
+	if m.isViewingMergedCollection() {
+		return m.blockMergedCollectionEdit()
+	}
 	if m.collection == nil || !item.IsRequest() {
 		m.statusMessage = "Error: Cannot delete request"
 		return m
@@ -2228,12 +2291,12 @@ func (m Model) deleteRequest(item postman.Item, folderPath []string) Model {
 
 func (m Model) saveSession() {
 	collectionName := ""
-	if m.collection != nil {
+	if m.collection != nil && !m.isViewingMergedCollection() {
 		collectionName = m.collection.Info.Name
 	}
 
 	environmentName := ""
-	if m.environment != nil {
+	if m.environment != nil && !m.isViewingMergedEnvironment() {
 		environmentName = m.environment.Name
 	}
 
@@ -2255,12 +2318,12 @@ func (m Model) restoreSession() Model {
 		return m
 	}
 
+	collectionRestored := true
 	if session.CollectionName != "" {
 		if collection, exists := m.parser.GetCollection(session.CollectionName); exists {
 			m.collection = collection
 		} else {
-			m.statusMessage = "Previous session's collection not found"
-			return m
+			collectionRestored = false
 		}
 	}
 
@@ -2270,33 +2333,45 @@ func (m Model) restoreSession() Model {
 		}
 	}
 
+	// Active environments (marked with space, persisted across sessions) take
+	// precedence over the single last-viewed environment above.
+	if merged := m.parser.MergedEnvironment(); merged != nil {
+		m.environment = merged
+		m.mergedEnvironmentActive = true
+	}
+
 	m.mode = ViewMode(session.Mode)
 	m.breadcrumb = session.Breadcrumb
 	m.cursor = session.Cursor
+
+	if m.mode == ModeRequests && m.collection == nil {
+		// The last-viewed collection is gone (renamed/removed, or it was the
+		// synthetic combined view, which isn't restored) — fall back to the
+		// collections list instead of showing an empty Requests screen.
+		m.mode = ModeCollections
+	}
 
 	switch m.mode {
 	case ModeCollections:
 		m = m.loadCollectionsList()
 	case ModeRequests:
-		if m.collection != nil {
-			if len(session.Breadcrumb) == 0 {
+		if len(session.Breadcrumb) == 0 {
+			m = m.loadRequestsList()
+		} else {
+			current := traverseToDepth(m.collection.Items, session.Breadcrumb)
+			if current == nil {
+				m.statusMessage = "Could not restore folder path"
 				m = m.loadRequestsList()
-			} else {
-				current := traverseToDepth(m.collection.Items, session.Breadcrumb)
-				if current == nil {
-					m.statusMessage = "Could not restore folder path"
-					m = m.loadRequestsList()
-					return m
-				}
-				m.breadcrumb = session.Breadcrumb
-				m = m.applyTreeItems(current, m.breadcrumb)
+				return m
 			}
+			m.breadcrumb = session.Breadcrumb
+			m = m.applyTreeItems(current, m.breadcrumb)
+		}
 
-			if session.Cursor >= len(m.currentItems) {
-				m.cursor = 0
-			} else {
-				m.cursor = session.Cursor
-			}
+		if session.Cursor >= len(m.currentItems) {
+			m.cursor = 0
+		} else {
+			m.cursor = session.Cursor
 		}
 	case ModeEnvironments:
 		m = m.loadEnvironmentsList()
@@ -2304,11 +2379,18 @@ func (m Model) restoreSession() Model {
 		m = m.loadVariablesList()
 	}
 
-	m.statusMessage = "Session restored"
+	if collectionRestored {
+		m.statusMessage = "Session restored"
+	} else {
+		m.statusMessage = "Session restored (previous collection not found)"
+	}
 	return m
 }
 
 func (m Model) enterScriptSelectionMode(item postman.Item, folderPath []string) Model {
+	if m.isViewingMergedCollection() {
+		return m.blockMergedCollectionEdit()
+	}
 	if !item.IsRequest() {
 		m.statusMessage = "Can only edit scripts for requests"
 		return m
@@ -2811,7 +2893,6 @@ func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
 		waitForWorkflow(progressChan),
 	)
 }
-
 
 func splitLines(text string) []string {
 	return strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
