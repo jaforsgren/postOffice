@@ -79,6 +79,7 @@ func (m Model) buildHelpGroups() []helpGroup {
 		ModeWorkflows:      "Workflows",
 		ModeWorkflowDetail: "Workflow Detail",
 		ModeSavedResponses: "Saved Responses",
+		ModeHistory:        "History",
 	}
 
 	// Order of sections
@@ -94,6 +95,7 @@ func (m Model) buildHelpGroups() []helpGroup {
 		ModeWorkflows,
 		ModeWorkflowDetail,
 		ModeSavedResponses,
+		ModeHistory,
 	}
 
 	// Track seen shorthelp per group to deduplicate

@@ -198,6 +198,14 @@ func (cr *CommandRegistry) registerCommands() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeInfo, ModeJSON},
 		},
 		{
+			Name:        "history",
+			Aliases:     []string{"hist"},
+			Description: "View execution history for selected request",
+			ShortHelp:   ":hist",
+			Handler:     handleHistoryCommand,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Name:        "wf",
 			Aliases:     []string{"workflow", "workflows"},
 			Description: "Manage and run workflows (:wf [run|new] <name>)",
@@ -306,7 +314,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHelp},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory, ModeHelp},
 		},
 		{
 			Keys:        []string{"q"},
@@ -320,14 +328,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Navigate up",
 			ShortHelp:   "j/k",
 			Handler:     handleUpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory},
 		},
 		{
 			Keys:        []string{"down", "j"},
 			Description: "Scroll/Navigate",
 			ShortHelp:   "j/k",
 			Handler:     handleDownKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory},
 		},
 		{
 			Keys:        []string{"a"},
@@ -468,6 +476,34 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			ShortHelp:   "H",
 			Handler:     handleSavedResponsesKey,
 			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"ctrl+h"},
+			Description: "Execution history for selected request",
+			ShortHelp:   "ctrl+h",
+			Handler:     handleHistoryKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"enter"},
+			Description: "Rerun request",
+			ShortHelp:   "enter",
+			Handler:     handleHistoryRerunKey,
+			AvailableIn: []ViewMode{ModeHistory},
+		},
+		{
+			Keys:        []string{"v"},
+			Description: "View response",
+			ShortHelp:   "v",
+			Handler:     handleHistoryViewKey,
+			AvailableIn: []ViewMode{ModeHistory},
+		},
+		{
+			Keys:        []string{"d"},
+			Description: "Delete history entry",
+			ShortHelp:   "d",
+			Handler:     handleDeleteHistoryEntryKey,
+			AvailableIn: []ViewMode{ModeHistory},
 		},
 		{
 			Keys:        []string{"y"},
@@ -1014,6 +1050,12 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = ""
 		return m, nil
 	}
+	if m.mode == ModeResponse && m.viewingHistoryResponse {
+		m.viewingHistoryResponse = false
+		m.mode = ModeHistory
+		m.statusMessage = ""
+		return m, nil
+	}
 
 	switch m.mode {
 	case ModeResponse:
@@ -1029,6 +1071,11 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.mode = ModeRequests
 		m.savedResponseCursor = 0
 		m.statusMessage = "Closed saved responses"
+		return m, nil
+	case ModeHistory:
+		m.mode = ModeRequests
+		m.historyCursor = 0
+		m.statusMessage = "Closed history"
 		return m, nil
 	case ModeInfo:
 		if m.previousMode != modeUnset {
@@ -1130,6 +1177,12 @@ func handleUpKey(m Model) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.mode == ModeHistory {
+		if m.historyCursor > 0 {
+			m.historyCursor--
+		}
+		return m, nil
+	}
 	if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
 		if m.envVarCursor > 0 {
 			m.envVarCursor--
@@ -1166,6 +1219,12 @@ func handleDownKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeSavedResponses {
 		if m.savedResponseCursor < len(m.savedResponses)-1 {
 			m.savedResponseCursor++
+		}
+		return m, nil
+	}
+	if m.mode == ModeHistory {
+		if m.historyCursor < len(m.history)-1 {
+			m.historyCursor++
 		}
 		return m, nil
 	}
@@ -1604,6 +1663,89 @@ func handleDeleteSavedResponseKey(m Model) (Model, tea.Cmd) {
 	return m, nil
 }
 
+func reverseHistoryEntries(entries []postman.HistoryEntry) []postman.HistoryEntry {
+	reversed := make([]postman.HistoryEntry, len(entries))
+	for i, entry := range entries {
+		reversed[len(entries)-1-i] = entry
+	}
+	return reversed
+}
+
+func handleHistoryCommand(m Model, args []string) (Model, tea.Cmd) {
+	return handleHistoryKey(m)
+}
+
+func handleHistoryKey(m Model) (Model, tea.Cmd) {
+	if m.mode != ModeRequests || m.cursor >= len(m.currentItems) {
+		return m, nil
+	}
+	item := m.currentItems[m.cursor]
+	if !item.IsRequest() {
+		m.statusMessage = "Select a request to view its history"
+		return m, nil
+	}
+	itemID := m.getRequestIdentifier(item)
+	entries, err := m.parser.GetHistory(itemID)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to load history: %v", err)
+		return m, nil
+	}
+	m.history = reverseHistoryEntries(entries)
+	m.historyItemID = itemID
+	m.historyItem = item
+	m.historyCursor = 0
+	m.historyViewport.Width = m.width - viewportPadding
+	m.historyViewport.Height = m.height - viewportPadding
+	m.previousMode = m.mode
+	m.mode = ModeHistory
+	m.statusMessage = fmt.Sprintf("%d history entry(ies)", len(entries))
+	return m, nil
+}
+
+func handleHistoryRerunKey(m Model) (Model, tea.Cmd) {
+	if m.mode != ModeHistory {
+		return m, nil
+	}
+	return m.executeRequest(m.historyItem)
+}
+
+func handleHistoryViewKey(m Model) (Model, tea.Cmd) {
+	if m.mode != ModeHistory || m.historyCursor >= len(m.history) {
+		return m, nil
+	}
+	entry := m.history[m.historyCursor]
+	m.lastResponse = historyEntryToHTTPResponse(entry)
+	m.lastTestResult = nil
+	m.viewingHistoryResponse = true
+	m.scrollOffset = 0
+	m.configureViewport(&m.responseViewport, strings.Join(m.buildResponseLines(), "\n"))
+	m.mode = ModeResponse
+	m.statusMessage = fmt.Sprintf("Viewing history: %s  %s", entry.Timestamp.Format("2006-01-02 15:04:05"), entry.Status)
+	return m, nil
+}
+
+func handleDeleteHistoryEntryKey(m Model) (Model, tea.Cmd) {
+	if m.mode != ModeHistory || m.historyCursor >= len(m.history) {
+		return m, nil
+	}
+	entries, err := m.parser.GetHistory(m.historyItemID)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Delete failed: %v", err)
+		return m, nil
+	}
+	storeIndex := len(entries) - 1 - m.historyCursor
+	if err := m.parser.DeleteHistoryEntry(m.historyItemID, storeIndex); err != nil {
+		m.statusMessage = fmt.Sprintf("Delete failed: %v", err)
+		return m, nil
+	}
+	m.history = append(m.history[:m.historyCursor], m.history[m.historyCursor+1:]...)
+	if m.historyCursor >= len(m.history) && m.historyCursor > 0 {
+		m.historyCursor--
+	}
+	m.statusMessage = fmt.Sprintf("%d history entry(ies) remaining", len(m.history))
+	return m, nil
+}
+
 func handleEditRequestKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
 		item := m.currentItems[m.cursor]
@@ -1819,5 +1961,19 @@ func savedResponseToHTTPResponse(sr postman.SavedResponse) *http.Response {
 		RequestURL:     sr.RequestURL,
 		RequestHeaders: sr.RequestHeaders,
 		RequestBody:    sr.RequestBody,
+	}
+}
+
+func historyEntryToHTTPResponse(entry postman.HistoryEntry) *http.Response {
+	return &http.Response{
+		StatusCode:     entry.StatusCode,
+		Status:         entry.Status,
+		Headers:        entry.ResponseHeaders,
+		Body:           entry.Body,
+		Duration:       time.Duration(entry.DurationMS) * time.Millisecond,
+		RequestMethod:  entry.RequestMethod,
+		RequestURL:     entry.RequestURL,
+		RequestHeaders: entry.RequestHeaders,
+		RequestBody:    entry.RequestBody,
 	}
 }

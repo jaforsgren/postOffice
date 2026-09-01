@@ -2,7 +2,9 @@ package tui
 
 import (
 	"testing"
+	"time"
 
+	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -107,6 +109,38 @@ func TestUpdate_WindowSizeMsg(t *testing.T) {
 	}
 	if cmd != nil {
 		t.Errorf("Expected nil cmd, got %v", cmd)
+	}
+}
+
+func TestUpdate_RequestCompleteMsg_RecordsHistory(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m := createTestModel()
+
+	itemID := m.getRequestIdentifier(m.currentItems[0])
+	msg := RequestCompleteMsg{
+		ItemID: itemID,
+		Response: &internalhttp.Response{
+			StatusCode:    200,
+			Status:        "200 OK",
+			RequestMethod: "GET",
+			RequestURL:    "https://example.com/api/test",
+			Duration:      42 * time.Millisecond,
+		},
+		ItemName: m.currentItems[0].Name,
+	}
+
+	newModel, _ := m.Update(msg)
+	m = newModel.(Model)
+
+	entries, err := m.parser.GetHistory(itemID)
+	if err != nil {
+		t.Fatalf("GetHistory: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 history entry, got %d", len(entries))
+	}
+	if entries[0].StatusCode != 200 || entries[0].RequestMethod != "GET" {
+		t.Fatalf("unexpected history entry: %+v", entries[0])
 	}
 }
 

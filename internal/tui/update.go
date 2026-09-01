@@ -48,6 +48,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			TestResult: msg.TestResult,
 		}
 
+		if msg.ItemID != "" {
+			historyEntry := postman.HistoryEntry{
+				Timestamp:       time.Now(),
+				RequestMethod:   msg.Response.RequestMethod,
+				RequestURL:      msg.Response.RequestURL,
+				RequestHeaders:  msg.Response.RequestHeaders,
+				RequestBody:     msg.Response.RequestBody,
+				StatusCode:      msg.Response.StatusCode,
+				Status:          status,
+				ResponseHeaders: msg.Response.Headers,
+				Body:            msg.Response.Body,
+				DurationMS:      msg.Response.Duration.Milliseconds(),
+			}
+			if err := m.parser.AppendHistory(msg.ItemID, historyEntry); err != nil {
+				logger.Log(fmt.Sprintf("[HISTORY] failed to record execution for %s: %v", msg.ItemID, err))
+			}
+			if m.mode == ModeHistory && m.historyItemID == msg.ItemID {
+				if entries, err := m.parser.GetHistory(msg.ItemID); err == nil {
+					m.history = reverseHistoryEntries(entries)
+					m.historyCursor = 0
+				}
+			}
+		}
+
 		if msg.Collection != nil && msg.TestResult != nil {
 			if err := m.parser.SaveCollection(msg.Collection.Info.Name); err != nil {
 				m.statusMessage = fmt.Sprintf("Warning: failed to save collection variables: %v", err)

@@ -58,6 +58,9 @@ func (m Model) renderContent() []string {
 	case ModeSavedResponses:
 		return []string{m.renderSavedResponsesView()}
 
+	case ModeHistory:
+		return []string{m.renderHistoryView()}
+
 	case ModeHelp:
 		return []string{m.renderHelpView()}
 
