@@ -53,6 +53,9 @@ func (m Model) renderContent() []string {
 		return []string{m.renderWorkflowRunView()}
 
 	case ModeWorkflowDetail:
+		if m.workflowStepPanelOpen {
+			return []string{m.renderWorkflowDetailWithStepPanel()}
+		}
 		return []string{m.renderWorkflowDetail()}
 
 	case ModeSavedResponses:

@@ -90,15 +90,7 @@ func (m Model) renderWorkflowDetail() string {
 	visibleLines := h - len(headerLines) - 1
 	startIdx, endIdx := calculateVisibleWindow(m.workflowStepCursor, len(wf.Steps), visibleLines)
 
-	runningIndicator := ""
-	if m.workflowChan != nil {
-		runningIndicator = " " + workflowStatusStyle(workflow.StatusRunning).Render("● running")
-	} else if m.workflowState.WorkflowID == wf.ID && m.workflowState.Status != "" {
-		runningIndicator = " " + workflowStatusStyle(m.workflowState.Status).Render("["+m.workflowState.Status+"]")
-	}
-	if runningIndicator != "" {
-		headerLines[0] = headerLines[0] + runningIndicator
-	}
+	headerLines[0] += m.workflowRunIndicator(wf)
 
 	lines := append([]string{}, headerLines...)
 
@@ -185,6 +177,18 @@ func (m Model) renderWorkflowDetail() string {
 		Render(content)
 }
 
+// workflowRunIndicator is the run status suffix for wf's title, or empty when
+// wf has not run.
+func (m Model) workflowRunIndicator(wf *workflow.Workflow) string {
+	if m.workflowChan != nil {
+		return " " + workflowStatusStyle(workflow.StatusRunning).Render("● running")
+	}
+	if m.workflowState.WorkflowID == wf.ID && m.workflowState.Status != "" {
+		return " " + workflowStatusStyle(m.workflowState.Status).Render("["+m.workflowState.Status+"]")
+	}
+	return ""
+}
+
 func (m Model) renderWorkflowRunView() string {
 	return m.workflowViewport.View()
 }
@@ -236,40 +240,45 @@ func (m Model) buildWorkflowRunLines() []string {
 	return runReportLines(m.workflowState, styledRunStyler)
 }
 
-// runReportLines lays out a workflow run: header, one line per
-// step (with the request and HTTP result once it has run), logs and error.
+// Indents of the run report. The editor export folds on indent, so each
+// step's log lines fold under the step that produced them.
+const (
+	runReportStepIndent = "  "
+	runReportLogIndent  = "      "
+)
+
+// runReportLines lays out a workflow run: header, one line per step (with the
+// request and HTTP result once it has run) followed by that step's logs, then
+// the workflow script's own logs and the run error.
 func runReportLines(state workflow.ExecutionState, style runStyler) []string {
 	var lines []string
 
 	lines = append(lines, style.title(state.WorkflowName)+" "+style.status(state.Status, "["+state.Status+"]"))
 	lines = append(lines, "")
 
+	stepLogs, workflowLogs := groupLogsByStep(state)
+
 	if len(state.Steps) == 0 {
 		lines = append(lines, style.subtle("(no steps defined)"))
 	} else {
 		lines = append(lines, style.heading("Steps:"))
 		for _, ss := range state.Steps {
-			detail := ""
-			if ss.Total > 1 {
-				detail = fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total)
+			lines = append(lines, runReportStepLine(ss, style))
+			logs := stepLogs[ss.ID]
+			for _, msg := range logs {
+				lines = append(lines, runReportLogIndent+styleLogMessage(msg, style))
 			}
-			if ss.LastResponse != nil {
-				detail += fmt.Sprintf("  %s  %s  %v", ss.Request, ss.LastResponse.Status, ss.LastResponse.Duration.Round(time.Millisecond))
+			if len(logs) > 0 {
+				lines = append(lines, "")
 			}
-			lines = append(lines, fmt.Sprintf("  %s %-20s %s%s",
-				stepIcon(ss.Status),
-				ss.ID,
-				style.status(ss.Status, ss.Status),
-				style.subtle(detail),
-			))
 		}
 	}
 
-	if len(state.Logs) > 0 {
+	if len(workflowLogs) > 0 {
 		lines = append(lines, "")
-		lines = append(lines, style.heading("Logs:"))
-		for _, log := range state.Logs {
-			lines = append(lines, "  "+style.subtle(log))
+		lines = append(lines, style.heading("Workflow logs:"))
+		for _, msg := range workflowLogs {
+			lines = append(lines, runReportStepIndent+styleLogMessage(msg, style))
 		}
 	}
 
@@ -279,6 +288,54 @@ func runReportLines(state workflow.ExecutionState, style runStyler) []string {
 	}
 
 	return lines
+}
+
+func runReportStepLine(ss *workflow.StepState, style runStyler) string {
+	detail := ""
+	if ss.Total > 1 {
+		detail = fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total)
+	}
+	if ss.LastResponse != nil {
+		detail += fmt.Sprintf("  %s  %s  %v", ss.Request, ss.LastResponse.Status, ss.LastResponse.Duration.Round(time.Millisecond))
+	}
+	return fmt.Sprintf("%s%s %-20s %s%s",
+		runReportStepIndent,
+		stepIcon(ss.Status),
+		ss.ID,
+		style.status(ss.Status, ss.Status),
+		style.subtle(detail),
+	)
+}
+
+// groupLogsByStep splits the run's logs into each step's own, in order, and
+// those of the workflow script, which also takes logs of steps not listed.
+func groupLogsByStep(state workflow.ExecutionState) (map[string][]string, []string) {
+	listed := make(map[string]bool, len(state.Steps))
+	for _, ss := range state.Steps {
+		listed[ss.ID] = true
+	}
+
+	stepLogs := make(map[string][]string)
+	var workflowLogs []string
+	for _, entry := range state.Logs {
+		if listed[entry.StepID] {
+			stepLogs[entry.StepID] = append(stepLogs[entry.StepID], entry.Message)
+		} else {
+			workflowLogs = append(workflowLogs, entry.Message)
+		}
+	}
+	return stepLogs, workflowLogs
+}
+
+func styleLogMessage(msg string, style runStyler) string {
+	switch {
+	case strings.HasPrefix(msg, workflow.LogPassMarker):
+		return style.status(workflow.StatusSuccess, msg)
+	case strings.HasPrefix(msg, workflow.LogFailMarker), strings.HasPrefix(msg, workflow.LogScriptErrorPrefix):
+		return style.failure(msg)
+	default:
+		return style.subtle(msg)
+	}
 }
 
 func workflowStatusStyle(status string) lipgloss.Style {

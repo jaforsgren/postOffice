@@ -436,6 +436,27 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
+			Keys:        []string{"tab"},
+			Description: "Toggle step panel (logs, request, response)",
+			ShortHelp:   "tab",
+			Handler:     handleToggleStepPanelKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"J"},
+			Description: "Scroll step panel down",
+			ShortHelp:   "J",
+			Handler:     handleStepPanelScrollDownKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"K"},
+			Description: "Scroll step panel up",
+			ShortHelp:   "K",
+			Handler:     handleStepPanelScrollUpKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
+		},
+		{
 			Keys:        []string{"d"},
 			Description: "Discard selected",
 			ShortHelp:   "d",
@@ -1195,6 +1216,11 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Closed workflows view"
 		return m, nil
 	case ModeWorkflowDetail:
+		if m.workflowStepPanelOpen {
+			m.workflowStepPanelOpen = false
+			m.statusMessage = "Closed step panel"
+			return m, nil
+		}
 		m.mode = ModeWorkflows
 		m.statusMessage = "Returned to workflows list"
 		return m, nil
@@ -1238,6 +1264,7 @@ func handleUpKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeWorkflowDetail {
 		if m.workflowStepCursor > 0 {
 			m.workflowStepCursor--
+			m.workflowStepPanelScroll = 0
 		}
 		return m, nil
 	}
@@ -1277,6 +1304,7 @@ func handleDownKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeWorkflowDetail {
 		if m.activeWorkflow != nil && m.workflowStepCursor < len(m.activeWorkflow.Steps)-1 {
 			m.workflowStepCursor++
+			m.workflowStepPanelScroll = 0
 		}
 		return m, nil
 	}
@@ -1332,6 +1360,26 @@ func handleFavoritesKey(m Model) (Model, tea.Cmd) {
 		return m.exitFavoritesView(), nil
 	}
 	return m.enterFavoritesView()
+}
+
+func handleToggleStepPanelKey(m Model) (Model, tea.Cmd) {
+	m.workflowStepPanelOpen = !m.workflowStepPanelOpen
+	m.workflowStepPanelScroll = 0
+	return m, nil
+}
+
+func handleStepPanelScrollDownKey(m Model) (Model, tea.Cmd) {
+	if m.workflowStepPanelOpen {
+		m.workflowStepPanelScroll = min(m.workflowStepPanelScroll+1, m.maxStepPanelScroll())
+	}
+	return m, nil
+}
+
+func handleStepPanelScrollUpKey(m Model) (Model, tea.Cmd) {
+	if m.workflowStepPanelOpen {
+		m.workflowStepPanelScroll = max(m.workflowStepPanelScroll-1, 0)
+	}
+	return m, nil
 }
 
 func handleToggleSplitViewKey(m Model) (Model, tea.Cmd) {

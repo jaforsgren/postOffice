@@ -84,6 +84,20 @@ type ExecutionState struct {
 	Status       string
 	Steps        []*StepState          // ordered for display
 	StepIndex    map[string]*StepState // keyed by step ID
-	Logs         []string
+	Logs         []LogEntry
 	Error        string
+}
+
+// Log message markers, shared with the run report so it can highlight them.
+const (
+	LogPassMarker        = "✓"
+	LogFailMarker        = "✗"
+	LogScriptErrorPrefix = "script error:"
+)
+
+// LogEntry is one line of run output. StepID names the step that produced it,
+// or is empty for output of the workflow script itself.
+type LogEntry struct {
+	StepID  string
+	Message string
 }

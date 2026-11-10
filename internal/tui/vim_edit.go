@@ -1,10 +1,12 @@
 package tui
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -314,10 +316,17 @@ func (m Model) applyVimScriptEdit(msg VimScriptEditCompleteMsg) Model {
 
 // ── run report (read-only) ───────────────────────────────────────────────────
 
+//go:embed run_report.vim
+var runReportVimScript string
+
+// vimFamilyEditors can source runReportVimScript for highlighting and folds.
+var vimFamilyEditors = map[string]bool{"vim": true, "nvim": true, "gvim": true, "mvim": true}
+
 // VimRunViewCompleteMsg is sent when the editor showing a run report exits.
 type VimRunViewCompleteMsg struct {
-	TempFile string
-	Err      error
+	TempFile   string
+	SyntaxFile string
+	Err        error
 }
 
 // openRunInEditor shows the current workflow run as plain text
@@ -336,13 +345,29 @@ func (m Model) openRunInEditor() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	return m, tea.ExecProcess(exec.Command(editorBin(), tempFilePath), func(err error) tea.Msg {
-		return VimRunViewCompleteMsg{TempFile: tempFilePath, Err: err}
+	editor := editorBin()
+	args := []string{tempFilePath}
+	syntaxFilePath := ""
+	if vimFamilyEditors[filepath.Base(editor)] {
+		syntaxFilePath, err = writeTempFile("postoffice-run-*.vim", runReportVimScript)
+		if err != nil {
+			os.Remove(tempFilePath)
+			m.statusMessage = err.Error()
+			return m, nil
+		}
+		args = append(args, "-S", syntaxFilePath)
+	}
+
+	return m, tea.ExecProcess(exec.Command(editor, args...), func(err error) tea.Msg {
+		return VimRunViewCompleteMsg{TempFile: tempFilePath, SyntaxFile: syntaxFilePath, Err: err}
 	})
 }
 
 func (m Model) applyVimRunView(msg VimRunViewCompleteMsg) Model {
 	os.Remove(msg.TempFile)
+	if msg.SyntaxFile != "" {
+		os.Remove(msg.SyntaxFile)
+	}
 	if msg.Err != nil {
 		m.statusMessage = fmt.Sprintf("Editor error: %v", msg.Err)
 		return m

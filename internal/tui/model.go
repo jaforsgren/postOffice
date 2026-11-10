@@ -198,15 +198,19 @@ type Model struct {
 	grpcSelectedService int
 	grpcReflectPhase    GRPCReflectPhase
 
-	workflows              []*workflow.Workflow
-	workflowCursor         int
-	workflowStepCursor     int
-	activeWorkflow         *workflow.Workflow
-	workflowState          workflow.ExecutionState
-	workflowChan           <-chan workflow.ExecutionState
-	workflowViewport       viewport.Model
-	addingWorkflowStep     bool
-	editingWorkflowStepIdx int
+	workflows          []*workflow.Workflow
+	workflowCursor     int
+	workflowStepCursor int
+	activeWorkflow     *workflow.Workflow
+	workflowState      workflow.ExecutionState
+	workflowChan       <-chan workflow.ExecutionState
+	workflowViewport   viewport.Model
+	// workflowStepPanelOpen shows the selected step's logs, request and
+	// response beside the workflow's steps; workflowStepPanelScroll scrolls it.
+	workflowStepPanelOpen   bool
+	workflowStepPanelScroll int
+	addingWorkflowStep      bool
+	editingWorkflowStepIdx  int
 
 	// pendingFolderRun holds the folder awaiting a y/n answer to "run as workflow?";
 	// while set, the next key press answers the prompt instead of reaching normal mode.

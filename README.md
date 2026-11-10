@@ -230,7 +230,8 @@ script: |
 - `f` — run from selected step
 - `r` — run selected step only
 - `ctrl+r` — view last response for selected step
-- `L` — open the run report (steps and logs) in your editor (`$VISUAL`, `$EDITOR`, else nvim)
+- `tab` — toggle the step panel: the selected step's logs, request and response beside the step list (`J`/`K` scroll it, `esc` closes it)
+- `L` — open the run report in your editor (`$VISUAL`, `$EDITOR`, else nvim). Each step's logs are listed under it; in vim/nvim the report is highlighted and folds per step (`zM` steps only, `zR` everything, `za` one step)
 
 The workflow script receives `wf` (workflow control API) and `pm` (full Postman-compatible scripting API). Pre/post request scripts attached to collection requests are triggered automatically on each step.
 

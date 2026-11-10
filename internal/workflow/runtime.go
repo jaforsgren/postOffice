@@ -38,6 +38,8 @@ type Runner struct {
 	vm            *goja.Runtime
 	loop          *script.EventLoop
 	onChange      func(ExecutionState)
+	// currentStepID attributes logs to the step being run; empty between steps.
+	currentStepID string
 }
 
 // NewRunner creates a runner bound to the given collection and environment.
@@ -175,7 +177,7 @@ func (r *Runner) notifyProgress() {
 		WorkflowName: r.state.WorkflowName,
 		Status:       r.state.Status,
 		Error:        r.state.Error,
-		Logs:         append([]string{}, r.state.Logs...),
+		Logs:         append([]LogEntry{}, r.state.Logs...),
 		StepIndex:    make(map[string]*StepState),
 	}
 	for _, ss := range r.state.Steps {
@@ -186,8 +188,13 @@ func (r *Runner) notifyProgress() {
 	r.onChange(snap)
 }
 
+// addLog records msg against the step currently running, if any.
 func (r *Runner) addLog(msg string) {
-	r.state.Logs = append(r.state.Logs, msg)
+	r.addStepLog(r.currentStepID, msg)
+}
+
+func (r *Runner) addStepLog(stepID, msg string) {
+	r.state.Logs = append(r.state.Logs, LogEntry{StepID: stepID, Message: msg})
 }
 
 // syncToCollection writes workflow-script variable changes to the live collection/environment
@@ -263,7 +270,7 @@ func (r *Runner) setupWFAPI() error {
 
 		result, err := r.runStep(stepID, opts)
 		if err != nil {
-			r.addLog(fmt.Sprintf("[ERROR] step %q: %v", stepID, err))
+			r.addStepLog(stepID, fmt.Sprintf("[ERROR] %v", err))
 			return r.emptyResultJS(StatusFailed)
 		}
 		return r.resultToJS(result)
@@ -306,7 +313,7 @@ func (r *Runner) setupWFAPI() error {
 			stepID := call.Arguments[0].String()
 			if ss, ok := r.state.StepIndex[stepID]; ok {
 				ss.Status = StatusSkipped
-				r.addLog(fmt.Sprintf("[SKIP] %s", stepID))
+				r.addStepLog(stepID, "[SKIP] skipped by the workflow script")
 				r.notifyProgress()
 			}
 		}
@@ -357,6 +364,9 @@ delete __wfStatusGetter__;
 // --- Step execution ---
 
 func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error) {
+	r.currentStepID = stepID
+	defer func() { r.currentStepID = "" }()
+
 	ss, ok := r.state.StepIndex[stepID]
 	if !ok {
 		// Step not declared in YAML — create a transient entry for tracking.
@@ -415,7 +425,7 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 			r.failStep(ss)
 			return nil, execErr
 		}
-		status = r.recordOutcome(requestPath, outcome)
+		status = r.recordOutcome(outcome)
 		stepResp := outcome.step
 		responses = append(responses, stepResp)
 		last = stepResp
@@ -452,21 +462,21 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 
 // recordOutcome logs a request's test results and console output and returns
 // its step status.
-func (r *Runner) recordOutcome(path string, outcome itemOutcome) string {
+func (r *Runner) recordOutcome(outcome itemOutcome) string {
 	result := outcome.scripts
 	if result != nil {
 		for _, log := range result.ConsoleLogs {
-			r.addLog(fmt.Sprintf("[%s] %s", path, log))
+			r.addLog(log)
 		}
 		for _, test := range result.Tests {
 			if test.Passed {
-				r.addLog(fmt.Sprintf("[%s] ✓ %s", path, test.Name))
+				r.addLog(fmt.Sprintf("%s %s", LogPassMarker, test.Name))
 			} else {
-				r.addLog(fmt.Sprintf("[%s] ✗ %s: %s", path, test.Name, test.Error))
+				r.addLog(fmt.Sprintf("%s %s: %s", LogFailMarker, test.Name, test.Error))
 			}
 		}
 		for _, scriptErr := range result.Errors {
-			r.addLog(fmt.Sprintf("[%s] script error: %s", path, scriptErr))
+			r.addLog(fmt.Sprintf("%s %s", LogScriptErrorPrefix, scriptErr))
 		}
 	}
 
