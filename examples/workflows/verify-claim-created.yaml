@@ -1,0 +1,54 @@
+id: verify-claim-created
+name: Verify Claim Created
+description: Sends a claim.created event and polls CosmosDB until the event document (claimId:1) appears.
+version: 1
+steps:
+  - id: send-claim
+    request: Claim Documentation/claim-created
+    post_script: |
+      var claimId = pm.collectionVariables.get("claim_id");
+      pm.collectionVariables.set("cosmos_query_id", claimId + ":1");
+      console.log("Claim sent: " + claimId + " — expecting event id: " + claimId + ":1");
+
+  - id: query-cosmos
+    request: Cosmos/Query Events By Id
+
+script: |
+  export default async function(wf, pm) {
+    // Step 1: send the claim.created event.
+    // The request pre-script generates a fresh claim_id; the step post_script
+    // derives cosmos_query_id = claimId + ":1".
+    await wf.run("send-claim");
+
+    var expectedId = pm.collectionVariables.get("cosmos_query_id");
+    console.log("Waiting for CosmosDB document: " + expectedId);
+
+    // Step 2: poll CosmosDB until the event document is visible.
+    // Allow up to 10 attempts with a 1-second pause between each.
+    var found = false;
+    var attempts = 10;
+    var result;
+
+    for (var i = 0; i < attempts; i++) {
+      result = await wf.run("query-cosmos");
+
+      var body;
+      try { body = result.response.json(); } catch(e) { body = {}; }
+
+      if (body._count > 0) {
+        found = true;
+        break;
+      }
+
+      if (i < attempts - 1) {
+        console.log("Not found yet (attempt " + (i + 1) + "/" + attempts + ") — sleeping 1s");
+        wf.sleep(1000);
+      }
+    }
+
+    if (!found) {
+      wf.fail("Event document not found in CosmosDB after " + attempts + " attempts: " + expectedId);
+    }
+
+    console.log("Event document confirmed in CosmosDB: " + expectedId);
+  }
