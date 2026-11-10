@@ -121,9 +121,13 @@ var runCommand = &cliCommand{
 	summary:   "Run a request, a folder or a whole collection with its scripts",
 	aliasable: true,
 	usage: `Usage:
-  postOffice run <collection.json> "<Folder/Sub/Request>" [options]
-  postOffice run <collection.json> --folder "<Folder/Sub>" [options]
-  postOffice run <collection.json> [options]
+  postOffice run <collection> "<Folder/Sub/Request>" [options]
+  postOffice run <collection> --folder "<Folder/Sub>" [options]
+  postOffice run <collection> [options]
+
+<collection> is a collection file, or the name of a loaded collection (see
+"postOffice ls"): its own name or its file name, e.g. SAPI for
+SAPI.postman_collection.json, ignoring case.
 
 Runs one request, every request in a folder, or every request in the
 collection, with collection → folder → request pre-request and test scripts.
@@ -133,7 +137,8 @@ Request paths are those listed by "postOffice ls request". A "/" inside a
 name is written "\/" and a "\" as "\\", e.g. 'NEGATIVE/unknown policy 403\/404'.
 
 Options:
-  -e, --environment <env.json>   environment to resolve variables from
+  -e, --environment <env>        environment file or loaded environment name
+                                 to resolve variables from
   --folder <Folder/Sub>          run every request in this folder
   --output text|json|junit       report format (default text)
   --report <file>                write the json/junit report to a file and
@@ -164,9 +169,14 @@ Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input e
 	},
 }
 
-// executeRun loads the collection and environment, runs the workflow
-// buildWorkflow makes from the collection, and reports the result.
-func executeRun(out io.Writer, collectionPath string, opts executionOptions, buildWorkflow func(*postman.Collection) (*workflow.Workflow, error)) error {
+// executeRun loads the collection and environment (each a file path or a
+// loaded one's name), runs the workflow buildWorkflow makes from the
+// collection, and reports the result.
+func executeRun(out io.Writer, collectionRef string, opts executionOptions, buildWorkflow func(*postman.Collection) (*workflow.Workflow, error)) error {
+	collectionPath, err := resolveCollectionRef(collectionRef)
+	if err != nil {
+		return err
+	}
 	if opts.persist {
 		if err := requirePostmanCollection(collectionPath); err != nil {
 			return err
@@ -180,7 +190,11 @@ func executeRun(out io.Writer, collectionPath string, opts executionOptions, bui
 	}
 	var environment *postman.Environment
 	if opts.environmentPath != "" {
-		if environment, err = parser.LoadEnvironment(opts.environmentPath); err != nil {
+		environmentPath, err := resolveEnvironmentRef(opts.environmentPath)
+		if err != nil {
+			return err
+		}
+		if environment, err = parser.LoadEnvironment(environmentPath); err != nil {
 			return err
 		}
 	}

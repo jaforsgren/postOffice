@@ -37,14 +37,14 @@ var lsCommand = &cliCommand{
 	aliasable: true,
 	usage: `Usage:
   postOffice ls                                        collections, environments and workflows
-  postOffice ls var [-c <collection.json>] [-e <env.json>]
-  postOffice ls request [-c <collection.json>]
+  postOffice ls var [-c <collection>] [-e <env>]
+  postOffice ls request [-c <collection>]
 
 "ls" lists what the TUI has loaded (~/.postoffice_collections.json) and the
 workflows saved next to each collection.
 "ls var" (vars, variables) lists collection and environment variables with
-their source; -c and -e list one collection or environment file instead of
-the loaded ones.
+their source; -c and -e list one collection or environment (a file or a
+loaded name) instead of the loaded ones.
 "ls request" (requests, r) lists requests with their method as
 "Folder/Sub/Request" paths, exactly as "postOffice run" accepts them; -c lists
 one collection file instead of the loaded ones.`,
@@ -125,7 +125,11 @@ func writeNamedPaths(out io.Writer, names []string, pathOf func(string) (string,
 // selectedCollections returns the collection given with -c, or every loaded one.
 func selectedCollections(parser *postman.Parser, parsed parsedArgs) ([]*postman.Collection, error) {
 	if parsed.has(collectionFlag) {
-		collection, err := parser.LoadCollection(parsed.value(collectionFlag))
+		path, err := resolveCollectionRef(parsed.value(collectionFlag))
+		if err != nil {
+			return nil, err
+		}
+		collection, err := parser.LoadCollection(path)
 		if err != nil {
 			return nil, err
 		}
@@ -145,7 +149,11 @@ func selectedCollections(parser *postman.Parser, parsed parsedArgs) ([]*postman.
 // selectedEnvironments returns the environment given with -e, or every loaded one.
 func selectedEnvironments(parser *postman.Parser, parsed parsedArgs) ([]*postman.Environment, error) {
 	if parsed.has(environmentFlag) {
-		environment, err := parser.LoadEnvironment(parsed.value(environmentFlag))
+		path, err := resolveEnvironmentRef(parsed.value(environmentFlag))
+		if err != nil {
+			return nil, err
+		}
+		environment, err := parser.LoadEnvironment(path)
 		if err != nil {
 			return nil, err
 		}

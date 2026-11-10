@@ -52,19 +52,25 @@ var workflowCommand = &cliCommand{
 	summary:   "Run a workflow YAML file",
 	aliasable: true,
 	usage: `Usage:
-  postOffice workflow run <workflow.yaml> [-c <collection.json>] [options]
+  postOffice workflow run <workflow> [-c <collection>] [options]
 
-Runs a workflow file against its collection. Without -c the collection is
-found from where the workflow lives: workflows are saved in a "workflows"
-directory next to their collection file, so postOffice uses
+Runs a workflow against its collection. <workflow> is a workflow file, or the
+ID, name or file name of a workflow saved next to a loaded collection (next to
+-c's collection when given), ignoring case; a workflow found by name runs
+against the collection it is saved next to. Collections and environments can
+be given by file or by loaded name, as in "postOffice run".
+
+Without -c the collection of a workflow file is found from where the workflow
+lives: workflows are saved in a "workflows" directory next to their collection
+file, so postOffice uses
   1. the loaded collection (see "postOffice ls") whose workflows directory
      holds the file, or else
   2. the only Postman collection .json file in the directory above it.
 Pass -c when neither finds exactly one collection.
 
 Options:
-  -c, --collection <collection.json>   collection the workflow runs against
-  -e, --environment <env.json>         environment to resolve variables from
+  -c, --collection <collection>        collection the workflow runs against
+  -e, --environment <env>              environment to resolve variables from
   --output text|json|junit             report format (default text)
   --report <file>                      write the json/junit report to a file
                                        and print the text report
@@ -81,13 +87,25 @@ Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input e
 		if err != nil {
 			return err
 		}
-		wf, err := workflow.LoadWorkflow(opts.workflowPath)
+		collectionPath := opts.collectionPath
+		if collectionPath != "" {
+			if collectionPath, err = resolveCollectionRef(collectionPath); err != nil {
+				return err
+			}
+		}
+		resolved, err := resolveWorkflowRef(opts.workflowPath, collectionPath)
 		if err != nil {
 			return err
 		}
-		collectionPath := opts.collectionPath
+		wf, err := workflow.LoadWorkflow(resolved.path)
+		if err != nil {
+			return err
+		}
 		if collectionPath == "" {
-			if collectionPath, err = findWorkflowCollection(opts.workflowPath); err != nil {
+			collectionPath = resolved.collectionPath
+		}
+		if collectionPath == "" {
+			if collectionPath, err = findWorkflowCollection(resolved.path); err != nil {
 				return err
 			}
 		}

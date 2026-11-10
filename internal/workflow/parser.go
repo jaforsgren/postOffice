@@ -29,9 +29,25 @@ func LoadWorkflow(path string) (*Workflow, error) {
 	return &wf, nil
 }
 
+// WorkflowFile is a workflow together with the file it was loaded from.
+type WorkflowFile struct {
+	Path     string
+	Workflow *Workflow
+}
+
 // DiscoverWorkflows scans dir for *.yaml and *.yml files and loads each as a Workflow.
 // Returns nil slice (no error) if the directory does not exist.
 func DiscoverWorkflows(dir string) ([]*Workflow, error) {
+	files, err := DiscoverWorkflowFiles(dir)
+	var workflows []*Workflow
+	for _, file := range files {
+		workflows = append(workflows, file.Workflow)
+	}
+	return workflows, err
+}
+
+// DiscoverWorkflowFiles is DiscoverWorkflows keeping each workflow's file path.
+func DiscoverWorkflowFiles(dir string) ([]WorkflowFile, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -40,7 +56,7 @@ func DiscoverWorkflows(dir string) ([]*Workflow, error) {
 		return nil, fmt.Errorf("failed to read workflows directory: %w", err)
 	}
 
-	var workflows []*Workflow
+	var files []WorkflowFile
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -49,15 +65,16 @@ func DiscoverWorkflows(dir string) ([]*Workflow, error) {
 		if !strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml") {
 			continue
 		}
-		wf, err := LoadWorkflow(filepath.Join(dir, name))
+		path := filepath.Join(dir, name)
+		wf, err := LoadWorkflow(path)
 		if err != nil {
-			logger.LogError("DiscoverWorkflows", filepath.Join(dir, name), err)
+			logger.LogError("DiscoverWorkflows", path, err)
 			continue
 		}
-		workflows = append(workflows, wf)
+		files = append(files, WorkflowFile{Path: path, Workflow: wf})
 	}
 
-	return workflows, nil
+	return files, nil
 }
 
 // WorkflowsDir returns the workflows directory for a given collection file path.

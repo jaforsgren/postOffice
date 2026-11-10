@@ -348,6 +348,13 @@ Run requests, folders, collections, and workflows without the TUI.
   -e staging.json
 ```
 
+Collections, environments and workflows can also be given by name instead of file path. Names are matched against loaded files (see `ls`), ignoring case: a collection or environment by its own name or file name (`SAPI` for `SAPI.postman_collection.json`), and a workflow by its ID, name or file name.
+
+```
+./postOffice run SAPI -e "Big tusks"
+./postOffice workflow run health-check -e "Big tusks"
+```
+
 Request paths use `/` between folders.
 
 Escape literal slashes in names with `\/` and quote the path.
