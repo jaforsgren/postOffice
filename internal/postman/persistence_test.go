@@ -633,6 +633,49 @@ func TestSaveState_NoLeftoverTempFile(t *testing.T) {
 	}
 }
 
+// TestSaveState_PreservesSymlinkedConfig verifies a config file symlinked
+// from elsewhere (e.g. a dotfiles repo) stays a symlink after saving and the
+// new content lands in the link target.
+func TestSaveState_PreservesSymlinkedConfig(t *testing.T) {
+	tmpHome := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	defer os.Setenv("HOME", originalHome)
+
+	targetPath := filepath.Join(t.TempDir(), configFileName)
+	if err := os.WriteFile(targetPath, []byte(`{"collection_paths":[]}`), 0600); err != nil {
+		t.Fatalf("failed to write symlink target: %v", err)
+	}
+	linkPath := filepath.Join(tmpHome, configFileName)
+	if err := os.Symlink(targetPath, linkPath); err != nil {
+		t.Fatalf("failed to create symlink: %v", err)
+	}
+
+	parser := NewParser()
+	collection := &Collection{Info: Info{Name: "Symlink Test"}}
+	parser.LoadCollection(createTempCollection(t, collection))
+
+	if err := parser.SaveState(); err != nil {
+		t.Fatalf("SaveState failed: %v", err)
+	}
+
+	info, err := os.Lstat(linkPath)
+	if err != nil {
+		t.Fatalf("failed to lstat config path: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("expected %q to remain a symlink, got mode %v", linkPath, info.Mode())
+	}
+
+	data, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("failed to read symlink target: %v", err)
+	}
+	if !strings.Contains(string(data), "collection_paths") || strings.Contains(string(data), `"collection_paths": []`) {
+		t.Errorf("expected saved collection paths in symlink target, got %s", data)
+	}
+}
+
 // TestMultipleSaveState_MergesAcrossConcurrentSessions verifies SaveState
 // unions with whatever is already on disk instead of overwriting it. Two
 // Parser instances model two postOffice sessions running at the same time,

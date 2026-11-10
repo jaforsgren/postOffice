@@ -336,11 +336,19 @@ func (p *Parser) SaveEnvironment(name string) error {
 // two sessions saving at once collide mid-write and produce a corrupt or
 // unexpectedly-swapped file. Rename itself is atomic, so a reader never sees
 // a partially-written file.
+//
+// If path is a symlink (e.g. config kept in a dotfiles repo), the write goes
+// to the link target — renaming over the link itself would replace it with a
+// regular file and silently detach it from the dotfiles copy.
 func saveToFile(data any, path string, logLabel string) error {
 	bytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		logger.LogError(logLabel, path, err)
 		return fmt.Errorf("failed to marshal %s: %w", logLabel, err)
+	}
+
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
 	}
 
 	dir := filepath.Dir(path)
