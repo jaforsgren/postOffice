@@ -43,6 +43,17 @@ func (e *Executor) Execute(
 	scope *script.RequestScope,
 	variables []postman.VariableSource,
 ) (*httpexec.Response, *script.TestResult) {
+	return e.ExecuteContext(context.Background(), req, scope, variables)
+}
+
+// ExecuteContext is Execute with the call cancelled when ctx is. Scripts are
+// not interrupted; they have their own timeout.
+func (e *Executor) ExecuteContext(
+	ctx context.Context,
+	req *postman.Request,
+	scope *script.RequestScope,
+	variables []postman.VariableSource,
+) (*httpexec.Response, *script.TestResult) {
 	start := time.Now()
 	resp := &httpexec.Response{RequestMethod: requestMethod}
 
@@ -79,10 +90,10 @@ func (e *Executor) Execute(
 		resp.RequestBody = resolved.Body.Raw
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), e.timeout)
+	callCtx, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
 
-	result, err := ExecuteRequest(ctx, resolved, variableValue(variables, ProtosetVariable))
+	result, err := ExecuteRequest(callCtx, resolved, variableValue(variables, ProtosetVariable))
 	resp.Duration = time.Since(start)
 	resp.Timing = result.Phases
 	if err != nil {

@@ -62,6 +62,7 @@ J         Raw JSON
 H         Saved responses
 V         Edit used variables
 ctrl+e    Re-execute / run folder
+ctrl+x    Cancel the request being sent (HTTP and gRPC)
 ```
 
 ### Responses

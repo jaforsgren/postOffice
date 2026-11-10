@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"postOffice/internal/grpc"
 	"postOffice/internal/history"
 	"postOffice/internal/http"
@@ -87,7 +88,8 @@ type RequestExecution struct {
 // requestExecutor sends a request and runs its scripts; HTTP and gRPC
 // requests each have one.
 type requestExecutor interface {
-	Execute(
+	ExecuteContext(
+		ctx context.Context,
 		req *postman.Request,
 		scope *script.RequestScope,
 		variables []postman.VariableSource,
@@ -105,6 +107,8 @@ type RequestCompleteMsg struct {
 	ItemName        string
 	IsModified      bool
 	Replayed        bool
+	// Cancelled is set when the request was cancelled before it completed.
+	Cancelled bool
 }
 
 type Model struct {
@@ -207,6 +211,8 @@ type Model struct {
 
 	requestExecutions  map[string]*RequestExecution
 	lastExecutedItemID string
+	// inFlightRequests cancels each request still being sent, by item ID.
+	inFlightRequests map[string]context.CancelFunc
 
 	splitViewActive bool
 	// splitFocus is the split view pane j/k scroll instead of the list.
@@ -343,6 +349,7 @@ func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
 		historyReturnMode:     modeUnset,
 		historyDiffViewport:   viewport.New(0, 0),
 		requestExecutions:     make(map[string]*RequestExecution),
+		inFlightRequests:      make(map[string]context.CancelFunc),
 		favorites:             make(map[string]bool),
 	}
 	if ids, err := postman.LoadFavorites(); err == nil {

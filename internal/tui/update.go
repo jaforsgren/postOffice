@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"postOffice/internal/amqp"
 	"postOffice/internal/grpc"
@@ -38,6 +39,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case RequestCompleteMsg:
+		if msg.Cancelled {
+			return m.completeCancelledRequest(msg), nil
+		}
+		m = m.forgetInFlightRequest(msg.ItemID)
 		m.lastResponse = msg.Response
 		m.lastTestResult = msg.TestResult
 		m.lastExecutedItemID = msg.ItemID
@@ -878,10 +883,14 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 		Item:        &itemCopy,
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	m.inFlightRequests[itemID] = cancel
+
 	return m, func() tea.Msg {
-		response, testResult := executor.Execute(requestToExecute, scope, variables)
+		response, testResult := executor.ExecuteContext(ctx, requestToExecute, scope, variables)
 
 		return RequestCompleteMsg{
+			Cancelled:       errors.Is(ctx.Err(), context.Canceled),
 			ItemID:          itemID,
 			Response:        response,
 			TestResult:      testResult,

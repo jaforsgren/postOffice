@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -60,6 +61,17 @@ func (e *Executor) Execute(
 	scope *script.RequestScope,
 	variables []postman.VariableSource,
 ) (*Response, *script.TestResult) {
+	return e.ExecuteContext(context.Background(), req, scope, variables)
+}
+
+// ExecuteContext is Execute with the HTTP exchange cancelled when ctx is.
+// Scripts are not interrupted; they have their own timeout.
+func (e *Executor) ExecuteContext(
+	ctx context.Context,
+	req *postman.Request,
+	scope *script.RequestScope,
+	variables []postman.VariableSource,
+) (*Response, *script.TestResult) {
 	start := time.Now()
 	resp := &Response{}
 
@@ -94,7 +106,7 @@ func (e *Executor) Execute(
 	}
 
 	recorder := &traceRecorder{}
-	httpReq = httpReq.WithContext(httptrace.WithClientTrace(httpReq.Context(), recorder.clientTrace()))
+	httpReq = httpReq.WithContext(httptrace.WithClientTrace(ctx, recorder.clientTrace()))
 
 	resp.RequestMethod = httpReq.Method
 	resp.RequestURL = httpReq.URL.String()
