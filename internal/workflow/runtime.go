@@ -397,16 +397,17 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 		ss.Progress = i + 1
 		r.notifyProgress()
 
-		stepResp, rawResp, execErr := r.executeItem(item, requestPath)
+		outcome, execErr := r.executeItem(item, requestPath)
 		if execErr != nil {
 			ss.Status = StatusFailed
 			r.notifyProgress()
 			return nil, execErr
 		}
+		stepResp := outcome.step
 		responses = append(responses, stepResp)
 		last = stepResp
-		if rawResp != nil {
-			ss.LastResponse = rawResp
+		if outcome.raw != nil {
+			ss.LastResponse = outcome.raw
 		}
 
 		if opts.Until != nil && opts.Until(stepResp) {
@@ -503,7 +504,14 @@ func (r *Runner) resolveRequest(path string) (*postman.Item, error) {
 	return nil, fmt.Errorf("request %q not found", path)
 }
 
-func (r *Runner) executeItem(item *postman.Item, requestPath string) (*StepResponse, *http.Response, error) {
+// itemOutcome is what executing one collection item produced.
+type itemOutcome struct {
+	step    *StepResponse
+	raw     *http.Response
+	scripts *script.TestResult
+}
+
+func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcome, error) {
 	// Write workflow-script variable changes to the collection before running.
 	r.syncToCollection()
 
@@ -519,7 +527,7 @@ func (r *Runner) executeItem(item *postman.Item, requestPath string) (*StepRespo
 
 	if item.IsGRPC() {
 		stepResp, err := r.executeGRPC(item, variables)
-		return stepResp, nil, err
+		return itemOutcome{step: stepResp}, err
 	}
 
 	if item.IsServiceBus() {
@@ -531,10 +539,10 @@ func (r *Runner) executeItem(item *postman.Item, requestPath string) (*StepRespo
 	}
 
 	if !item.IsRequest() || item.Request == nil {
-		return nil, nil, fmt.Errorf("item %q is not a request", item.Name)
+		return itemOutcome{}, fmt.Errorf("item %q is not a request", item.Name)
 	}
 
-	resp, _ := r.httpExecutor.Execute(item.Request, &scope, variables)
+	resp, scriptResult := r.httpExecutor.Execute(item.Request, &scope, variables)
 
 	// Pick up variable changes from pre/post-request scripts.
 	r.syncFromCollection()
@@ -550,12 +558,12 @@ func (r *Runner) executeItem(item *postman.Item, requestPath string) (*StepRespo
 		r.addLog(fmt.Sprintf("[HTTP ERROR] %v", resp.Error))
 	}
 
-	return stepResp, resp, nil
+	return itemOutcome{step: stepResp, raw: resp, scripts: scriptResult}, nil
 }
 
-func (r *Runner) executeMessageBus(item *postman.Item, scope script.RequestScope, protocol string) (*StepResponse, *http.Response, error) {
+func (r *Runner) executeMessageBus(item *postman.Item, scope script.RequestScope, protocol string) (itemOutcome, error) {
 	if item.Request == nil {
-		return nil, nil, fmt.Errorf("item %q has no request", item.Name)
+		return itemOutcome{}, fmt.Errorf("item %q has no request", item.Name)
 	}
 
 	// Run Postman pre-request scripts (e.g. to generate IDs before the send).
@@ -566,7 +574,7 @@ func (r *Runner) executeMessageBus(item *postman.Item, scope script.RequestScope
 	r.syncFromCollection()
 	if preResult.Skipped {
 		r.addLog(fmt.Sprintf("[%s SKIPPED] %s", protocol, item.Name))
-		return &StepResponse{}, &http.Response{Skipped: true, Status: http.SkippedStatus}, nil
+		return itemOutcome{step: &StepResponse{}, raw: &http.Response{Skipped: true, Status: http.SkippedStatus}, scripts: preResult}, nil
 	}
 
 	variables := r.getVariables()
@@ -578,7 +586,7 @@ func (r *Runner) executeMessageBus(item *postman.Item, scope script.RequestScope
 	case "AMQP":
 		resp = amqp.Publish(request, variables)
 	default:
-		return nil, nil, fmt.Errorf("unknown message bus protocol: %s", protocol)
+		return itemOutcome{}, fmt.Errorf("unknown message bus protocol: %s", protocol)
 	}
 
 	r.syncFromCollection()
@@ -593,7 +601,7 @@ func (r *Runner) executeMessageBus(item *postman.Item, scope script.RequestScope
 		r.addLog(fmt.Sprintf("[%s ERROR] %v", protocol, resp.Error))
 	}
 
-	return stepResp, resp, nil
+	return itemOutcome{step: stepResp, raw: resp, scripts: preResult}, nil
 }
 
 func (r *Runner) executeGRPC(item *postman.Item, variables []postman.VariableSource) (*StepResponse, error) {

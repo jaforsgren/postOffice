@@ -45,6 +45,10 @@ const (
 
 const modeUnset ViewMode = -1
 
+// workflowProgressBuffer is how many run state snapshots may queue before the
+// runner blocks waiting for the TUI to render them.
+const workflowProgressBuffer = 20
+
 type EditType int
 
 const (
@@ -181,12 +185,16 @@ type Model struct {
 	grpcSelectedService int
 	grpcReflectPhase    GRPCReflectPhase
 
-	workflows              []*workflow.Workflow
-	workflowCursor         int
-	workflowStepCursor     int
-	activeWorkflow         *workflow.Workflow
-	workflowState          workflow.ExecutionState
-	workflowChan           <-chan workflow.ExecutionState
+	workflows          []*workflow.Workflow
+	workflowCursor     int
+	workflowStepCursor int
+	activeWorkflow     *workflow.Workflow
+	workflowState      workflow.ExecutionState
+	workflowChan       <-chan workflow.ExecutionState
+	// isCollectionRun is true when ModeWorkflowRun shows a collection run of
+	// collectionRunFolder (empty = whole collection) rather than a workflow.
+	isCollectionRun        bool
+	collectionRunFolder    []string
 	workflowViewport       viewport.Model
 	addingWorkflowStep     bool
 	editingWorkflowStepIdx int

@@ -6,7 +6,13 @@ import (
 	"postOffice/internal/postman"
 )
 
-const requestIDSeparator = "/"
+const requestPathSeparator = "/"
+
+// RequestPath is the "folder/sub/request" path that identifies a request
+// without a Postman id, in pm.info.requestId and collection runs.
+func RequestPath(folderPath []string, name string) string {
+	return strings.Join(append(append([]string{}, folderPath...), name), requestPathSeparator)
+}
 
 // RequestScope identifies the request a script chain runs for and where its
 // variables live.
@@ -59,7 +65,7 @@ func (s RequestScope) info() RequestInfo {
 	}
 	id := s.Item.ID
 	if id == "" {
-		id = strings.Join(append(append([]string{}, s.FolderPath...), s.Item.Name), requestIDSeparator)
+		id = RequestPath(s.FolderPath, s.Item.Name)
 	}
 	return RequestInfo{RequestName: s.Item.Name, RequestID: id}
 }
