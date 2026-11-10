@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"google.golang.org/grpc"
+	rpb "google.golang.org/grpc/reflection/grpc_reflection_v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
-	rpb "google.golang.org/grpc/reflection/grpc_reflection_v1"
 	"postOffice/internal/postman"
 )
 

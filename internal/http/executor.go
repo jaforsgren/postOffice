@@ -176,7 +176,6 @@ func (e *Executor) executeTestScripts(
 	return result
 }
 
-
 func (e *Executor) buildRequest(req *postman.Request, variables []postman.VariableSource) (*http.Request, error) {
 	url := req.URL.Raw
 	if url == "" {

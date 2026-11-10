@@ -6,7 +6,7 @@ import (
 )
 
 func TestGetAllVariables_EnvironmentOnly(t *testing.T) {
-env := &Environment{
+	env := &Environment{
 		Name: "Test Env",
 		Values: []EnvVariable{
 			{Key: "apiKey", Value: "secret123", Enabled: true},
@@ -42,7 +42,7 @@ env := &Environment{
 }
 
 func TestGetAllVariables_CollectionOnly(t *testing.T) {
-collection := &Collection{
+	collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "collectionVar", Value: "collectionValue"},
@@ -71,7 +71,7 @@ collection := &Collection{
 }
 
 func TestGetAllVariables_FolderVariables(t *testing.T) {
-collection := &Collection{
+	collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Items: []Item{
 			{
@@ -179,7 +179,7 @@ func TestGetAllVariables_Precedence(t *testing.T) {
 }
 
 func TestGetAllVariables_NoBreadcrumb(t *testing.T) {
-collection := &Collection{
+	collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "var1", Value: "value1"},
@@ -211,7 +211,7 @@ collection := &Collection{
 }
 
 func TestGetAllVariables_EmptyBreadcrumb(t *testing.T) {
-collection := &Collection{
+	collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "var1", Value: "value1"},
@@ -226,7 +226,7 @@ collection := &Collection{
 }
 
 func TestGetAllVariables_InvalidBreadcrumb(t *testing.T) {
-collection := &Collection{
+	collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "var1", Value: "value1"},

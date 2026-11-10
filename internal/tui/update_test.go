@@ -1521,18 +1521,18 @@ func TestItemDisplayPrefix(t *testing.T) {
 			expected: "[DIR] ",
 		},
 		{
-			name: "HTTP GET prefix",
-			item: postman.Item{Name: "Get Users", Request: &postman.Request{Method: "GET"}},
+			name:     "HTTP GET prefix",
+			item:     postman.Item{Name: "Get Users", Request: &postman.Request{Method: "GET"}},
 			expected: "[GET] ",
 		},
 		{
-			name: "HTTP POST prefix",
-			item: postman.Item{Name: "Create User", Request: &postman.Request{Method: "POST"}},
+			name:     "HTTP POST prefix",
+			item:     postman.Item{Name: "Create User", Request: &postman.Request{Method: "POST"}},
 			expected: "[POST] ",
 		},
 		{
-			name: "gRPC prefix",
-			item: postman.Item{Name: "SayHello", Request: &postman.Request{Method: "GRPC", URL: postman.URL{Raw: "grpc://localhost:50051"}}},
+			name:     "gRPC prefix",
+			item:     postman.Item{Name: "SayHello", Request: &postman.Request{Method: "GRPC", URL: postman.URL{Raw: "grpc://localhost:50051"}}},
 			expected: "[GRPC] ",
 		},
 		{

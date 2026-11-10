@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -2642,7 +2642,6 @@ func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
 		waitForWorkflow(progressChan),
 	)
 }
-
 
 func splitLines(text string) []string {
 	return strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")

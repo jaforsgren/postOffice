@@ -32,8 +32,8 @@ func (m Model) renderInfoView() string {
 	}
 
 	return mainWindowStyle.
-		Height(m.height-8).
-		Width(m.width-4).
+		Height(m.height - 8).
+		Width(m.width - 4).
 		Render(m.infoViewport.View())
 }
 
@@ -516,7 +516,7 @@ func (m Model) renderJSONView() string {
 	}
 
 	return mainWindowStyle.
-		Height(m.height-8).
-		Width(m.width-4).
+		Height(m.height - 8).
+		Width(m.width - 4).
 		Render(m.jsonViewport.View())
 }

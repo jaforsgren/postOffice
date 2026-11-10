@@ -18,8 +18,8 @@ type Workflow struct {
 // Step is a named reference to a request within the collection.
 type Step struct {
 	ID         string `yaml:"id"`
-	Request    string `yaml:"request"`              // collection path, e.g. "Auth/Login"
-	PreScript  string `yaml:"pre_script,omitempty"` // JS executed before the request
+	Request    string `yaml:"request"`               // collection path, e.g. "Auth/Login"
+	PreScript  string `yaml:"pre_script,omitempty"`  // JS executed before the request
 	PostScript string `yaml:"post_script,omitempty"` // JS executed after the request, receives `step.response`
 }
 
@@ -71,8 +71,8 @@ type StepState struct {
 	ID           string
 	Request      string
 	Status       string
-	Progress     int // current repeat iteration (1-based)
-	Total        int // planned repeat count
+	Progress     int                    // current repeat iteration (1-based)
+	Total        int                    // planned repeat count
 	LastResponse *internalhttp.Response `json:"-"`
 }
 

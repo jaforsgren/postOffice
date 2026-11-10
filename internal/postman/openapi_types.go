@@ -1,13 +1,13 @@
 package postman
 
 type OpenAPISpec struct {
-	OpenAPI    string                        `json:"openapi"`
-	Swagger    string                        `json:"swagger"`
-	Info       OpenAPIInfo                   `json:"info"`
-	Servers    []OpenAPIServer               `json:"servers"`
-	Paths      map[string]OpenAPIPathItem    `json:"paths"`
-	Components *OpenAPIComponents            `json:"components"`
-	Security   []map[string][]string         `json:"security"`
+	OpenAPI    string                     `json:"openapi"`
+	Swagger    string                     `json:"swagger"`
+	Info       OpenAPIInfo                `json:"info"`
+	Servers    []OpenAPIServer            `json:"servers"`
+	Paths      map[string]OpenAPIPathItem `json:"paths"`
+	Components *OpenAPIComponents         `json:"components"`
+	Security   []map[string][]string      `json:"security"`
 }
 
 type OpenAPIInfo struct {
@@ -22,14 +22,14 @@ type OpenAPIServer struct {
 }
 
 type OpenAPIPathItem struct {
-	Get        *OpenAPIOperation   `json:"get"`
-	Post       *OpenAPIOperation   `json:"post"`
-	Put        *OpenAPIOperation   `json:"put"`
-	Delete     *OpenAPIOperation   `json:"delete"`
-	Patch      *OpenAPIOperation   `json:"patch"`
-	Options    *OpenAPIOperation   `json:"options"`
-	Head       *OpenAPIOperation   `json:"head"`
-	Parameters []OpenAPIParameter  `json:"parameters"`
+	Get        *OpenAPIOperation  `json:"get"`
+	Post       *OpenAPIOperation  `json:"post"`
+	Put        *OpenAPIOperation  `json:"put"`
+	Delete     *OpenAPIOperation  `json:"delete"`
+	Patch      *OpenAPIOperation  `json:"patch"`
+	Options    *OpenAPIOperation  `json:"options"`
+	Head       *OpenAPIOperation  `json:"head"`
+	Parameters []OpenAPIParameter `json:"parameters"`
 }
 
 type OpenAPIOperation struct {
@@ -43,17 +43,17 @@ type OpenAPIOperation struct {
 }
 
 type OpenAPIParameter struct {
-	Name        string          `json:"name"`
-	In          string          `json:"in"`
-	Description string          `json:"description"`
-	Required    bool            `json:"required"`
-	Schema      *OpenAPISchema  `json:"schema"`
+	Name        string         `json:"name"`
+	In          string         `json:"in"`
+	Description string         `json:"description"`
+	Required    bool           `json:"required"`
+	Schema      *OpenAPISchema `json:"schema"`
 }
 
 type OpenAPIRequestBody struct {
-	Description string                       `json:"description"`
-	Required    bool                         `json:"required"`
-	Content     map[string]OpenAPIMediaType  `json:"content"`
+	Description string                      `json:"description"`
+	Required    bool                        `json:"required"`
+	Content     map[string]OpenAPIMediaType `json:"content"`
 }
 
 type OpenAPIMediaType struct {

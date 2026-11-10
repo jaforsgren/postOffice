@@ -37,8 +37,8 @@ func (m Model) renderResponseView() string {
 	}
 
 	return mainWindowStyle.
-		Height(m.height-8).
-		Width(m.width-4).
+		Height(m.height - 8).
+		Width(m.width - 4).
 		Render(m.responseViewport.View())
 }
 
