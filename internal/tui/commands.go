@@ -670,6 +670,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeWorkflowDetail, ModeWorkflowRun},
 		},
 		{
+			Keys:        []string{nextEnvironmentKey},
+			Description: "Next environment",
+			ShortHelp:   nextEnvironmentKey,
+			Handler:     handleNextEnvironmentKey,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeVariables},
+		},
+		{
 			Keys:        []string{" "},
 			Description: "Toggle active (merge multiple, Enter to view combined)",
 			ShortHelp:   "space",

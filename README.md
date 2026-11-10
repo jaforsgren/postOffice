@@ -45,6 +45,7 @@ h/esc     Go back
 /         Search
 tab       Toggle split view
 r         Refresh
+ctrl+n    Next environment
 ?         Help
 q         Quit
 ```
