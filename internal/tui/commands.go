@@ -1585,7 +1585,13 @@ func (m Model) loadWorkflows() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	_, wfs, err := m.discoverCollectionWorkflows()
+	m, err := m.scopeWorkflowsToCursor()
+	if err != nil {
+		m.statusMessage = err.Error()
+		return m, nil
+	}
+
+	_, wfs, err := m.discoverWorkflows(m.workflowCollectionName())
 	if errors.Is(err, errCollectionPathNotFound) {
 		m.statusMessage = "Collection path not found"
 		return m, nil
@@ -1596,7 +1602,7 @@ func (m Model) loadWorkflows() (Model, tea.Cmd) {
 	}
 
 	m.workflows = wfs
-	m = m.cacheSavedWorkflowIDs(wfs)
+	m = m.cacheSavedWorkflowIDs(m.workflowCollectionName(), wfs)
 	m.workflowCursor = 0
 	m.previousMode = m.mode
 	m.mode = ModeWorkflows
@@ -1615,6 +1621,12 @@ func (m Model) runWorkflowByID(id string) (Model, tea.Cmd) {
 		return m, nil
 	}
 
+	m, err := m.scopeWorkflowsToCursor()
+	if err != nil {
+		m.statusMessage = err.Error()
+		return m, nil
+	}
+
 	// Try loaded workflows first.
 	for _, wf := range m.workflows {
 		if wf.ID == id || wf.Name == id {
@@ -1623,7 +1635,7 @@ func (m Model) runWorkflowByID(id string) (Model, tea.Cmd) {
 	}
 
 	// Try loading from file.
-	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+	collectionPath, exists := m.parser.GetCollectionPath(m.workflowCollectionName())
 	if !exists {
 		m.statusMessage = fmt.Sprintf("Workflow %q not found", id)
 		return m, nil
@@ -1643,7 +1655,13 @@ func (m Model) newWorkflow(id string) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+	m, err := m.scopeWorkflowsToCursor()
+	if err != nil {
+		m.statusMessage = err.Error()
+		return m, nil
+	}
+
+	collectionPath, exists := m.parser.GetCollectionPath(m.workflowCollectionName())
 	if !exists {
 		m.statusMessage = "Collection path not found"
 		return m, nil

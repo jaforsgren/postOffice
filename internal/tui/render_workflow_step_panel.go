@@ -157,7 +157,7 @@ func (m Model) selectedStepResponse() (*http.Response, *RequestExecution) {
 	if !ok || m.collection == nil {
 		return nil, nil
 	}
-	execution, executed := m.requestExecutions[m.collection.Info.Name+"/"+step.Request]
+	execution, executed := m.requestExecutions[m.workflowStepItemID(step.Request)]
 
 	if ss := m.runStepState(step.ID); ss != nil {
 		if executed && execution.Response == ss.LastResponse {

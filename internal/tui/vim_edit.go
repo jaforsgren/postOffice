@@ -495,7 +495,7 @@ func (m Model) openVimForWorkflow() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+	collectionPath, exists := m.parser.GetCollectionPath(m.workflowCollectionName())
 	if !exists {
 		m.statusMessage = "Collection path not found"
 		return m, nil

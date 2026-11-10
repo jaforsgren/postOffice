@@ -141,8 +141,7 @@ func (m Model) renderWorkflowDetail() string {
 		// HTTP execution info (from requestExecutions, shown when no active run state)
 		executionInfo := ""
 		if runStateStr == "" && m.collection != nil {
-			itemID := m.collection.Info.Name + "/" + step.Request
-			if exec, exists := m.requestExecutions[itemID]; exists {
+			if exec, exists := m.requestExecutions[m.workflowStepItemID(step.Request)]; exists {
 				statusColor := "8"
 				if strings.HasPrefix(exec.Status, "2") {
 					statusColor = "10"

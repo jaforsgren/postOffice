@@ -309,7 +309,7 @@ func TestFolderWorkflowIndicator_KeepsColumnAlignment(t *testing.T) {
 	path := writeFolderRunCollection(t)
 	m := folderRunTestModel(t, path)
 	m = m.navigateUp()
-	m.savedWorkflowIDs[workflow.FolderWorkflowID([]string{"policies"})] = true
+	m.savedWorkflowIDs[m.collection.Info.Name][workflow.FolderWorkflowID([]string{"policies"})] = true
 
 	marked := folderLine(t, m, "policies")
 	plain := folderLine(t, m, "Other")

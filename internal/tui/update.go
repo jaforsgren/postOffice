@@ -118,9 +118,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.collection != nil {
 				for _, ss := range msg.State.Steps {
 					if ss.LastResponse != nil {
-						names := postman.SplitItemPath(ss.Request)
-						itemID := m.requestItemID(names[:len(names)-1], names[len(names)-1])
-						m.requestExecutions[itemID] = &RequestExecution{
+						m.requestExecutions[m.workflowStepItemID(ss.Request)] = &RequestExecution{
 							Status:    ss.LastResponse.Status,
 							Timestamp: time.Now(),
 							Duration:  ss.LastResponse.Duration,
@@ -2773,7 +2771,7 @@ func (m Model) saveActiveWorkflow() (Model, error) {
 	if m.collection == nil {
 		return m, fmt.Errorf("no collection loaded")
 	}
-	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+	collectionPath, exists := m.parser.GetCollectionPath(m.workflowCollectionName())
 	if !exists {
 		return m, fmt.Errorf("collection path not found")
 	}
@@ -2871,7 +2869,8 @@ func (m Model) startWorkflowPartial(wf *workflow.Workflow, fromIdx, toIdx int) (
 
 // resolveStepItem finds the postman.Item for a workflow step by traversing the collection.
 func (m Model) resolveStepItem(requestPath string) (*postman.Item, []string, error) {
-	if m.collection == nil {
+	collection := m.workflowCollection()
+	if collection == nil {
 		return nil, nil, fmt.Errorf("no collection loaded")
 	}
 	parts := postman.SplitItemPath(requestPath)
@@ -2882,7 +2881,7 @@ func (m Model) resolveStepItem(requestPath string) (*postman.Item, []string, err
 	folderPath := parts[:len(parts)-1]
 	itemName := parts[len(parts)-1]
 
-	current := m.collection.Items
+	current := collection.Items
 	for _, folder := range folderPath {
 		found := false
 		for i := range current {
@@ -2928,9 +2927,9 @@ func (m Model) editWorkflowStepRequest() (Model, tea.Cmd) {
 	}
 
 	// Set breadcrumb so saveEdit() can locate the item in the collection.
-	m.breadcrumb = folderPath
+	m.breadcrumb = m.workflowViewPath(folderPath)
 	m.previousMode = ModeWorkflowDetail
-	m = m.enterEditMode(*item, folderPath)
+	m = m.enterEditMode(*item, m.breadcrumb)
 	return m, nil
 }
 
@@ -2990,7 +2989,7 @@ func (m Model) showWorkflowStepResponse() (Model, tea.Cmd) {
 	if execution != nil {
 		m.lastTestResult = execution.TestResult
 	}
-	m.lastExecutedItemID = m.collection.Info.Name + "/" + step.Request
+	m.lastExecutedItemID = m.workflowStepItemID(step.Request)
 	m.responsePanelItem = nil
 	m.scrollOffset = 0
 	m.previousMode = ModeWorkflowDetail
@@ -3044,7 +3043,7 @@ func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
 // the active workflow unchanged, so a partial run never replaces the full
 // script that later runs and saves use.
 func (m Model) runWorkflowScript(wf *workflow.Workflow, script, runLabel string) (Model, tea.Cmd) {
-	if m.collection == nil {
+	if m.workflowCollection() == nil {
 		m.statusMessage = "Load a collection first"
 		return m, nil
 	}
@@ -3096,7 +3095,7 @@ func (m Model) launchRun(environment *postman.Environment, run func(*workflow.Ru
 	progressChan := make(chan workflow.ExecutionState, workflowProgressBuffer)
 	m.workflowChan = progressChan
 
-	runner := workflow.NewRunner(m.collection, environment, m.executor)
+	runner := workflow.NewRunner(m.workflowCollection(), environment, m.executor)
 
 	return m, tea.Batch(
 		func() tea.Msg {

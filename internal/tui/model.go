@@ -238,10 +238,14 @@ type Model struct {
 	pendingFolderRun *pendingFolderRun
 	// runSettings are the :runopts options applied to every workflow/folder run.
 	runSettings runSettings
-	// savedWorkflowIDs is the set of workflow IDs on disk for savedWorkflowIDsCollection,
-	// cached so the requests list can mark folders that have a saved workflow.
-	savedWorkflowIDs           map[string]bool
+	// savedWorkflowIDs maps each collection shown by savedWorkflowIDsCollection (one, or
+	// every active one in the combined view) to its workflow IDs on disk, cached so the
+	// requests list can mark folders that have a saved workflow.
+	savedWorkflowIDs           map[string]map[string]bool
 	savedWorkflowIDsCollection string
+	// combinedWorkflowCollection is the collection whose workflows the workflow views use
+	// in the combined view (see workflowCollectionName).
+	combinedWorkflowCollection string
 
 	savedResponses        []postman.SavedResponse
 	savedResponseCursor   int

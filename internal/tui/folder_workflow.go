@@ -73,13 +73,18 @@ func (m Model) runFolderAsWorkflow(run pendingFolderRun) (Model, tea.Cmd) {
 		m.statusMessage = "Load a collection first"
 		return m, nil
 	}
-
-	generated, err := workflow.NewFolderWorkflow(run.folder, run.folderPath)
+	collection, folderPath := m.collectionScope(run.folderPath)
+	m, err := m.scopeWorkflowsTo(collection.Info.Name)
 	if err != nil {
 		return m.folderRunError(err), nil
 	}
 
-	collectionPath, saved, err := m.discoverCollectionWorkflows()
+	generated, err := m.generateFolderWorkflow(collection, run.folder, folderPath)
+	if err != nil {
+		return m.folderRunError(err), nil
+	}
+
+	collectionPath, saved, err := m.discoverWorkflows(collection.Info.Name)
 	if err != nil {
 		return m.folderRunError(err), nil
 	}
@@ -89,12 +94,12 @@ func (m Model) runFolderAsWorkflow(run pendingFolderRun) (Model, tea.Cmd) {
 		if err := workflow.SaveWorkflow(wf, workflow.WorkflowPath(collectionPath, wf.ID)); err != nil {
 			return m.folderRunError(fmt.Errorf("failed to save workflow: %w", err)), nil
 		}
-		if _, saved, err = m.discoverCollectionWorkflows(); err != nil {
+		if _, saved, err = m.discoverWorkflows(collection.Info.Name); err != nil {
 			return m.folderRunError(err), nil
 		}
 	}
 	m.workflows = saved
-	m = m.cacheSavedWorkflowIDs(saved)
+	m = m.cacheSavedWorkflowIDs(collection.Info.Name, saved)
 
 	m, cmd := m.startWorkflow(wf)
 	if cmd != nil {
@@ -122,9 +127,18 @@ func folderRunStatus(wf *workflow.Workflow, resolution workflow.FolderWorkflowRe
 	}
 }
 
-// discoverCollectionWorkflows loads every workflow saved next to the current collection file.
-func (m Model) discoverCollectionWorkflows() (string, []*workflow.Workflow, error) {
-	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
+// generateFolderWorkflow generates the workflow running folder, at folderPath
+// inside collection. A combined view group folder is a whole collection.
+func (m Model) generateFolderWorkflow(collection *postman.Collection, folder postman.Item, folderPath []string) (*workflow.Workflow, error) {
+	if len(folderPath) == 0 {
+		return workflow.NewCollectionWorkflow(collection)
+	}
+	return workflow.NewFolderWorkflow(folder, folderPath)
+}
+
+// discoverWorkflows loads every workflow saved next to the named collection's file.
+func (m Model) discoverWorkflows(collectionName string) (string, []*workflow.Workflow, error) {
+	collectionPath, exists := m.parser.GetCollectionPath(collectionName)
 	if !exists {
 		return "", nil, errCollectionPathNotFound
 	}
@@ -141,29 +155,49 @@ func findWorkflowByID(wfs []*workflow.Workflow, id string) *workflow.Workflow {
 	return nil
 }
 
-func (m Model) cacheSavedWorkflowIDs(wfs []*workflow.Workflow) Model {
-	m.savedWorkflowIDs = make(map[string]bool, len(wfs))
+func (m Model) cacheSavedWorkflowIDs(collectionName string, wfs []*workflow.Workflow) Model {
+	ids := make(map[string]bool, len(wfs))
 	for _, wf := range wfs {
-		m.savedWorkflowIDs[wf.ID] = true
+		ids[wf.ID] = true
+	}
+	if m.savedWorkflowIDs == nil {
+		m.savedWorkflowIDs = make(map[string]map[string]bool)
+	}
+	m.savedWorkflowIDs[collectionName] = ids
+	return m
+}
+
+// ensureSavedWorkflowIDs reloads the saved-workflow cache when the current collection changed.
+// A collection without a file on disk simply has no saved workflows.
+func (m Model) ensureSavedWorkflowIDs() Model {
+	if m.collection == nil || m.savedWorkflowIDsCollection == m.collection.Info.Name {
+		return m
+	}
+	m.savedWorkflowIDs = make(map[string]map[string]bool)
+	for _, name := range m.shownCollectionNames() {
+		_, wfs, err := m.discoverWorkflows(name)
+		if err != nil && !errors.Is(err, errCollectionPathNotFound) {
+			logger.LogError("ensureSavedWorkflowIDs", name, err)
+		}
+		m = m.cacheSavedWorkflowIDs(name, wfs)
 	}
 	m.savedWorkflowIDsCollection = m.collection.Info.Name
 	return m
 }
 
-// ensureSavedWorkflowIDs reloads the saved-workflow cache when the current collection changed.
-// A collection without a file on disk (e.g. the merged view) simply has no saved workflows.
-func (m Model) ensureSavedWorkflowIDs() Model {
-	if m.collection == nil || m.savedWorkflowIDsCollection == m.collection.Info.Name {
-		return m
+// shownCollectionNames are the collections the requests view shows.
+func (m Model) shownCollectionNames() []string {
+	if m.isViewingMergedCollection() {
+		return m.parser.ActiveCollections()
 	}
-	_, wfs, err := m.discoverCollectionWorkflows()
-	if err != nil && !errors.Is(err, errCollectionPathNotFound) {
-		logger.LogError("ensureSavedWorkflowIDs", m.collection.Info.Name, err)
-	}
-	return m.cacheSavedWorkflowIDs(wfs)
+	return []string{m.collection.Info.Name}
 }
 
 // hasSavedFolderWorkflow reports whether the folder named name inside parentPath has a saved workflow.
 func (m Model) hasSavedFolderWorkflow(parentPath []string, name string) bool {
-	return m.savedWorkflowIDs[workflow.FolderWorkflowID(append(slices.Clone(parentPath), name))]
+	collection, folderPath := m.collectionScope(append(slices.Clone(parentPath), name))
+	if len(folderPath) == 0 {
+		return false
+	}
+	return m.savedWorkflowIDs[collection.Info.Name][workflow.FolderWorkflowID(folderPath)]
 }
