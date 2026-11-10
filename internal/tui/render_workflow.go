@@ -130,7 +130,7 @@ func (m Model) renderWorkflowDetail() string {
 		runStateStr := ""
 		if m.workflowState.StepIndex != nil {
 			if ss, ok := m.workflowState.StepIndex[step.ID]; ok && ss.Status != workflow.StatusPending {
-				icon := stepIcon(ss.Status)
+				icon := workflow.StatusIcon(ss.Status)
 				runStateStr = "  " + workflowStatusStyle(ss.Status).Render(icon+" "+ss.Status)
 				if ss.Total > 1 {
 					runStateStr += dimStyle.Render(fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total))
@@ -312,7 +312,7 @@ func runReportStepLine(ss *workflow.StepState, showIteration bool, style runStyl
 	}
 	return fmt.Sprintf("%s%s %-20s %s%s",
 		runReportStepIndent,
-		stepIcon(ss.Status),
+		workflow.StatusIcon(ss.Status),
 		stepID,
 		style.status(ss.Status, ss.Status),
 		style.subtle(detail),
@@ -392,23 +392,6 @@ func workflowStatusStyle(status string) lipgloss.Style {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	default:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	}
-}
-
-func stepIcon(status string) string {
-	switch status {
-	case workflow.StatusSuccess:
-		return "✓"
-	case workflow.StatusFailed:
-		return "✗"
-	case workflow.StatusRunning:
-		return "▶"
-	case workflow.StatusSkipped:
-		return "−"
-	case workflow.StatusStopped:
-		return "■"
-	default:
-		return "○"
 	}
 }
 

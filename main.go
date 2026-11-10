@@ -12,22 +12,17 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	args := os.Args[1:]
+	if !isTUIInvocation(args) {
+		os.Exit(runCLI(args, os.Stdout, os.Stderr))
+	}
+	if err := runTUI(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(exitRunFailed)
 	}
 }
 
-func run() error {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "-m", "--merge":
-			return runMerge(os.Args[2:])
-		case "alias":
-			return runAlias(os.Args[2:])
-		}
-	}
-
+func runTUI() error {
 	logPath := flag.String("log", "", "path to log file for debugging file operations")
 	flag.Parse()
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	internalhttp "postOffice/internal/http"
+	"postOffice/internal/script"
 )
 
 // Workflow is a single YAML file describing execution steps and inline JavaScript.
@@ -57,6 +58,8 @@ type StepRunResult struct {
 	Response  *StepResponse   // alias for Last
 	Responses []*StepResponse // all repetition results
 	Last      *StepResponse   // last repetition result
+	// NextRequest is the last attempt's pm.execution.setNextRequest decision.
+	NextRequest script.NextRequest
 }
 
 // Status constants for steps and the overall workflow.
@@ -69,6 +72,24 @@ const (
 	StatusStopped = "stopped"
 )
 
+// StatusIcon returns the one-character icon shown for a step or run status.
+func StatusIcon(status string) string {
+	switch status {
+	case StatusSuccess:
+		return "✓"
+	case StatusFailed:
+		return "✗"
+	case StatusRunning:
+		return "▶"
+	case StatusSkipped:
+		return "−"
+	case StatusStopped:
+		return "■"
+	default:
+		return "○"
+	}
+}
+
 // StepState tracks the runtime state of a single step.
 type StepState struct {
 	ID           string
@@ -78,6 +99,9 @@ type StepState struct {
 	Total        int                    // planned repeat count
 	Iteration    int                    // run iteration this step belongs to (1-based)
 	LastResponse *internalhttp.Response `json:"-"`
+	// LastResult holds the last attempt's tests, script errors and console
+	// output; nil until the step's request has run.
+	LastResult *script.TestResult `json:"-"`
 }
 
 // RunSummary counts a run's outcomes, like the totals at the end of a

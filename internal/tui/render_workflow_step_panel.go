@@ -59,7 +59,7 @@ func (m Model) buildWorkflowStepListLines(height int) []string {
 			status = ss.Status
 		}
 
-		icon := workflowStatusStyle(status).Render(stepIcon(status))
+		icon := workflowStatusStyle(status).Render(workflow.StatusIcon(status))
 		if i == m.workflowStepCursor {
 			lines = append(lines, selectedItemStyle.Render("> "+icon+" "+step.ID))
 		} else {

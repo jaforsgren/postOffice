@@ -252,8 +252,13 @@ Variable mutations made in the workflow script are immediately visible to subseq
   response: Response;  // alias of last
   last: Response;      // final execution result
   responses: Response[]; // all results when repeat > 1
+  nextRequest?: string | null; // the request's pm.execution.setNextRequest target, null for setNextRequest(null);
+                               // absent when it made no such call
+  nextStep?: string;   // ID of the step nextRequest names (by request name, id or path), when it is in this workflow
 }
 ```
+
+Folder runs (`ctrl+e` on a folder, `postOffice run --folder`) use these to behave like Postman's Collection Runner: their generated script jumps to `nextStep`, stops on `null`, fails when the target is not in the run, and stops after 1000 requests. Hand-written workflows can use them the same way or ignore them. A saved folder workflow still using the older plain sequential script is regenerated the next time the folder runs, unless it was edited.
 
 ### Step status
 
@@ -396,7 +401,7 @@ Pressing `ctrl+e` on that folder again runs the saved workflow instead of creati
 
 Limitations:
 
-- A folder or request whose name contains `/` cannot be a step, because step paths are split on `/`. Such a folder is rejected with an error.
+- Step paths are split on `/`. A `/` inside a folder or request name is written `\/` (and a `\` as `\\`), e.g. `request: NEGATIVE/unknown policy → 403\/404`; generated folder workflows escape names automatically.
 - Collection-level and folder-level scripts do not run. Only each request's own scripts do. Postman runner flow control (`pm.execution.setNextRequest`, `pm.execution.skipRequest`) is not supported, so requests always run strictly in order. Steps that need flow control should be scripted in the workflow `script` with `wf.run`, `wf.skip` and `wf.stop`.
 - The whole workflow script shares the runtime's 30-second timeout, so long folders may time out.
 

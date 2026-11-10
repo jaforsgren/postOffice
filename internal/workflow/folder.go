@@ -3,14 +3,16 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
 
 	"postOffice/internal/postman"
 )
 
-// RequestPathSeparator separates folder and request names in a step's request path.
-const RequestPathSeparator = "/"
+// MaxFolderRunRequests stops a folder run whose pm.execution.setNextRequest
+// calls loop forever (a retry that never becomes ready, a cycle of requests).
+const MaxFolderRunRequests = 1000
 
 const (
 	slugSeparator         = "-"
@@ -19,18 +21,14 @@ const (
 	folderWorkflowVersion = 1
 )
 
-// ErrFolderHasNoRequests is returned when a folder (including its subfolders) holds no requests.
-var ErrFolderHasNoRequests = errors.New("folder contains no requests")
-
-// UnaddressableNameError reports a folder or request whose name contains RequestPathSeparator.
-// Step request paths are resolved by splitting on that separator, so such an item cannot be a step.
-type UnaddressableNameError struct {
-	Name string
-}
-
-func (e *UnaddressableNameError) Error() string {
-	return fmt.Sprintf("%q contains %q, so a workflow step cannot address it", e.Name, RequestPathSeparator)
-}
+var (
+	// ErrFolderHasNoRequests is returned when a folder (including its subfolders) holds no requests.
+	ErrFolderHasNoRequests = errors.New("folder contains no requests")
+	// ErrFolderNotFound is returned when a folder path does not exist in the collection.
+	ErrFolderNotFound = errors.New("folder not found")
+	// ErrRequestNotFound is returned when a request path does not name a request in the collection.
+	ErrRequestNotFound = errors.New("request not found")
+)
 
 // FolderWorkflowResolution describes which workflow a folder run uses and whether it must be saved.
 type FolderWorkflowResolution int
@@ -55,7 +53,7 @@ func (r FolderWorkflowResolution) NeedsSave() bool {
 
 // FolderWorkflowName returns the workflow name for a folder: its full path, e.g. "policies/TEST".
 func FolderWorkflowName(folderPath []string) string {
-	return strings.Join(folderPath, RequestPathSeparator)
+	return postman.JoinItemPath(folderPath...)
 }
 
 // FolderWorkflowID returns the stable workflow ID for a folder, e.g. "policies/TEST" → "policies-test".
@@ -66,37 +64,91 @@ func FolderWorkflowID(folderPath []string) string {
 // NewFolderWorkflow generates a workflow that runs every request under folder in collection order,
 // depth-first through subfolders. folderPath is the folder's full path, including its own name.
 func NewFolderWorkflow(folder postman.Item, folderPath []string) (*Workflow, error) {
-	for _, name := range folderPath {
-		if strings.Contains(name, RequestPathSeparator) {
-			return nil, &UnaddressableNameError{Name: name}
+	name := FolderWorkflowName(folderPath)
+	return newRunWorkflow(folder.Items, folderPath, FolderWorkflowID(folderPath), name,
+		fmt.Sprintf("Runs every request in folder %q in collection order", name))
+}
+
+// NewCollectionWorkflow generates a workflow that runs every request in the collection in order,
+// like NewFolderWorkflow does for one folder.
+func NewCollectionWorkflow(collection *postman.Collection) (*Workflow, error) {
+	name := collection.Info.Name
+	return newRunWorkflow(collection.Items, nil, slugify(name, fallbackFolderSlug), name,
+		fmt.Sprintf("Runs every request in collection %q in collection order", name))
+}
+
+// NewFolderPathWorkflow generates the folder workflow for the folder at folderPath in collection.
+func NewFolderPathWorkflow(collection *postman.Collection, folderPath []string) (*Workflow, error) {
+	items := collection.Items
+	for depth, name := range folderPath {
+		folder := findItem(items, name)
+		if folder == nil || folder.IsRequest() {
+			return nil, fmt.Errorf("%w: %q", ErrFolderNotFound, FolderWorkflowName(folderPath[:depth+1]))
+		}
+		items = folder.Items
+	}
+	return NewFolderWorkflow(postman.Item{Name: FolderWorkflowName(folderPath), Items: items}, folderPath)
+}
+
+// NewRequestWorkflow generates a one-step workflow that runs the request at requestPath
+// ("Folder/Sub/Request", with "\/" for a "/" inside a name) in collection.
+func NewRequestWorkflow(collection *postman.Collection, requestPath string) (*Workflow, error) {
+	parts := postman.SplitItemPath(requestPath)
+	items := collection.Items
+	var request *postman.Item
+	for depth, name := range parts {
+		request = findItem(items, name)
+		if request == nil || (depth < len(parts)-1 && request.IsRequest()) {
+			return nil, fmt.Errorf("%w: %q", ErrRequestNotFound, requestPath)
+		}
+		items = request.Items
+	}
+	if !request.IsRequest() {
+		return nil, fmt.Errorf("%w: %q is a folder", ErrRequestNotFound, requestPath)
+	}
+
+	steps := []Step{{ID: slugify(request.Name, fallbackStepSlug), Request: requestPath}}
+	return &Workflow{
+		ID:          steps[0].ID,
+		Name:        requestPath,
+		Description: fmt.Sprintf("Runs request %q", requestPath),
+		Version:     folderWorkflowVersion,
+		Steps:       steps,
+		Script:      PartialScript(steps, 0, len(steps)-1),
+	}, nil
+}
+
+func findItem(items []postman.Item, name string) *postman.Item {
+	for i := range items {
+		if items[i].Name == name {
+			return &items[i]
 		}
 	}
+	return nil
+}
 
-	var requestPaths [][]string
-	if err := collectRequestPaths(folder.Items, folderPath, &requestPaths); err != nil {
-		return nil, err
-	}
-	if len(requestPaths) == 0 {
-		return nil, fmt.Errorf("%w: %s", ErrFolderHasNoRequests, FolderWorkflowName(folderPath))
+func newRunWorkflow(items []postman.Item, folderPath []string, id, name, description string) (*Workflow, error) {
+	refs := RequestRefs(items, folderPath)
+	if len(refs) == 0 {
+		return nil, fmt.Errorf("%w: %s", ErrFolderHasNoRequests, name)
 	}
 
-	steps := make([]Step, 0, len(requestPaths))
-	usedIDs := make(map[string]bool, len(requestPaths))
-	for _, path := range requestPaths {
+	steps := make([]Step, 0, len(refs))
+	usedIDs := make(map[string]bool, len(refs))
+	for _, ref := range refs {
 		steps = append(steps, Step{
-			ID:      uniqueStepID(path[len(path)-1], usedIDs),
-			Request: strings.Join(path, RequestPathSeparator),
+			ID:      uniqueStepID(ref.Item.Name, usedIDs),
+			Request: ref.Path,
 		})
 	}
 
-	name := FolderWorkflowName(folderPath)
 	return &Workflow{
-		ID:          FolderWorkflowID(folderPath),
+		ID:          id,
 		Name:        name,
-		Description: fmt.Sprintf("Runs every request in folder %q in collection order", name),
+		Description: description,
 		Version:     folderWorkflowVersion,
 		Steps:       steps,
-		Script:      sequentialScript(steps),
+		Script:      folderRunScript(steps),
 	}, nil
 }
 
@@ -106,7 +158,7 @@ func ResolveFolderWorkflow(saved, generated *Workflow) (*Workflow, FolderWorkflo
 	switch {
 	case saved == nil:
 		return generated, FolderWorkflowCreated
-	case sameStepRequests(saved.Steps, generated.Steps):
+	case sameStepRequests(saved.Steps, generated.Steps) && !isLegacyFolderWorkflow(saved):
 		return saved, FolderWorkflowReused
 	case isUnmodifiedFolderWorkflow(saved):
 		return generated, FolderWorkflowRegenerated
@@ -115,21 +167,27 @@ func ResolveFolderWorkflow(saved, generated *Workflow) (*Workflow, FolderWorkflo
 	}
 }
 
-func collectRequestPaths(items []postman.Item, parentPath []string, out *[][]string) error {
-	for _, item := range items {
-		if strings.Contains(item.Name, RequestPathSeparator) {
-			return &UnaddressableNameError{Name: item.Name}
-		}
+// RequestRef is a request together with the "Folder/Sub/Request" path that runs and workflow
+// steps address it by. Names containing "/" are escaped in Path (see postman.JoinItemPath).
+type RequestRef struct {
+	Path string
+	Item *postman.Item
+}
+
+// RequestRefs lists every request under items depth-first in collection order. parentPath is the
+// folder path items live in, so returned paths are complete.
+func RequestRefs(items []postman.Item, parentPath []string) []RequestRef {
+	var refs []RequestRef
+	for i := range items {
+		item := &items[i]
 		itemPath := append(append([]string{}, parentPath...), item.Name)
 		if item.IsRequest() {
-			*out = append(*out, itemPath)
+			refs = append(refs, RequestRef{Path: postman.JoinItemPath(itemPath...), Item: item})
 			continue
 		}
-		if err := collectRequestPaths(item.Items, itemPath, out); err != nil {
-			return err
-		}
+		refs = append(refs, RequestRefs(item.Items, itemPath)...)
 	}
-	return nil
+	return refs
 }
 
 func uniqueStepID(requestName string, usedIDs map[string]bool) string {
@@ -142,7 +200,38 @@ func uniqueStepID(requestName string, usedIDs map[string]bool) string {
 	return id
 }
 
-func sequentialScript(steps []Step) string {
+// folderRunScript runs steps in order like Postman's Collection Runner: a step whose request calls
+// pm.execution.setNextRequest jumps to that step, null ends the run, and a target outside the run
+// fails it.
+func folderRunScript(steps []Step) string {
+	ids := make([]string, len(steps))
+	for i, step := range steps {
+		ids[i] = strconv.Quote(step.ID)
+	}
+	return fmt.Sprintf(`export default async function(wf, pm) {
+  const steps = [%s];
+  let next = 0;
+  for (let runs = 0; next < steps.length; runs++) {
+    if (runs >= %d) {
+      wf.fail("stopped after %d requests: likely a pm.execution.setNextRequest loop");
+    }
+    const result = await wf.run(steps[next]);
+    if (result.nextRequest === undefined) {
+      next++;
+    } else if (result.nextRequest === null) {
+      break;
+    } else if (result.nextStep === undefined) {
+      wf.fail("setNextRequest target " + JSON.stringify(result.nextRequest) + " is not in this run");
+    } else {
+      next = steps.indexOf(result.nextStep);
+    }
+  }
+}`, strings.Join(ids, ", "), MaxFolderRunRequests, MaxFolderRunRequests)
+}
+
+// legacyFolderRunScript is the plain sequential script folder workflows were generated with before
+// they followed setNextRequest. Saved workflows still using it are regenerated, not kept.
+func legacyFolderRunScript(steps []Step) string {
 	return PartialScript(steps, 0, len(steps)-1)
 }
 
@@ -158,15 +247,28 @@ func sameStepRequests(a, b []Step) bool {
 	return true
 }
 
-// isUnmodifiedFolderWorkflow reports whether wf is still exactly what NewFolderWorkflow produces for
-// its own steps: a plain sequential script and no per-step scripts.
+// isUnmodifiedFolderWorkflow reports whether wf is still exactly what NewFolderWorkflow produces, or
+// produced before folder runs followed setNextRequest, for its own steps: a generated script and no
+// per-step scripts.
 func isUnmodifiedFolderWorkflow(wf *Workflow) bool {
+	return hasNoStepScripts(wf) && (hasScript(wf, folderRunScript(wf.Steps)) || hasScript(wf, legacyFolderRunScript(wf.Steps)))
+}
+
+func isLegacyFolderWorkflow(wf *Workflow) bool {
+	return hasNoStepScripts(wf) && hasScript(wf, legacyFolderRunScript(wf.Steps))
+}
+
+func hasNoStepScripts(wf *Workflow) bool {
 	for _, step := range wf.Steps {
 		if step.PreScript != "" || step.PostScript != "" {
 			return false
 		}
 	}
-	return strings.TrimSpace(wf.Script) == strings.TrimSpace(sequentialScript(wf.Steps))
+	return true
+}
+
+func hasScript(wf *Workflow, script string) bool {
+	return strings.TrimSpace(wf.Script) == strings.TrimSpace(script)
 }
 
 // slugify lowercases s and joins its runs of letters and digits with slugSeparator.

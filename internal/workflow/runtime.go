@@ -21,7 +21,6 @@ const (
 	// defaultScriptTimeout bounds each stretch of workflow script between steps.
 	// Time inside steps and wf.sleep is not counted: requests bound themselves.
 	defaultScriptTimeout = 30 * time.Second
-	requestPathSeparator = "/"
 	// maxSelfRetries stops a request whose script always calls
 	// pm.execution.setNextRequest on itself from looping forever.
 	maxSelfRetries = 100
@@ -477,6 +476,7 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 
 	var responses []*StepResponse
 	var last *StepResponse
+	var nextRequest script.NextRequest
 	// The last attempt decides the status and the counted tests: with
 	// repeat/until, earlier attempts failing while a poll waits is expected.
 	status := StatusSuccess
@@ -494,6 +494,12 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 			return nil, execErr
 		}
 		lastScripts = outcome.scripts
+		ss.LastResult = outcome.scripts
+		// A jump to the request itself was already retried here; only jumps
+		// elsewhere go to the workflow script (folder runs follow them).
+		if outcome.scripts != nil && !outcome.retrySelf {
+			nextRequest = outcome.scripts.NextRequest
+		}
 		stepResp := outcome.step
 		responses = append(responses, stepResp)
 		last = stepResp
@@ -522,10 +528,11 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 	}
 
 	return &StepRunResult{
-		Status:    status,
-		Response:  last,
-		Responses: responses,
-		Last:      last,
+		Status:      status,
+		Response:    last,
+		Responses:   responses,
+		Last:        last,
+		NextRequest: nextRequest,
 	}, nil
 }
 
@@ -541,7 +548,8 @@ func (r *Runner) outsideScriptTimeout(wait func()) {
 
 // executeItemWithSelfRetries re-sends the request while its scripts call
 // pm.execution.setNextRequest on itself, as a Postman Runner does for polling
-// reads. Jumps to other requests are ignored: the workflow script owns the order.
+// reads. Jumps to other requests are left to the workflow script, which gets
+// them as the step result's nextRequest (generated folder runs follow them).
 func (r *Runner) executeItemWithSelfRetries(item *postman.Item, requestPath string) (itemOutcome, string, error) {
 	for attempt := 0; ; attempt++ {
 		outcome, err := r.executeItem(item, requestPath)
@@ -557,6 +565,26 @@ func (r *Runner) executeItemWithSelfRetries(item *postman.Item, requestPath stri
 			return outcome, StatusFailed, nil
 		}
 	}
+}
+
+// nextStepFor finds the step a pm.execution.setNextRequest target refers to:
+// first by request name, then by Postman request id or request path, in step
+// order. It reports false when no step in this workflow matches.
+func (r *Runner) nextStepFor(target string) (string, bool) {
+	for _, step := range r.wfSteps {
+		if requestNameOf(step.Request) == target {
+			return step.ID, true
+		}
+	}
+	for _, step := range r.wfSteps {
+		if step.Request == target {
+			return step.ID, true
+		}
+		if item, err := r.resolveRequest(step.Request); err == nil && item.ID != "" && item.ID == target {
+			return step.ID, true
+		}
+	}
+	return "", false
 }
 
 // recordOutcome logs a request's test results and console output and returns
@@ -604,8 +632,14 @@ func (r *Runner) failStep(ss *StepState) {
 
 // folderPathOf returns the folders of a "folder/sub/request" path.
 func folderPathOf(requestPath string) []string {
-	parts := strings.Split(requestPath, requestPathSeparator)
+	parts := postman.SplitItemPath(requestPath)
 	return parts[:len(parts)-1]
+}
+
+// requestNameOf returns the request name of a "folder/sub/request" path.
+func requestNameOf(requestPath string) string {
+	parts := postman.SplitItemPath(requestPath)
+	return parts[len(parts)-1]
 }
 
 func (r *Runner) findRequestPath(stepID string) string {
@@ -648,7 +682,7 @@ func (r *Runner) resolveRequest(path string) (*postman.Item, error) {
 		return nil, fmt.Errorf("no collection loaded")
 	}
 
-	parts := strings.Split(path, requestPathSeparator)
+	parts := postman.SplitItemPath(path)
 	current := r.collection.Items
 
 	for depth, part := range parts {
@@ -868,7 +902,26 @@ func (r *Runner) resultToJS(result *StepRunResult) goja.Value {
 	obj.Set("response", lastJS)
 	obj.Set("last", lastJS)
 	obj.Set("responses", r.vm.ToValue(responsesJS))
+	r.setNextRequestJS(obj, result.NextRequest)
 	return obj
+}
+
+// setNextRequestJS exposes a step's setNextRequest decision to the workflow
+// script: nextRequest is undefined when the step made none, null for
+// setNextRequest(null), else the target as given; nextStep is the matching
+// step's ID when the target is part of this workflow.
+func (r *Runner) setNextRequestJS(obj *goja.Object, next script.NextRequest) {
+	if !next.Set {
+		return
+	}
+	if next.Name == "" {
+		obj.Set("nextRequest", goja.Null())
+		return
+	}
+	obj.Set("nextRequest", next.Name)
+	if stepID, ok := r.nextStepFor(next.Name); ok {
+		obj.Set("nextStep", stepID)
+	}
 }
 
 func (r *Runner) emptyResultJS(status string) goja.Value {

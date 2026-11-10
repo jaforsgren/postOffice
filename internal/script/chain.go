@@ -1,17 +1,13 @@
 package script
 
 import (
-	"strings"
-
 	"postOffice/internal/postman"
 )
-
-const requestPathSeparator = "/"
 
 // RequestPath is the "folder/sub/request" path that identifies a request
 // without a Postman id, in pm.info.requestId.
 func RequestPath(folderPath []string, name string) string {
-	return strings.Join(append(append([]string{}, folderPath...), name), requestPathSeparator)
+	return postman.JoinItemPath(append(append([]string{}, folderPath...), name)...)
 }
 
 // RequestScope identifies the request a script chain runs for and where its

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"postOffice/internal/postman"
@@ -11,7 +12,7 @@ import (
 func TestAliasAdd_UnknownCommand(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	err := aliasAdd([]string{"my-alias", "bogus", "a.json"})
+	err := aliasAdd(io.Discard, []string{"my-alias", "bogus", "a.json"})
 	if err == nil {
 		t.Fatal("expected error for unknown headless command")
 	}
@@ -20,7 +21,7 @@ func TestAliasAdd_UnknownCommand(t *testing.T) {
 func TestAliasAdd_MissingArgs(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if err := aliasAdd([]string{"only-name"}); err == nil {
+	if err := aliasAdd(io.Discard, []string{"only-name"}); err == nil {
 		t.Fatal("expected error when command is missing")
 	}
 }
@@ -28,7 +29,7 @@ func TestAliasAdd_MissingArgs(t *testing.T) {
 func TestAliasRemove_NotFound(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if err := aliasRemove([]string{"does-not-exist"}); err == nil {
+	if err := aliasRemove(io.Discard, []string{"does-not-exist"}); err == nil {
 		t.Fatal("expected error removing a nonexistent alias")
 	}
 }
@@ -36,7 +37,7 @@ func TestAliasRemove_NotFound(t *testing.T) {
 func TestAliasRun_NotFound(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if err := aliasRun([]string{"does-not-exist"}); err == nil {
+	if err := aliasRun(io.Discard, []string{"does-not-exist"}); err == nil {
 		t.Fatal("expected error running a nonexistent alias")
 	}
 }
@@ -44,19 +45,19 @@ func TestAliasRun_NotFound(t *testing.T) {
 func TestAliasAddListRemove(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if err := aliasAdd([]string{"my-merge", "merge", "a.json", "b.json", "--forceMerge"}); err != nil {
+	if err := aliasAdd(io.Discard, []string{"my-merge", "merge", "a.json", "b.json", "--forceMerge"}); err != nil {
 		t.Fatalf("unexpected error adding alias: %v", err)
 	}
 
-	if err := aliasList(); err != nil {
+	if err := aliasList(io.Discard); err != nil {
 		t.Fatalf("unexpected error listing aliases: %v", err)
 	}
 
-	if err := aliasRemove([]string{"my-merge"}); err != nil {
+	if err := aliasRemove(io.Discard, []string{"my-merge"}); err != nil {
 		t.Fatalf("unexpected error removing alias: %v", err)
 	}
 
-	if err := aliasRun([]string{"my-merge"}); err == nil {
+	if err := aliasRun(io.Discard, []string{"my-merge"}); err == nil {
 		t.Fatal("expected error running an alias removed earlier")
 	}
 }
@@ -79,11 +80,11 @@ func TestAliasRun_ExecutesMerge(t *testing.T) {
 		t.Fatalf("failed to write file2: %v", err)
 	}
 
-	if err := aliasAdd([]string{"test-merge", "merge", file1, file2, "--forceMerge", "-o", outFile}); err != nil {
+	if err := aliasAdd(io.Discard, []string{"test-merge", "merge", file1, file2, "--forceMerge", "-o", outFile}); err != nil {
 		t.Fatalf("unexpected error adding alias: %v", err)
 	}
 
-	if err := aliasRun([]string{"test-merge"}); err != nil {
+	if err := aliasRun(io.Discard, []string{"test-merge"}); err != nil {
 		t.Fatalf("unexpected error running alias: %v", err)
 	}
 
@@ -104,10 +105,10 @@ func TestAliasRun_ExecutesMerge(t *testing.T) {
 func TestRunAlias_Dispatch(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if err := runAlias(nil); err == nil {
+	if err := runAlias(io.Discard, nil); err == nil {
 		t.Fatal("expected error when no subcommand is given")
 	}
-	if err := runAlias([]string{"bogus-subcommand"}); err == nil {
+	if err := runAlias(io.Discard, []string{"bogus-subcommand"}); err == nil {
 		t.Fatal("expected error for unknown alias subcommand")
 	}
 }
