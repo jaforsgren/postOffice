@@ -191,6 +191,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if key == "esc" || key == "h" || key == "backspace" || key == "q" {
 				return m.handleNormalMode(msg)
 			}
+			if key == resendStepKey && m.mode == ModeResponse && m.previousMode == ModeWorkflowDetail {
+				return m.handleNormalMode(msg)
+			}
 
 			switch m.mode {
 			case ModeResponse:
@@ -212,6 +215,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	return m, tea.Batch(cmds...)
 }
+
+// resendStepKey reruns the workflow step whose response is on screen.
+const resendStepKey = "ctrl+r"
 
 func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
@@ -2847,21 +2853,13 @@ func (m Model) openWorkflowDetail(wf *workflow.Workflow) (Model, tea.Cmd) {
 	if steps == 0 {
 		m.statusMessage = fmt.Sprintf("%s — no steps defined  <:wf new> to scaffold", wf.Name)
 	} else {
-		m.statusMessage = fmt.Sprintf("%s — %d step(s)  j/k navigate  u/f/r partial run  R full run  ctrl+r view response", wf.Name, steps)
+		m.statusMessage = fmt.Sprintf("%s — %d step(s)  j/k navigate  u/f/r partial run  ctrl+r/R full run  enter response  tab step panel", wf.Name, steps)
 	}
 	return m, nil
 }
 
 // startWorkflowPartial runs a contiguous range of steps [fromIdx, toIdx] without the workflow's script logic.
 func (m Model) startWorkflowPartial(wf *workflow.Workflow, fromIdx, toIdx int) (Model, tea.Cmd) {
-	if m.collection == nil {
-		m.statusMessage = "Load a collection first"
-		return m, nil
-	}
-
-	partialWf := *wf
-	partialWf.Script = workflow.PartialScript(wf.Steps, fromIdx, toIdx)
-
 	var rangeDesc string
 	switch {
 	case fromIdx == toIdx:
@@ -2871,9 +2869,8 @@ func (m Model) startWorkflowPartial(wf *workflow.Workflow, fromIdx, toIdx int) (
 	default:
 		rangeDesc = fmt.Sprintf("from: %s", wf.Steps[fromIdx].ID)
 	}
-	m.statusMessage = fmt.Sprintf("Running %s (%s)", wf.Name, rangeDesc)
-
-	return m.startWorkflow(&partialWf)
+	runLabel := fmt.Sprintf("%s (%s)", wf.Name, rangeDesc)
+	return m.runWorkflowScript(wf, workflow.PartialScript(wf.Steps, fromIdx, toIdx), runLabel)
 }
 
 // resolveStepItem finds the postman.Item for a workflow step by traversing the collection.
@@ -2971,11 +2968,8 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 
 // showWorkflowStepResponse opens the Response view for the step's last executed response.
 func (m Model) showWorkflowStepResponse() (Model, tea.Cmd) {
-	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
-		m.statusMessage = "No step selected"
-		return m, nil
-	}
-	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
+	step, ok := m.selectedWorkflowStep()
+	if !ok {
 		m.statusMessage = "No step selected"
 		return m, nil
 	}
@@ -2984,24 +2978,24 @@ func (m Model) showWorkflowStepResponse() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	step := m.activeWorkflow.Steps[m.workflowStepCursor]
-	itemID := m.collection.Info.Name + "/" + step.Request
-
-	exec, exists := m.requestExecutions[itemID]
-	if !exists || exec.Response == nil {
+	response, execution := m.selectedStepResponse()
+	if response == nil {
 		m.statusMessage = "No response for this step. Run the workflow first."
 		return m, nil
 	}
 
-	m.lastResponse = exec.Response
-	m.lastTestResult = exec.TestResult
-	m.lastExecutedItemID = itemID
+	m.lastResponse = response
+	m.lastTestResult = nil
+	if execution != nil {
+		m.lastTestResult = execution.TestResult
+	}
+	m.lastExecutedItemID = m.collection.Info.Name + "/" + step.Request
 	m.scrollOffset = 0
 	m.previousMode = ModeWorkflowDetail
 	m.mode = ModeResponse
 
 	m.configureViewport(&m.responseViewport, strings.Join(m.buildResponseLines(), "\n"))
-	m.statusMessage = fmt.Sprintf("Response for %s (esc to return)", step.ID)
+	m.statusMessage = fmt.Sprintf("Response for %s (esc to return, ctrl+r to resend the step)", step.ID)
 	return m, nil
 }
 
@@ -3041,8 +3035,19 @@ func (m Model) deleteWorkflowStep() (Model, tea.Cmd) {
 }
 
 func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
+	return m.runWorkflowScript(wf, wf.Script, "workflow: "+wf.Name)
+}
+
+// runWorkflowScript runs wf's steps with script in place of wf's own. wf stays
+// the active workflow unchanged, so a partial run never replaces the full
+// script that later runs and saves use.
+func (m Model) runWorkflowScript(wf *workflow.Workflow, script, runLabel string) (Model, tea.Cmd) {
 	if m.collection == nil {
 		m.statusMessage = "Load a collection first"
+		return m, nil
+	}
+	if m.workflowChan != nil {
+		m.statusMessage = "Workflow already running"
 		return m, nil
 	}
 
@@ -3059,20 +3064,17 @@ func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
 		m.workflowState.StepIndex[s.ID] = ss
 	}
 
-	if m.workflowChan != nil {
-		m.statusMessage = "Workflow already running"
-		return m, nil
-	}
-
 	if m.mode != ModeWorkflowDetail {
 		m.previousMode = m.mode
 		m.mode = ModeWorkflowDetail
 		m.workflowStepCursor = 0
 	}
-	m.statusMessage = fmt.Sprintf("Running workflow: %s", wf.Name)
+	m.statusMessage = "Running " + runLabel
 
+	runWf := *wf
+	runWf.Script = script
 	return m.launchRun(func(runner *workflow.Runner, onChange func(workflow.ExecutionState)) workflow.ExecutionState {
-		return runner.Run(wf, onChange)
+		return runner.Run(&runWf, onChange)
 	})
 }
 

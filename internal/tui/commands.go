@@ -251,7 +251,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Select",
 			ShortHelp:   "enter",
 			Handler:     handleEnterKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments, ModeChanges, ModeWorkflows, ModeSavedResponses},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments, ModeChanges, ModeWorkflows, ModeWorkflowDetail, ModeSavedResponses},
 		},
 		{
 			Keys:        []string{"ctrl+e"},
@@ -262,7 +262,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		},
 		{
 			Keys:        []string{"ctrl+r"},
-			Description: "View/Resend response",
+			Description: "View/Resend response (workflows: run)",
 			ShortHelp:   "ctrl+r",
 			Handler:     handleResponseViewKey,
 			AvailableIn: []ViewMode{ModeRequests, ModeResponse, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
@@ -956,6 +956,9 @@ func handleQuitKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleEnterKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeWorkflowDetail {
+		return m.showWorkflowStepResponse()
+	}
 	if m.mode == ModeSavedResponses {
 		if m.savedResponseCursor < len(m.savedResponses) {
 			sr := m.savedResponses[m.savedResponseCursor]
@@ -1014,13 +1017,19 @@ func handleExecuteKey(m Model) (Model, tea.Cmd) {
 
 func handleResponseViewKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeWorkflowDetail {
-		return m.showWorkflowStepResponse()
+		return handleRunFullWorkflowKey(m)
 	}
 	if m.mode == ModeWorkflows {
 		if m.workflowCursor < len(m.workflows) {
-			return m.openWorkflowDetail(m.workflows[m.workflowCursor])
+			return m.startWorkflow(m.workflows[m.workflowCursor])
 		}
 		return m, nil
+	}
+	if m.mode == ModeResponse && m.previousMode == ModeWorkflowDetail {
+		// Resend the step whose response is shown, not the requests list's
+		// selection, which this response has nothing to do with.
+		m.mode = ModeWorkflowDetail
+		return handleWorkflowRunStepKey(m)
 	}
 	if m.mode == ModeWorkflowRun {
 		if m.workflowChan != nil {

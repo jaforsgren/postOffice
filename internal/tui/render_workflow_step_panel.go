@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"postOffice/internal/http"
 	"postOffice/internal/workflow"
 	"strings"
 
@@ -135,6 +136,28 @@ func (m Model) selectedWorkflowStep() (workflow.Step, bool) {
 		return workflow.Step{}, false
 	}
 	return m.activeWorkflow.Steps[m.workflowStepCursor], true
+}
+
+// selectedStepResponse is the selected step's latest response, preferring the
+// current run's so a step that did not send this run shows nothing rather
+// than an older response, and its execution when that response was recorded.
+func (m Model) selectedStepResponse() (*http.Response, *RequestExecution) {
+	step, ok := m.selectedWorkflowStep()
+	if !ok || m.collection == nil {
+		return nil, nil
+	}
+	execution, executed := m.requestExecutions[m.collection.Info.Name+"/"+step.Request]
+
+	if ss := m.runStepState(step.ID); ss != nil {
+		if executed && execution.Response == ss.LastResponse {
+			return ss.LastResponse, execution
+		}
+		return ss.LastResponse, nil
+	}
+	if executed && execution.Response != nil {
+		return execution.Response, execution
+	}
+	return nil, nil
 }
 
 // runStepState is the state of stepID in the active workflow's latest run, or

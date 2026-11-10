@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"postOffice/internal/http"
 	"postOffice/internal/postman"
 	"strings"
 	"time"
@@ -130,14 +131,15 @@ func (m Model) buildContextInfo() []string {
 			titleOrangeStyle.Render("Mode: ")+
 			valueWhiteStyle.Render(m.getModeString()))
 
+	response, execution := m.topBarResponse()
 	responseEmoji := "📬"
 	responseValue := "none"
-	if m.lastResponse != nil {
-		if m.lastResponse.Error != nil {
+	if response != nil {
+		if response.Error != nil {
 			responseEmoji = "❌"
 			responseValue = "Error"
 		} else {
-			statusCode := m.lastResponse.Status
+			statusCode := response.Status
 			if strings.HasPrefix(statusCode, "2") {
 				responseEmoji = "✅"
 			} else if strings.HasPrefix(statusCode, "3") {
@@ -150,12 +152,8 @@ func (m Model) buildContextInfo() []string {
 			responseValue = statusCode
 		}
 
-		if m.lastExecutedItemID != "" {
-			if exec, exists := m.requestExecutions[m.lastExecutedItemID]; exists {
-				elapsed := time.Since(exec.Timestamp)
-				timeAgo := formatTimeAgo(elapsed)
-				responseValue += fmt.Sprintf(" (%s)", timeAgo)
-			}
+		if execution != nil {
+			responseValue += fmt.Sprintf(" (%s)", formatTimeAgo(time.Since(execution.Timestamp)))
 		}
 	}
 	lines = append(lines,
@@ -210,6 +208,22 @@ func (m Model) buildLoadedNamesLine(icon, label string, names []string, isActive
 	return line
 }
 
+// topBarResponse is the response the top bar reports, with its execution when
+// known for the time since: the selected step's in the workflow views, else
+// the last one sent.
+func (m Model) topBarResponse() (*http.Response, *RequestExecution) {
+	if m.mode == ModeWorkflowDetail {
+		return m.selectedStepResponse()
+	}
+	if m.lastResponse == nil {
+		return nil, nil
+	}
+	if execution, exists := m.requestExecutions[m.lastExecutedItemID]; exists && m.lastExecutedItemID != "" {
+		return m.lastResponse, execution
+	}
+	return m.lastResponse, nil
+}
+
 func (m Model) getModeString() string {
 	switch m.mode {
 	case ModeCollections:
@@ -238,6 +252,14 @@ func (m Model) getModeString() string {
 		return "Saved Responses"
 	case ModeHelp:
 		return "Help"
+	case ModeGRPCReflect:
+		return "gRPC Reflection"
+	case ModeWorkflows:
+		return "Workflows"
+	case ModeWorkflowDetail:
+		return "Workflow"
+	case ModeWorkflowRun:
+		return "Workflow Run"
 	default:
 		return ""
 	}

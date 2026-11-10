@@ -78,8 +78,9 @@ go build -o postOffice
 - `u` — run workflow up to this step
 - `f` — run workflow from this step
 - `r` — run this step only
-- `R` — run full workflow
-- `ctrl+r` — view last response for this step
+- `R` / `ctrl+r` — run full workflow
+- `enter` — view this step's latest response (`ctrl+r` there resends the step)
+- `tab` — toggle the step panel (logs, request, response)
 - `ctrl+d` — delete step
 - `i` — inspect step request info
 
@@ -225,11 +226,11 @@ script: |
 - `ctrl+r` — run selected workflow
 
 **Workflow detail keys:**
-- `R` — run full workflow
+- `R` / `ctrl+r` — run full workflow
 - `u` — run up to selected step
 - `f` — run from selected step
 - `r` — run selected step only
-- `ctrl+r` — view last response for selected step
+- `enter` — view the selected step's latest response (`ctrl+r` there resends the step)
 - `tab` — toggle the step panel: the selected step's logs, request and response beside the step list (`J`/`K` scroll it, `esc` closes it)
 - `L` — open the run report in your editor (`$VISUAL`, `$EDITOR`, else nvim). Each step's logs are listed under it; in vim/nvim the report is highlighted and folds per step (`zM` steps only, `zR` everything, `za` one step)
 

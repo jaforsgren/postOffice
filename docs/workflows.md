@@ -341,7 +341,7 @@ The result object is the same as HTTP: `response.code`, `response.body`, `respon
 :wf
 ```
 
-Opens the workflow browser. Navigate with `j/k`. Press `enter` or `ctrl+r` to run the selected workflow.
+Opens the workflow browser. Navigate with `j/k`. Press `enter` to open the selected workflow's steps, or `ctrl+r` to run it.
 
 ### Run a workflow by ID
 
