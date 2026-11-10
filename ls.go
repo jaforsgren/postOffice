@@ -201,11 +201,7 @@ func listRequests(out io.Writer, parsed parsedArgs) error {
 		}
 		fmt.Fprintf(table, "%s:\n", collection.Info.Name)
 		for _, ref := range workflow.RequestRefs(collection.Items, nil) {
-			fmt.Fprintf(table, "  %s\t%s", ref.Item.Request.Method, ref.Path)
-			if ref.UnaddressableName != "" {
-				fmt.Fprintf(table, "\t(cannot be run by path: %q contains %q)", ref.UnaddressableName, workflow.RequestPathSeparator)
-			}
-			fmt.Fprintln(table)
+			fmt.Fprintf(table, "  %s\t%s\n", ref.Item.Request.Method, ref.Path)
 		}
 	}
 	return table.Flush()

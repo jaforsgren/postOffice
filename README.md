@@ -323,7 +323,7 @@ Every collection, script and workflow that runs in the TUI also runs without it,
 
 **Running requests (`run`, `workflow run`)**
 
-- Request and folder paths use `/` between folder names, exactly as `./postOffice ls request` prints them. Requests whose names contain `/` cannot be addressed by path; `ls request` marks them.
+- Request and folder paths use `/` between folder names, exactly as `./postOffice ls request` prints them. A `/` inside a name is written `\/` (and a `\` as `\\`), e.g. `./postOffice run sapi.json 'NEGATIVE/unknown policy → 403\/404'`. Quote such paths in single quotes so the shell keeps the backslash.
 - Folder and collection runs behave like Postman's Collection Runner: `pm.execution.setNextRequest("name" | id | path)` jumps to that request in the run, `setNextRequest(null)` ends it, and a request whose pre-request script calls `pm.execution.skipRequest()` is reported as skipped. A target outside the run fails it, and a run stops after 1000 requests to catch setNextRequest loops.
 - `-e, --environment <env.json>` picks the environment; without it only collection variables resolve.
 - `--output text|json|junit` picks the report format (default `text`). `json` is one object with a summary and every request's status, HTTP status, duration, tests, errors and console output. `junit` writes one `<testsuite>` per request with one `<testcase>` per `pm.test`, plus a `request` testcase for request-level failures and skips.

@@ -106,7 +106,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.collection != nil {
 				for _, ss := range msg.State.Steps {
 					if ss.LastResponse != nil {
-						itemID := m.collection.Info.Name + "/" + ss.Request
+						names := postman.SplitItemPath(ss.Request)
+						itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, names[:len(names)-1], names[len(names)-1])
 						m.requestExecutions[itemID] = &RequestExecution{
 							Status:    ss.LastResponse.Status,
 							Timestamp: time.Now(),
@@ -2881,7 +2882,7 @@ func (m Model) resolveStepItem(requestPath string) (*postman.Item, []string, err
 	if m.collection == nil {
 		return nil, nil, fmt.Errorf("no collection loaded")
 	}
-	parts := strings.Split(requestPath, "/")
+	parts := postman.SplitItemPath(requestPath)
 	if len(parts) == 0 {
 		return nil, nil, fmt.Errorf("empty request path")
 	}

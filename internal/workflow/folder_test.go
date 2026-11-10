@@ -127,16 +127,15 @@ func TestNewFolderWorkflow_noRequests(t *testing.T) {
 	}
 }
 
-func TestNewFolderWorkflow_nameWithPathSeparatorIsRejected(t *testing.T) {
+func TestNewFolderWorkflow_nameWithPathSeparatorIsEscaped(t *testing.T) {
 	folder := postman.Item{Name: "access", Items: []postman.Item{folderRequest("get policy → 403/404")}}
 
-	_, err := NewFolderWorkflow(folder, []string{"access"})
-	var unaddressable *UnaddressableNameError
-	if !errors.As(err, &unaddressable) {
-		t.Fatalf("err = %v, want *UnaddressableNameError", err)
+	wf, err := NewFolderWorkflow(folder, []string{"access"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if unaddressable.Name != "get policy → 403/404" {
-		t.Errorf("Name = %q, want the offending request name", unaddressable.Name)
+	if got, want := wf.Steps[0].Request, `access/get policy → 403\/404`; got != want {
+		t.Errorf("step request = %q, want %q", got, want)
 	}
 }
 

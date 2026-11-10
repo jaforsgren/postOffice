@@ -227,20 +227,43 @@ func TestRequestRefs(t *testing.T) {
 
 	refs := RequestRefs(items, []string{"root"})
 
-	want := []struct{ path, unaddressable string }{
-		{"root/top", ""},
-		{"root/a/b/inside", "a/b"},
-		{"root/ok/x/y", "x/y"},
-		{"root/ok/fine", ""},
-	}
+	want := []string{`root/top`, `root/a\/b/inside`, `root/ok/x\/y`, `root/ok/fine`}
 	if len(refs) != len(want) {
 		t.Fatalf("got %d refs, want %d", len(refs), len(want))
 	}
-	for i, w := range want {
-		if refs[i].Path != w.path || refs[i].UnaddressableName != w.unaddressable {
-			t.Errorf("refs[%d] = {%q, %q}, want {%q, %q}", i, refs[i].Path, refs[i].UnaddressableName, w.path, w.unaddressable)
+	for i, path := range want {
+		if refs[i].Path != path {
+			t.Errorf("refs[%d].Path = %q, want %q", i, refs[i].Path, path)
 		}
 	}
+}
+
+func TestNamesWithSeparatorRunInFolderAndRequestWorkflows(t *testing.T) {
+	items := []postman.Item{
+		{Name: "NEGATIVE", Items: []postman.Item{
+			{Name: "a/b", Items: []postman.Item{recordedRequest("unknown policy 403/404")}},
+		}},
+	}
+
+	t.Run("folder run", func(t *testing.T) {
+		server := newRecordingServer(t)
+		state := runWorkflowOver(t, server, func(c *postman.Collection) (*Workflow, error) {
+			return NewFolderPathWorkflow(c, []string{"NEGATIVE"})
+		}, items...)
+		if state.Status != StatusSuccess || server.paths() != "unknown policy 403/404" {
+			t.Errorf("status %s, hits %q", state.Status, server.paths())
+		}
+	})
+
+	t.Run("single request by escaped path", func(t *testing.T) {
+		server := newRecordingServer(t)
+		state := runWorkflowOver(t, server, func(c *postman.Collection) (*Workflow, error) {
+			return NewRequestWorkflow(c, `NEGATIVE/a\/b/unknown policy 403\/404`)
+		}, items...)
+		if state.Status != StatusSuccess || server.paths() != "unknown policy 403/404" {
+			t.Errorf("status %s, hits %q", state.Status, server.paths())
+		}
+	})
 }
 
 func TestRequestWorkflow_ignoresSetNextRequest(t *testing.T) {

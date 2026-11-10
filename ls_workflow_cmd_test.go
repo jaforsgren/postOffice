@@ -198,15 +198,32 @@ func TestLs_RequestsAreRunnablePaths(t *testing.T) {
 		if code != exitSuccess {
 			t.Fatalf("%s: code %d", topic, code)
 		}
-		for _, want := range []string{"API:", "GET", "Users/Get User", "Users/Missing User", "Health", `cannot be run by path: "get → 403/404" contains "/"`} {
+		for _, want := range []string{"API:", "GET", "Users/Get User", "Users/Missing User", "Health", `get → 403\/404`} {
 			if !strings.Contains(out, want) {
 				t.Errorf("%s: output missing %q:\n%s", topic, want, out)
 			}
 		}
 	}
 
-	if code, out, _ := cli(t, "run", collectionPath, "Users/Get User", "-e", f.envPath); code != exitSuccess {
-		t.Errorf("a listed path must run: code %d:\n%s", code, out)
+	for _, path := range []string{"Users/Get User", `get → 403\/404`} {
+		if code, out, _ := cli(t, "run", collectionPath, path, "-e", f.envPath); code != exitSuccess {
+			t.Errorf("listed path %q must run: code %d:\n%s", path, code, out)
+		}
+	}
+}
+
+func TestRun_FolderNameWithSeparator(t *testing.T) {
+	writeLoadedConfig(t, nil, nil)
+	server := apiServer(t)
+	f := newFixture(t, server)
+	collection := apiCollection()
+	collection.Items = append(collection.Items, postman.Item{Name: "403/404", Items: []postman.Item{apiRequest("inside", okPath)}})
+	collectionPath := writeJSONFile(t, f.dir, "slash-folder.postman_collection.json", collection)
+
+	code, out, _ := cli(t, "run", collectionPath, "--folder", `403\/404`, "-e", f.envPath)
+
+	if code != exitSuccess || !strings.Contains(out, "inside") {
+		t.Errorf("escaped folder must run: code %d:\n%s", code, out)
 	}
 }
 

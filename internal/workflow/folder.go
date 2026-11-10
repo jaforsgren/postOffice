@@ -10,9 +10,6 @@ import (
 	"postOffice/internal/postman"
 )
 
-// RequestPathSeparator separates folder and request names in a step's request path.
-const RequestPathSeparator = "/"
-
 // MaxFolderRunRequests stops a folder run whose pm.execution.setNextRequest
 // calls loop forever (a retry that never becomes ready, a cycle of requests).
 const MaxFolderRunRequests = 1000
@@ -32,16 +29,6 @@ var (
 	// ErrRequestNotFound is returned when a request path does not name a request in the collection.
 	ErrRequestNotFound = errors.New("request not found")
 )
-
-// UnaddressableNameError reports a folder or request whose name contains RequestPathSeparator.
-// Step request paths are resolved by splitting on that separator, so such an item cannot be a step.
-type UnaddressableNameError struct {
-	Name string
-}
-
-func (e *UnaddressableNameError) Error() string {
-	return fmt.Sprintf("%q contains %q, so a workflow step cannot address it", e.Name, RequestPathSeparator)
-}
 
 // FolderWorkflowResolution describes which workflow a folder run uses and whether it must be saved.
 type FolderWorkflowResolution int
@@ -66,7 +53,7 @@ func (r FolderWorkflowResolution) NeedsSave() bool {
 
 // FolderWorkflowName returns the workflow name for a folder: its full path, e.g. "policies/TEST".
 func FolderWorkflowName(folderPath []string) string {
-	return strings.Join(folderPath, RequestPathSeparator)
+	return postman.JoinItemPath(folderPath...)
 }
 
 // FolderWorkflowID returns the stable workflow ID for a folder, e.g. "policies/TEST" → "policies-test".
@@ -104,9 +91,9 @@ func NewFolderPathWorkflow(collection *postman.Collection, folderPath []string) 
 }
 
 // NewRequestWorkflow generates a one-step workflow that runs the request at requestPath
-// ("Folder/Sub/Request") in collection.
+// ("Folder/Sub/Request", with "\/" for a "/" inside a name) in collection.
 func NewRequestWorkflow(collection *postman.Collection, requestPath string) (*Workflow, error) {
-	parts := strings.Split(requestPath, RequestPathSeparator)
+	parts := postman.SplitItemPath(requestPath)
 	items := collection.Items
 	var request *postman.Item
 	for depth, name := range parts {
@@ -149,9 +136,6 @@ func newRunWorkflow(items []postman.Item, folderPath []string, id, name, descrip
 	steps := make([]Step, 0, len(refs))
 	usedIDs := make(map[string]bool, len(refs))
 	for _, ref := range refs {
-		if ref.UnaddressableName != "" {
-			return nil, &UnaddressableNameError{Name: ref.UnaddressableName}
-		}
 		steps = append(steps, Step{
 			ID:      uniqueStepID(ref.Item.Name, usedIDs),
 			Request: ref.Path,
@@ -184,44 +168,24 @@ func ResolveFolderWorkflow(saved, generated *Workflow) (*Workflow, FolderWorkflo
 }
 
 // RequestRef is a request together with the "Folder/Sub/Request" path that runs and workflow
-// steps address it by.
+// steps address it by. Names containing "/" are escaped in Path (see postman.JoinItemPath).
 type RequestRef struct {
 	Path string
 	Item *postman.Item
-	// UnaddressableName is the first folder or request name on the path that contains
-	// RequestPathSeparator, which makes the path ambiguous; empty when the path can be run.
-	UnaddressableName string
 }
 
 // RequestRefs lists every request under items depth-first in collection order. parentPath is the
 // folder path items live in, so returned paths are complete.
 func RequestRefs(items []postman.Item, parentPath []string) []RequestRef {
-	unaddressable := ""
-	for _, name := range parentPath {
-		if unaddressable == "" && strings.Contains(name, RequestPathSeparator) {
-			unaddressable = name
-		}
-	}
-	return appendRequestRefs(nil, items, parentPath, unaddressable)
-}
-
-func appendRequestRefs(refs []RequestRef, items []postman.Item, parentPath []string, unaddressable string) []RequestRef {
+	var refs []RequestRef
 	for i := range items {
 		item := &items[i]
-		itemUnaddressable := unaddressable
-		if itemUnaddressable == "" && strings.Contains(item.Name, RequestPathSeparator) {
-			itemUnaddressable = item.Name
-		}
 		itemPath := append(append([]string{}, parentPath...), item.Name)
 		if item.IsRequest() {
-			refs = append(refs, RequestRef{
-				Path:              strings.Join(itemPath, RequestPathSeparator),
-				Item:              item,
-				UnaddressableName: itemUnaddressable,
-			})
+			refs = append(refs, RequestRef{Path: postman.JoinItemPath(itemPath...), Item: item})
 			continue
 		}
-		refs = appendRequestRefs(refs, item.Items, itemPath, itemUnaddressable)
+		refs = append(refs, RequestRefs(item.Items, itemPath)...)
 	}
 	return refs
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
@@ -90,7 +89,7 @@ func parseRunArgs(args []string) (runOptions, error) {
 		if folder == "" {
 			return runOptions{}, usageErrorf("--folder needs a folder path such as \"Users/Admin\"")
 		}
-		opts.folderPath = strings.Split(folder, workflow.RequestPathSeparator)
+		opts.folderPath = postman.SplitItemPath(folder)
 	}
 
 	opts.execution, err = parseExecutionOptions(parsed)
@@ -110,7 +109,8 @@ Runs one request, every request in a folder, or every request in the
 collection, with collection → folder → request pre-request and test scripts.
 Folder and collection runs go in collection order and follow
 pm.execution.setNextRequest and skipRequest, like Postman's Collection Runner.
-Request paths are those listed by "postOffice ls request".
+Request paths are those listed by "postOffice ls request". A "/" inside a
+name is written "\/" and a "\" as "\\", e.g. 'NEGATIVE/unknown policy 403\/404'.
 
 Options:
   -e, --environment <env.json>   environment to resolve variables from

@@ -521,13 +521,13 @@ func (r *Runner) failStep(ss *StepState) {
 
 // folderPathOf returns the folders of a "folder/sub/request" path.
 func folderPathOf(requestPath string) []string {
-	parts := strings.Split(requestPath, RequestPathSeparator)
+	parts := postman.SplitItemPath(requestPath)
 	return parts[:len(parts)-1]
 }
 
 // requestNameOf returns the request name of a "folder/sub/request" path.
 func requestNameOf(requestPath string) string {
-	parts := strings.Split(requestPath, RequestPathSeparator)
+	parts := postman.SplitItemPath(requestPath)
 	return parts[len(parts)-1]
 }
 
@@ -571,7 +571,7 @@ func (r *Runner) resolveRequest(path string) (*postman.Item, error) {
 		return nil, fmt.Errorf("no collection loaded")
 	}
 
-	parts := strings.Split(path, RequestPathSeparator)
+	parts := postman.SplitItemPath(path)
 	current := r.collection.Items
 
 	for depth, part := range parts {

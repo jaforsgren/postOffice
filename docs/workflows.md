@@ -401,7 +401,7 @@ Pressing `ctrl+e` on that folder again runs the saved workflow instead of creati
 
 Limitations:
 
-- A folder or request whose name contains `/` cannot be a step, because step paths are split on `/`. Such a folder is rejected with an error.
+- Step paths are split on `/`. A `/` inside a folder or request name is written `\/` (and a `\` as `\\`), e.g. `request: NEGATIVE/unknown policy → 403\/404`; generated folder workflows escape names automatically.
 - Collection-level and folder-level scripts do not run. Only each request's own scripts do. Postman runner flow control (`pm.execution.setNextRequest`, `pm.execution.skipRequest`) is not supported, so requests always run strictly in order. Steps that need flow control should be scripted in the workflow `script` with `wf.run`, `wf.skip` and `wf.stop`.
 - The whole workflow script shares the runtime's 30-second timeout, so long folders may time out.
 
