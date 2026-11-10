@@ -171,14 +171,12 @@ func (c *Client) fileDescriptors(ctx context.Context, service, protosetPath stri
 }
 
 func (c *Client) reflectFileDescriptors(ctx context.Context, service string) ([]*descriptorpb.FileDescriptorProto, error) {
-	stub := rpb.NewServerReflectionClient(c.conn)
-	stream, err := stub.ServerReflectionInfo(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open reflection stream: %w", err)
-	}
-	defer stream.CloseSend()
-
-	files, err := getFileDescriptorsForSymbol(stream, service)
+	var files []*descriptorpb.FileDescriptorProto
+	err := c.withReflectionStream(ctx, func(stream reflectionStream) error {
+		var err error
+		files, err = getFileDescriptorsForSymbol(stream, service)
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("reflection failed for %q: %w", service, err)
 	}

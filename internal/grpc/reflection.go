@@ -6,9 +6,12 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	rpb "google.golang.org/grpc/reflection/grpc_reflection_v1"
+	rpbalpha "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
@@ -56,33 +59,67 @@ func (c *Client) Close() error {
 
 type reflectionStream = grpc.BidiStreamingClient[rpb.ServerReflectionRequest, rpb.ServerReflectionResponse]
 
+// reflectionMethods are the reflection protocol versions to try, newest
+// first. Many servers (grpc-dotnet among them) only serve v1alpha. Both
+// versions exchange the same messages, so the v1 types work for either.
+var reflectionMethods = []string{
+	rpb.ServerReflection_ServerReflectionInfo_FullMethodName,
+	rpbalpha.ServerReflection_ServerReflectionInfo_FullMethodName,
+}
+
+var reflectionStreamDesc = &grpc.StreamDesc{
+	StreamName:    "ServerReflectionInfo",
+	ServerStreams: true,
+	ClientStreams: true,
+}
+
+// withReflectionStream runs exchange on a reflection stream, retrying with
+// the older protocol version when the server does not implement the newer.
+func (c *Client) withReflectionStream(ctx context.Context, exchange func(reflectionStream) error) error {
+	var err error
+	for _, method := range reflectionMethods {
+		err = c.exchangeOn(ctx, method, exchange)
+		if status.Code(err) != codes.Unimplemented {
+			return err
+		}
+	}
+	return err
+}
+
+func (c *Client) exchangeOn(ctx context.Context, method string, exchange func(reflectionStream) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	clientStream, err := c.conn.NewStream(ctx, reflectionStreamDesc, method)
+	if err != nil {
+		return fmt.Errorf("failed to open reflection stream: %w", err)
+	}
+	stream := &grpc.GenericClientStream[rpb.ServerReflectionRequest, rpb.ServerReflectionResponse]{ClientStream: clientStream}
+	defer stream.CloseSend()
+	return exchange(stream)
+}
+
 // ListServices uses server reflection to enumerate all services and their methods,
 // and generates a JSON message template for each method's input type.
 func (c *Client) ListServices(ctx context.Context) ([]ServiceInfo, error) {
-	stub := rpb.NewServerReflectionClient(c.conn)
-	stream, err := stub.ServerReflectionInfo(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open reflection stream: %w", err)
-	}
-	defer stream.CloseSend()
-
-	serviceNames, err := listServiceNames(stream)
-	if err != nil {
-		return nil, err
-	}
-
 	var services []ServiceInfo
-	for _, name := range serviceNames {
-		svcInfo, err := describeService(stream, name)
+	err := c.withReflectionStream(ctx, func(stream reflectionStream) error {
+		serviceNames, err := listServiceNames(stream)
 		if err != nil {
-			continue
+			return err
 		}
-		if svcInfo != nil {
-			services = append(services, *svcInfo)
+		for _, name := range serviceNames {
+			svcInfo, err := describeService(stream, name)
+			if err != nil {
+				continue
+			}
+			if svcInfo != nil {
+				services = append(services, *svcInfo)
+			}
 		}
-	}
-
-	return services, nil
+		return nil
+	})
+	return services, err
 }
 
 func listServiceNames(stream reflectionStream) ([]string, error) {

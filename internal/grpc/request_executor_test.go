@@ -15,6 +15,7 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
+	rpbalpha "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -43,11 +44,14 @@ type healthServer struct {
 	metadata metadata.MD
 }
 
-type reflectionMode bool
+type reflectionMode int
 
 const (
-	withReflection    reflectionMode = true
-	withoutReflection reflectionMode = false
+	withReflection reflectionMode = iota
+	withoutReflection
+	// withV1AlphaReflectionOnly serves only the older reflection protocol,
+	// as grpc-dotnet servers do.
+	withV1AlphaReflectionOnly
 )
 
 func startHealthServer(t *testing.T, mode reflectionMode) *healthServer {
@@ -70,8 +74,11 @@ func startHealthServer(t *testing.T, mode reflectionMode) *healthServer {
 	checker := health.NewServer()
 	checker.SetServingStatus(servingService, healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(server, checker)
-	if mode == withReflection {
+	switch mode {
+	case withReflection:
 		reflection.Register(server)
+	case withV1AlphaReflectionOnly:
+		rpbalpha.RegisterServerReflectionServer(server, reflection.NewServer(reflection.ServerOptions{Services: server}))
 	}
 
 	go func() { _ = server.Serve(listener) }()
@@ -172,6 +179,32 @@ func TestExecutor_Execute_ReportsGRPCStatusOnFailure(t *testing.T) {
 	}
 	if envValue(environment, statusVariable) != "" {
 		t.Error("test scripts should not run when the call fails")
+	}
+}
+
+func TestExecutor_Execute_UsesV1AlphaReflectionWhenV1IsMissing(t *testing.T) {
+	server := startHealthServer(t, withV1AlphaReflectionOnly)
+	item := healthItem(server.endpoint)
+
+	resp, _ := NewExecutor().Execute(item.Request, scopeOf(item, &postman.Collection{}, testEnvironment(servingService)), nil)
+
+	if resp.Error != nil {
+		t.Fatalf("expected the call to succeed over v1alpha reflection, got %v", resp.Error)
+	}
+}
+
+func TestClient_ListServices_UsesV1AlphaReflectionWhenV1IsMissing(t *testing.T) {
+	server := startHealthServer(t, withV1AlphaReflectionOnly)
+	client, err := NewClient(server.endpoint, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	services, err := client.ListServices(context.Background())
+
+	if err != nil || len(services) != 1 || services[0].Name != "grpc.health.v1.Health" {
+		t.Errorf("expected the health service over v1alpha reflection, got %+v (%v)", services, err)
 	}
 }
 
