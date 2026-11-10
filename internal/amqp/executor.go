@@ -2,8 +2,10 @@ package amqp
 
 import (
 	"fmt"
+	"net"
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
+	"postOffice/internal/timing"
 	"strings"
 	"time"
 
@@ -19,6 +21,11 @@ const (
 	defaultExchange    = ""
 	defaultContentType = "application/json"
 	defaultTimeout     = 30 * time.Second
+
+	PhaseDial        = "Dial (DNS + TCP)"
+	PhaseHandshake   = "Handshake (TLS + AMQP)"
+	PhaseOpenChannel = "Open channel"
+	PhasePublish     = "Publish"
 )
 
 // Publish sends a message to an AMQP broker described by req.
@@ -68,9 +75,22 @@ func Publish(req *postman.Request, variables []postman.VariableSource) *http.Res
 	}
 	resp.RequestBody = body
 
+	sequence := timing.NewSequence(start)
+	defer func() { resp.Timing = sequence.Phases() }()
+
+	dial := amqp.DefaultDial(defaultTimeout)
+	dialSucceeded := false
 	conn, err := amqp.DialConfig(brokerURL, amqp.Config{
-		Dial: amqp.DefaultDial(defaultTimeout),
+		Dial: func(network, addr string) (net.Conn, error) {
+			socket, dialErr := dial(network, addr)
+			sequence.Mark(PhaseDial)
+			dialSucceeded = dialErr == nil
+			return socket, dialErr
+		},
 	})
+	if dialSucceeded {
+		sequence.Mark(PhaseHandshake)
+	}
 	if err != nil {
 		resp.Error = fmt.Errorf("failed to connect to AMQP broker: %w", err)
 		resp.Duration = time.Since(start)
@@ -79,6 +99,7 @@ func Publish(req *postman.Request, variables []postman.VariableSource) *http.Res
 	defer conn.Close()
 
 	ch, err := conn.Channel()
+	sequence.Mark(PhaseOpenChannel)
 	if err != nil {
 		resp.Error = fmt.Errorf("failed to open AMQP channel: %w", err)
 		resp.Duration = time.Since(start)
@@ -99,7 +120,9 @@ func Publish(req *postman.Request, variables []postman.VariableSource) *http.Res
 		publishing.MessageId = msgID
 	}
 
-	if err := ch.Publish(exchange, routingKey, false, false, publishing); err != nil {
+	err = ch.Publish(exchange, routingKey, false, false, publishing)
+	sequence.Mark(PhasePublish)
+	if err != nil {
 		resp.Error = fmt.Errorf("failed to publish message to %q: %w", routingKey, err)
 		resp.Duration = time.Since(start)
 		return resp

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -20,7 +21,21 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 	"postOffice/internal/postman"
+	"postOffice/internal/timing"
 )
+
+const (
+	// PhaseReflect covers connection setup as well, because the client dials lazily on the first RPC.
+	PhaseReflect = "Connect + reflection"
+	PhaseInvoke  = "Invoke"
+)
+
+// Result is the outcome of a gRPC call. Phases and Duration are populated even when the call fails.
+type Result struct {
+	Body     string
+	Phases   []timing.Phase
+	Duration time.Duration
+}
 
 // ExecuteRequest executes the gRPC request described by req.
 // The request URL must use grpc:// or grpcs:// scheme with the format:
@@ -30,16 +45,24 @@ import (
 // req.Header entries are sent as request metadata. Message types come from
 // server reflection, or from the descriptor set at protosetPath when the
 // server does not offer reflection; an empty protosetPath disables that.
-// Returns the response body serialised as JSON.
-func ExecuteRequest(ctx context.Context, req *postman.Request, protosetPath string) (string, error) {
+// The response body is serialised as JSON.
+func ExecuteRequest(ctx context.Context, req *postman.Request, protosetPath string) (*Result, error) {
+	start := time.Now()
+	sequence := timing.NewSequence(start)
+	result := &Result{}
+	defer func() {
+		result.Phases = sequence.Phases()
+		result.Duration = time.Since(start)
+	}()
+
 	endpoint, service, method, tls := ParseGRPCURL(req.URL.Raw)
 	if endpoint == "" || service == "" || method == "" {
-		return "", fmt.Errorf("invalid gRPC URL %q (expected grpc[s]://host:port/Service/Method)", req.URL.Raw)
+		return result, fmt.Errorf("invalid gRPC URL %q (expected grpc[s]://host:port/Service/Method)", req.URL.Raw)
 	}
 
 	client, err := NewClient(endpoint, tls)
 	if err != nil {
-		return "", fmt.Errorf("failed to connect to %s: %w", endpoint, err)
+		return result, fmt.Errorf("failed to connect to %s: %w", endpoint, err)
 	}
 	defer client.Close()
 
@@ -48,7 +71,8 @@ func ExecuteRequest(ctx context.Context, req *postman.Request, protosetPath stri
 		jsonBody = req.Body.Raw
 	}
 
-	return client.invoke(metadata.NewOutgoingContext(ctx, buildMetadata(req.Header)), service, method, jsonBody, protosetPath)
+	result.Body, err = client.invoke(metadata.NewOutgoingContext(ctx, buildMetadata(req.Header)), service, method, jsonBody, protosetPath, sequence)
+	return result, err
 }
 
 const binaryMetadataSuffix = "-bin"
@@ -123,14 +147,10 @@ func ParseGRPCURL(rawURL string) (endpoint, service, method string, tlsEnabled b
 var ErrReflectionUnavailable = errors.New("server does not offer gRPC reflection; set a descriptor set (protoc --include_imports --descriptor_set_out) to describe its messages")
 
 // invoke calls a single unary gRPC method, taking type information from
-// fileDescriptors.
-func (c *Client) invoke(ctx context.Context, service, method, jsonBody, protosetPath string) (string, error) {
-	files, err := c.fileDescriptors(ctx, service, protosetPath)
-	if err != nil {
-		return "", err
-	}
-
-	methodDesc, err := findMethodDescriptor(files, service, method)
+// fileDescriptors and marking the reflection and invocation phases on sequence.
+func (c *Client) invoke(ctx context.Context, service, method, jsonBody, protosetPath string, sequence *timing.Sequence) (string, error) {
+	methodDesc, err := c.resolveMethod(ctx, service, method, protosetPath)
+	sequence.Mark(PhaseReflect)
 	if err != nil {
 		return "", err
 	}
@@ -145,7 +165,9 @@ func (c *Client) invoke(ctx context.Context, service, method, jsonBody, protoset
 	resMsg := dynamicpb.NewMessage(methodDesc.Output())
 
 	fullMethod := "/" + service + "/" + method
-	if err := c.conn.Invoke(ctx, fullMethod, reqMsg, resMsg, grpc.WaitForReady(false)); err != nil {
+	err = c.conn.Invoke(ctx, fullMethod, reqMsg, resMsg, grpc.WaitForReady(false))
+	sequence.Mark(PhaseInvoke)
+	if err != nil {
 		return "", fmt.Errorf("gRPC call %q failed: %w", fullMethod, err)
 	}
 
@@ -155,6 +177,14 @@ func (c *Client) invoke(ctx context.Context, service, method, jsonBody, protoset
 	}
 
 	return string(out), nil
+}
+
+func (c *Client) resolveMethod(ctx context.Context, service, method, protosetPath string) (protoreflect.MethodDescriptor, error) {
+	files, err := c.fileDescriptors(ctx, service, protosetPath)
+	if err != nil {
+		return nil, err
+	}
+	return findMethodDescriptor(files, service, method)
 }
 
 // fileDescriptors describes service through server reflection, falling back to

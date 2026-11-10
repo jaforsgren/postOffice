@@ -309,6 +309,8 @@ func (m Model) getModeString() string {
 		return "Request History"
 	case ModeHistoryDiff:
 		return "History Diff"
+	case ModeTiming:
+		return "Timing"
 	default:
 		return ""
 	}
@@ -417,7 +419,9 @@ func (m Model) renderStatusBar() string {
 
 	switch m.mode {
 	case ModeResponse:
-		help = "ctrl+r: resend | ya/yb/yr/yy: copy | ctrl+g: open in editor | q: close | j/k: scroll"
+		help = "ctrl+r: resend | t: timing | ya/yb/yr/yy: copy | ctrl+g: open in editor | q: close | j/k: scroll"
+	case ModeTiming:
+		help = "t/q/esc: close timing"
 	case ModeInfo:
 		help = "ya/yb/yr/yy: copy | ctrl+g: open in editor | q: close | j/k: scroll"
 	case ModeJSON, ModeLog, ModeHistoryDiff:

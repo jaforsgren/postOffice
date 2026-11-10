@@ -215,6 +215,14 @@ func (cr *CommandRegistry) registerCommands() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeHistory},
 		},
 		{
+			Name:        "timing",
+			Aliases:     []string{"t"},
+			Description: "Show timing breakdown of the response",
+			ShortHelp:   ":t",
+			Handler:     handleTimingCommand,
+			AvailableIn: []ViewMode{ModeResponse},
+		},
+		{
 			Name:        "wf",
 			Aliases:     []string{"workflow", "workflows"},
 			Description: "Manage and run workflows (:wf [run|new] <name>)",
@@ -344,7 +352,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHelp, ModeHistory, ModeHistoryDiff},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHelp, ModeHistory, ModeHistoryDiff, ModeTiming},
 		},
 		{
 			Keys:        []string{"q"},
@@ -526,7 +534,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close view",
 			ShortHelp:   "q",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeSavedResponses, ModeHistory, ModeHistoryDiff},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeSavedResponses, ModeHistory, ModeHistoryDiff, ModeTiming},
 		},
 		{
 			Keys:        []string{"g"},
@@ -597,6 +605,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			ShortHelp:   saveResponseKey,
 			Handler:     handleSaveResponseKey,
 			AvailableIn: []ViewMode{ModeResponse},
+		},
+		{
+			Keys:        []string{timingKey},
+			Description: "Toggle timing breakdown",
+			ShortHelp:   timingKey,
+			Handler:     handleTimingKey,
+			AvailableIn: []ViewMode{ModeResponse, ModeTiming},
 		},
 		{
 			Keys:        []string{"d"},
@@ -1278,7 +1293,11 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Returned to workflow"
 		return m, nil
 	case ModeHelp:
-		m.mode = m.previousMode
+		m.mode = m.helpReturnMode
+		m.statusMessage = ""
+		return m, nil
+	case ModeTiming:
+		m.mode = ModeResponse
 		m.statusMessage = ""
 		return m, nil
 	}
@@ -1871,7 +1890,9 @@ func handlePasteCurlKey(m Model) (Model, tea.Cmd) {
 
 func (m Model) openHelp(showAll bool) (Model, tea.Cmd) {
 	m.helpShowAll = showAll
-	m.previousMode = m.mode
+	// Kept separate from previousMode so opening help from a view (e.g. Response)
+	// does not overwrite where that view itself returns to.
+	m.helpReturnMode = m.mode
 	m.mode = ModeHelp
 	m.configureViewport(&m.helpViewport, m.buildHelpContent())
 	if showAll {

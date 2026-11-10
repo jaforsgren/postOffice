@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -219,10 +220,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if key == "esc" || key == "h" || key == "backspace" || key == "q" {
 				return m.handleNormalMode(msg)
 			}
-			if m.mode == ModeResponse && (key == resendStepKey || key == saveResponseKey) {
-				return m.handleNormalMode(msg)
-			}
-			if (m.mode == ModeResponse || m.mode == ModeInfo) && (key == yankPrefixKey || key == openRequestReportKey) {
+			if !isViewportScrollKey(msg) {
 				return m.handleNormalMode(msg)
 			}
 
@@ -426,6 +424,18 @@ func (m Model) loadCollectionsList() Model {
 }
 
 const viewportPadding = 8
+
+// isViewportScrollKey reports whether msg scrolls a viewport; all other keys belong to the command registry.
+// Every viewport in the TUI uses the default key map.
+func isViewportScrollKey(msg tea.KeyMsg) bool {
+	keyMap := viewport.DefaultKeyMap()
+	return key.Matches(msg,
+		keyMap.PageDown, keyMap.PageUp,
+		keyMap.HalfPageDown, keyMap.HalfPageUp,
+		keyMap.Down, keyMap.Up,
+		keyMap.Left, keyMap.Right,
+	)
+}
 
 // traverseToDepth walks items along path and returns the items slice at that depth.
 // Returns nil if any path segment is not found as a folder.

@@ -120,6 +120,7 @@ var helpSections = []struct {
 	{[]ViewMode{ModeSavedResponses}, "Saved Responses"},
 	{[]ViewMode{ModeHistory}, "Request History"},
 	{[]ViewMode{ModeHistoryDiff}, "History Diff"},
+	{[]ViewMode{ModeTiming}, "Timing"},
 	{[]ViewMode{ModeHelp}, "Help"},
 }
 
@@ -139,7 +140,7 @@ func helpModeTitle(mode ViewMode) string {
 // context is whatever mode was active right before ':h'/'?' was pressed.
 func (m Model) helpContextMode() ViewMode {
 	if m.mode == ModeHelp {
-		return m.previousMode
+		return m.helpReturnMode
 	}
 	return m.mode
 }

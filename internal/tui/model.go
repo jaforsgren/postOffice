@@ -38,6 +38,7 @@ const (
 	ModeRequestVariables
 	ModeHistory
 	ModeHistoryDiff
+	ModeTiming
 )
 
 type GRPCReflectPhase int
@@ -248,8 +249,9 @@ type Model struct {
 	savedResponseViewport viewport.Model
 	viewingSavedResponse  bool
 
-	helpViewport viewport.Model
-	helpShowAll  bool
+	helpViewport   viewport.Model
+	helpShowAll    bool
+	helpReturnMode ViewMode
 
 	requestHistory       *history.Store
 	requestHistoryCursor int

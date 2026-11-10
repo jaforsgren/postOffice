@@ -70,6 +70,7 @@ j/k       Scroll
 g/G       Top/bottom
 d/u       Half-page scroll
 ctrl+r    Resend request
+t         Timing breakdown
 s         Save response
 ya        Copy request + response
 yb        Copy response body
@@ -94,6 +95,7 @@ Press `:` to enter command mode.
 :ro             Run options
 :changes        Unsaved changes
 :hist           Request history
+:t              Timing breakdown (response view)
 :w              Save
 :wq             Save and quit
 :q              Quit
@@ -117,6 +119,17 @@ Every execution started from the TUI (HTTP, gRPC, Service Bus and AMQP, includin
 - `d` shows a line diff (`-` history entry, `+` current response) of status, sorted headers and pretty-printed body
 
 History is persisted to `~/.postoffice_history.json` (capped at the 200 most recent entries). Because entries contain resolved secrets such as auth headers and connection strings, the file is written with owner-only permissions (`0600`).
+
+### Timing Breakdown
+
+Press `t` (or run `:timing`) in the response view to open a waterfall popup of the request's phases:
+
+- **HTTP** — DNS lookup, TCP connect, TLS handshake, TTFB and content download. On a reused connection, DNS/TCP/TLS show as `reused`; phases that don't apply (DNS for an IP address, TLS for plain HTTP) show as `n/a`.
+- **gRPC** (workflow steps) — connect + reflection, invoke
+- **AMQP** — dial (DNS + TCP), handshake (TLS + AMQP), open channel, publish
+- **Azure Service Bus** — total only
+
+Phases the request never reached because it failed are left out. Press `t`, `q` or `esc` to close.
 
 ## Editing Requests
 

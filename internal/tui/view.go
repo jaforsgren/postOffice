@@ -80,6 +80,9 @@ func (m Model) renderContent() []string {
 	case ModeHistoryDiff:
 		return []string{m.renderHistoryDiffView()}
 
+	case ModeTiming:
+		return []string{m.renderTimingPopup()}
+
 	default:
 		return []string{m.renderMainWindow()}
 	}

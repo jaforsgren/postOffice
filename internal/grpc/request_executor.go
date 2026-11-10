@@ -82,8 +82,9 @@ func (e *Executor) Execute(
 	ctx, cancel := context.WithTimeout(context.Background(), e.timeout)
 	defer cancel()
 
-	body, err := ExecuteRequest(ctx, resolved, variableValue(variables, ProtosetVariable))
+	result, err := ExecuteRequest(ctx, resolved, variableValue(variables, ProtosetVariable))
 	resp.Duration = time.Since(start)
+	resp.Timing = result.Phases
 	if err != nil {
 		resp.Error = err
 		resp.Status = status.Code(err).String()
@@ -92,7 +93,7 @@ func (e *Executor) Execute(
 
 	resp.StatusCode = okStatusCode
 	resp.Status = status.Code(nil).String()
-	resp.Body = body
+	resp.Body = result.Body
 
 	if scriptRun != nil {
 		scriptResult.Merge(scriptRun.Test(script.NewRequestData(requestToSend), &script.ResponseData{
