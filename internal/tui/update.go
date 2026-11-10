@@ -66,7 +66,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		if msg.Response.Error != nil {
+		if msg.Response.Skipped {
+			m.statusMessage = fmt.Sprintf("Skipped by pre-request script: %s (see console log)", msg.ItemName)
+			logger.Log(fmt.Sprintf("[REQUEST] SKIPPED %s", msg.ItemName))
+		} else if msg.Response.Error != nil {
 			m.statusMessage = fmt.Sprintf("Request failed: %s - %v", msg.ItemName, msg.Response.Error)
 			logger.Log(fmt.Sprintf("[REQUEST] ERROR %s - %v", msg.ItemName, msg.Response.Error))
 		} else {
@@ -806,8 +809,15 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 	environment := m.environment
 	itemCopy := item
 
+	scope := &script.RequestScope{
+		Collection:  collection,
+		Environment: environment,
+		FolderPath:  slices.Clone(folderPath),
+		Item:        &itemCopy,
+	}
+
 	return m, func() tea.Msg {
-		response, testResult := executor.Execute(requestToExecute, &itemCopy, collection, environment, variables)
+		response, testResult := executor.Execute(requestToExecute, scope, variables)
 
 		return RequestCompleteMsg{
 			ItemID:      itemID,
@@ -849,31 +859,34 @@ func (m Model) executeMessageItem(
 	collection := m.collection
 	environment := m.environment
 	itemCopy := item
+	scope := script.RequestScope{
+		Collection:  collection,
+		Environment: environment,
+		FolderPath:  slices.Clone(folderPath),
+		Item:        &itemCopy,
+		Sender:      m.executor.SendRequest,
+	}
 
 	return m, func() tea.Msg {
-		// Run pre-request scripts so they can set variables (e.g. generate IDs).
-		if len(itemCopy.Events) > 0 {
-			ctx := &script.ExecutionContext{}
-			if collection != nil {
-				ctx.CollectionVars = collection.Variables
-			}
-			if environment != nil {
-				ctx.EnvironmentVars = environment.Values
-			}
-			_ = script.ExecutePreRequestScripts(itemCopy.Events, ctx)
-			if collection != nil {
-				collection.Variables = ctx.CollectionVars
-			}
-			if environment != nil {
-				environment.Values = ctx.EnvironmentVars
+		// Pre-request scripts can set variables (e.g. generate IDs) or skip the send.
+		request, preResult := script.NewRequestRun(scope).PreRequest(itemCopy.Request)
+		if preResult.Skipped {
+			return RequestCompleteMsg{
+				ItemID:      itemID,
+				Response:    &internalhttp.Response{Skipped: true, Status: internalhttp.SkippedStatus},
+				TestResult:  preResult,
+				Collection:  collection,
+				Environment: environment,
+				ItemName:    itemCopy.Name,
 			}
 		}
 
-		variables := postman.GetAllVariables(collection, nil, environment)
-		resp := send(itemCopy.Request, variables)
+		variables := postman.GetAllVariables(collection, folderPath, environment)
+		resp := send(request, variables)
 		return RequestCompleteMsg{
 			ItemID:      itemID,
 			Response:    resp,
+			TestResult:  preResult,
 			Collection:  collection,
 			Environment: environment,
 			ItemName:    itemCopy.Name,

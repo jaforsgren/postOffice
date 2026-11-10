@@ -16,6 +16,7 @@ type Info struct {
 }
 
 type Item struct {
+	ID                      string                 `json:"id,omitempty"`
 	Name                    string                 `json:"name"`
 	Request                 *Request               `json:"request,omitempty"`
 	Items                   []Item                 `json:"item,omitempty"`
