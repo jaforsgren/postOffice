@@ -3,6 +3,7 @@ package workflow
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"postOffice/internal/postman"
@@ -72,19 +73,25 @@ func TestNewFolderWorkflow_nameIsFullFolderPathAndIDIsItsSlug(t *testing.T) {
 	}
 }
 
-func TestNewFolderWorkflow_scriptRunsEveryStepInOrder(t *testing.T) {
+func TestNewFolderWorkflow_scriptListsEveryStepInOrder(t *testing.T) {
 	wf, err := NewFolderWorkflow(buildNestedFolder(), []string{"policies", "TEST"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := "export default async function(wf, pm) {\n" +
-		"  await wf.run(\"setup\");\n" +
-		"  await wf.run(\"create-invite\");\n" +
-		"  await wf.run(\"redeem\");\n" +
-		"  await wf.run(\"cleanup\");\n" +
-		"}"
-	if wf.Script != want {
-		t.Errorf("Script =\n%s\nwant\n%s", wf.Script, want)
+	want := `const steps = ["setup", "create-invite", "redeem", "cleanup"];`
+	if !strings.Contains(wf.Script, want) {
+		t.Errorf("Script =\n%s\nwant it to contain %s", wf.Script, want)
+	}
+}
+
+func TestResolveFolderWorkflow_upgradesUnmodifiedLegacyScript(t *testing.T) {
+	saved := generateFolderWorkflow(t, buildNestedFolder())
+	saved.Script = legacyFolderRunScript(saved.Steps)
+	generated := generateFolderWorkflow(t, buildNestedFolder())
+
+	wf, resolution := ResolveFolderWorkflow(saved, generated)
+	if wf != generated || resolution != FolderWorkflowRegenerated {
+		t.Errorf("got (%p, %v), want generated workflow and FolderWorkflowRegenerated", wf, resolution)
 	}
 }
 

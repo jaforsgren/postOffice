@@ -3,6 +3,7 @@ package workflow
 import (
 	"encoding/json"
 	internalhttp "postOffice/internal/http"
+	"postOffice/internal/script"
 )
 
 // Workflow is a single YAML file describing execution steps and inline JavaScript.
@@ -55,6 +56,8 @@ type StepRunResult struct {
 	Response  *StepResponse   // alias for Last
 	Responses []*StepResponse // all repetition results
 	Last      *StepResponse   // last repetition result
+	// NextRequest is the last attempt's pm.execution.setNextRequest decision.
+	NextRequest script.NextRequest
 }
 
 // Status constants for steps and the overall workflow.
@@ -75,6 +78,9 @@ type StepState struct {
 	Progress     int                    // current repeat iteration (1-based)
 	Total        int                    // planned repeat count
 	LastResponse *internalhttp.Response `json:"-"`
+	// LastResult holds the last attempt's tests, script errors and console
+	// output; nil until the step's request has run.
+	LastResult *script.TestResult `json:"-"`
 }
 
 // ExecutionState is the full runtime state of a workflow execution.
