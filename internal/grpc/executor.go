@@ -168,7 +168,7 @@ func (c *Client) invoke(ctx context.Context, service, method, jsonBody, protoset
 	err = c.conn.Invoke(ctx, fullMethod, reqMsg, resMsg, grpc.WaitForReady(false))
 	sequence.Mark(PhaseInvoke)
 	if err != nil {
-		return "", fmt.Errorf("gRPC call %q failed: %w", fullMethod, err)
+		return "", callError(fullMethod, err)
 	}
 
 	out, err := protojson.Marshal(resMsg)
