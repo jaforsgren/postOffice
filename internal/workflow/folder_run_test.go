@@ -218,6 +218,31 @@ func TestNewRequestWorkflow(t *testing.T) {
 	}
 }
 
+func TestRequestRefs(t *testing.T) {
+	items := []postman.Item{
+		recordedRequest("top"),
+		{Name: "a/b", Items: []postman.Item{recordedRequest("inside")}},
+		{Name: "ok", Items: []postman.Item{recordedRequest("x/y"), recordedRequest("fine")}},
+	}
+
+	refs := RequestRefs(items, []string{"root"})
+
+	want := []struct{ path, unaddressable string }{
+		{"root/top", ""},
+		{"root/a/b/inside", "a/b"},
+		{"root/ok/x/y", "x/y"},
+		{"root/ok/fine", ""},
+	}
+	if len(refs) != len(want) {
+		t.Fatalf("got %d refs, want %d", len(refs), len(want))
+	}
+	for i, w := range want {
+		if refs[i].Path != w.path || refs[i].UnaddressableName != w.unaddressable {
+			t.Errorf("refs[%d] = {%q, %q}, want {%q, %q}", i, refs[i].Path, refs[i].UnaddressableName, w.path, w.unaddressable)
+		}
+	}
+}
+
 func TestRequestWorkflow_ignoresSetNextRequest(t *testing.T) {
 	server := newRecordingServer(t)
 

@@ -70,6 +70,24 @@ const (
 	StatusStopped = "stopped"
 )
 
+// StatusIcon returns the one-character icon shown for a step or run status.
+func StatusIcon(status string) string {
+	switch status {
+	case StatusSuccess:
+		return "✓"
+	case StatusFailed:
+		return "✗"
+	case StatusRunning:
+		return "▶"
+	case StatusSkipped:
+		return "−"
+	case StatusStopped:
+		return "■"
+	default:
+		return "○"
+	}
+}
+
 // StepState tracks the runtime state of a single step.
 type StepState struct {
 	ID           string

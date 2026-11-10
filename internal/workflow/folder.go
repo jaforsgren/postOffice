@@ -141,26 +141,20 @@ func findItem(items []postman.Item, name string) *postman.Item {
 }
 
 func newRunWorkflow(items []postman.Item, folderPath []string, id, name, description string) (*Workflow, error) {
-	for _, segment := range folderPath {
-		if strings.Contains(segment, RequestPathSeparator) {
-			return nil, &UnaddressableNameError{Name: segment}
-		}
-	}
-
-	var requestPaths [][]string
-	if err := collectRequestPaths(items, folderPath, &requestPaths); err != nil {
-		return nil, err
-	}
-	if len(requestPaths) == 0 {
+	refs := RequestRefs(items, folderPath)
+	if len(refs) == 0 {
 		return nil, fmt.Errorf("%w: %s", ErrFolderHasNoRequests, name)
 	}
 
-	steps := make([]Step, 0, len(requestPaths))
-	usedIDs := make(map[string]bool, len(requestPaths))
-	for _, path := range requestPaths {
+	steps := make([]Step, 0, len(refs))
+	usedIDs := make(map[string]bool, len(refs))
+	for _, ref := range refs {
+		if ref.UnaddressableName != "" {
+			return nil, &UnaddressableNameError{Name: ref.UnaddressableName}
+		}
 		steps = append(steps, Step{
-			ID:      uniqueStepID(path[len(path)-1], usedIDs),
-			Request: strings.Join(path, RequestPathSeparator),
+			ID:      uniqueStepID(ref.Item.Name, usedIDs),
+			Request: ref.Path,
 		})
 	}
 
@@ -189,21 +183,47 @@ func ResolveFolderWorkflow(saved, generated *Workflow) (*Workflow, FolderWorkflo
 	}
 }
 
-func collectRequestPaths(items []postman.Item, parentPath []string, out *[][]string) error {
-	for _, item := range items {
-		if strings.Contains(item.Name, RequestPathSeparator) {
-			return &UnaddressableNameError{Name: item.Name}
+// RequestRef is a request together with the "Folder/Sub/Request" path that runs and workflow
+// steps address it by.
+type RequestRef struct {
+	Path string
+	Item *postman.Item
+	// UnaddressableName is the first folder or request name on the path that contains
+	// RequestPathSeparator, which makes the path ambiguous; empty when the path can be run.
+	UnaddressableName string
+}
+
+// RequestRefs lists every request under items depth-first in collection order. parentPath is the
+// folder path items live in, so returned paths are complete.
+func RequestRefs(items []postman.Item, parentPath []string) []RequestRef {
+	unaddressable := ""
+	for _, name := range parentPath {
+		if unaddressable == "" && strings.Contains(name, RequestPathSeparator) {
+			unaddressable = name
+		}
+	}
+	return appendRequestRefs(nil, items, parentPath, unaddressable)
+}
+
+func appendRequestRefs(refs []RequestRef, items []postman.Item, parentPath []string, unaddressable string) []RequestRef {
+	for i := range items {
+		item := &items[i]
+		itemUnaddressable := unaddressable
+		if itemUnaddressable == "" && strings.Contains(item.Name, RequestPathSeparator) {
+			itemUnaddressable = item.Name
 		}
 		itemPath := append(append([]string{}, parentPath...), item.Name)
 		if item.IsRequest() {
-			*out = append(*out, itemPath)
+			refs = append(refs, RequestRef{
+				Path:              strings.Join(itemPath, RequestPathSeparator),
+				Item:              item,
+				UnaddressableName: itemUnaddressable,
+			})
 			continue
 		}
-		if err := collectRequestPaths(item.Items, itemPath, out); err != nil {
-			return err
-		}
+		refs = appendRequestRefs(refs, item.Items, itemPath, itemUnaddressable)
 	}
-	return nil
+	return refs
 }
 
 func uniqueStepID(requestName string, usedIDs map[string]bool) string {
