@@ -261,23 +261,32 @@ type VimScriptEditCompleteMsg struct {
 	Err      error
 }
 
-func (m Model) openVimForScript() (Model, tea.Cmd) {
-	content := m.editFieldTextArea.Value()
-
-	tmpFile, err := os.CreateTemp("", "postoffice-script-*.js")
+// writeTempFile writes content to a new temp file named after pattern
+// (os.CreateTemp syntax) and returns its path. The caller removes it.
+func writeTempFile(pattern, content string) (string, error) {
+	tmpFile, err := os.CreateTemp("", pattern)
 	if err != nil {
-		m.statusMessage = fmt.Sprintf("Failed to create temp file: %v", err)
-		return m, nil
+		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
 	if _, err := tmpFile.WriteString(content); err != nil {
 		tmpFile.Close()
 		os.Remove(tmpFile.Name())
-		m.statusMessage = fmt.Sprintf("Failed to write temp file: %v", err)
+		return "", fmt.Errorf("failed to write temp file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("failed to close temp file: %w", err)
+	}
+	return tmpFile.Name(), nil
+}
+
+func (m Model) openVimForScript() (Model, tea.Cmd) {
+	tempFilePath, err := writeTempFile("postoffice-script-*.js", m.editFieldTextArea.Value())
+	if err != nil {
+		m.statusMessage = err.Error()
 		return m, nil
 	}
-	tmpFile.Close()
 
-	tempFilePath := tmpFile.Name()
 	return m, tea.ExecProcess(exec.Command(editorBin(), tempFilePath), func(err error) tea.Msg {
 		return VimScriptEditCompleteMsg{TempFile: tempFilePath, Err: err}
 	})
@@ -300,6 +309,45 @@ func (m Model) applyVimScriptEdit(msg VimScriptEditCompleteMsg) Model {
 	m.editFieldTextArea.SetValue(strings.TrimRight(string(data), "\n"))
 	m.editFieldTextArea.Focus()
 	m.statusMessage = "Updated from editor (:w to save, :wq to save & exit)"
+	return m
+}
+
+// ── run report (read-only) ───────────────────────────────────────────────────
+
+// VimRunViewCompleteMsg is sent when the editor showing a run report exits.
+type VimRunViewCompleteMsg struct {
+	TempFile string
+	Err      error
+}
+
+// openRunInEditor shows the current workflow or collection run as plain text
+// in the editor, for searching and copying through long logs. It is a
+// snapshot: a run still in progress keeps going and is not re-exported.
+func (m Model) openRunInEditor() (Model, tea.Cmd) {
+	if len(m.workflowState.Steps) == 0 && len(m.workflowState.Logs) == 0 {
+		m.statusMessage = "Nothing to show yet: start a run first"
+		return m, nil
+	}
+
+	report := strings.Join(runReportLines(m.workflowState, plainRunStyler), "\n") + "\n"
+	tempFilePath, err := writeTempFile("postoffice-run-*.log", report)
+	if err != nil {
+		m.statusMessage = err.Error()
+		return m, nil
+	}
+
+	return m, tea.ExecProcess(exec.Command(editorBin(), tempFilePath), func(err error) tea.Msg {
+		return VimRunViewCompleteMsg{TempFile: tempFilePath, Err: err}
+	})
+}
+
+func (m Model) applyVimRunView(msg VimRunViewCompleteMsg) Model {
+	os.Remove(msg.TempFile)
+	if msg.Err != nil {
+		m.statusMessage = fmt.Sprintf("Editor error: %v", msg.Err)
+		return m
+	}
+	m.statusMessage = "Closed run report"
 	return m
 }
 

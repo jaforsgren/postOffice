@@ -26,35 +26,50 @@ const (
 // resolved, pre-request scripts before the call and test scripts after it.
 type Executor struct {
 	timeout time.Duration
+	// pm.sendRequest in a gRPC request's scripts still sends HTTP.
+	sender script.RequestSender
 }
 
 func NewExecutor() *Executor {
-	return &Executor{timeout: requestTimeout}
+	return &Executor{timeout: requestTimeout, sender: httpexec.NewExecutor().SendRequest}
 }
 
-// Execute resolves req against variables, runs item's scripts around the call
-// and returns the response in the same shape as an HTTP execution. A nil item
-// runs no scripts.
+// Execute resolves req against variables and calls it. With a non-nil scope
+// the collection → folder → request pre-request scripts run first (and may
+// rewrite or skip the request), and the test scripts after a successful call.
+// Without a scope no scripts run and the result is nil.
 func (e *Executor) Execute(
 	req *postman.Request,
-	item *postman.Item,
-	collection *postman.Collection,
-	environment *postman.Environment,
+	scope *script.RequestScope,
 	variables []postman.VariableSource,
 ) (*httpexec.Response, *script.TestResult) {
 	start := time.Now()
 	resp := &httpexec.Response{RequestMethod: requestMethod}
 
-	if item != nil {
-		if errors := script.RunItemPreRequestScripts(item, collection, environment); len(errors) > 0 {
-			resp.Error = fmt.Errorf("pre-request script errors: %v", errors)
-			resp.Duration = time.Since(start)
-			return resp, nil
+	var scriptRun *script.RequestRun
+	var scriptResult *script.TestResult
+	requestToSend := req
+	if scope != nil {
+		if scope.Sender == nil {
+			scope.Sender = e.sender
 		}
-		variables = postman.GetAllVariables(collection, nil, environment)
+		scriptRun = script.NewRequestRun(*scope)
+		requestToSend, scriptResult = scriptRun.PreRequest(req)
+		if len(scriptResult.Errors) > 0 {
+			resp.Error = fmt.Errorf("%w: %v", httpexec.ErrPreRequestScript, scriptResult.Errors)
+			resp.Duration = time.Since(start)
+			return resp, scriptResult
+		}
+		if scriptResult.Skipped {
+			resp.Skipped = true
+			resp.Status = httpexec.SkippedStatus
+			resp.Duration = time.Since(start)
+			return resp, scriptResult
+		}
+		variables = postman.GetAllVariables(scope.Collection, scope.FolderPath, scope.Environment)
 	}
 
-	resolved := resolveRequest(req, variables)
+	resolved := resolveRequest(requestToSend, variables)
 	resp.RequestURL = resolved.URL.Raw
 	resp.RequestHeaders = make(map[string]string, len(resolved.Header))
 	for _, header := range resolved.Header {
@@ -72,20 +87,22 @@ func (e *Executor) Execute(
 	if err != nil {
 		resp.Error = err
 		resp.Status = status.Code(err).String()
-		return resp, nil
+		return resp, scriptResult
 	}
 
 	resp.StatusCode = okStatusCode
 	resp.Status = status.Code(nil).String()
 	resp.Body = body
 
-	testResult := script.RunItemTestScripts(item, collection, environment, &script.ResponseData{
-		StatusCode:   resp.StatusCode,
-		Status:       resp.Status,
-		Body:         resp.Body,
-		ResponseTime: resp.Duration.Milliseconds(),
-	})
-	return resp, testResult
+	if scriptRun != nil {
+		scriptResult.Merge(scriptRun.Test(script.NewRequestData(requestToSend), &script.ResponseData{
+			StatusCode:   resp.StatusCode,
+			Status:       resp.Status,
+			Body:         resp.Body,
+			ResponseTime: resp.Duration.Milliseconds(),
+		}))
+	}
+	return resp, scriptResult
 }
 
 func resolveRequest(req *postman.Request, variables []postman.VariableSource) *postman.Request {

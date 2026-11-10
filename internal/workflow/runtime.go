@@ -15,7 +15,10 @@ import (
 	"postOffice/internal/servicebus"
 )
 
-const defaultScriptTimeout = 30 * time.Second
+const (
+	defaultScriptTimeout = 30 * time.Second
+	requestPathSeparator = "/"
+)
 
 // Runner executes a workflow against a collection and environment.
 type Runner struct {
@@ -29,6 +32,7 @@ type Runner struct {
 	state    ExecutionState
 	status   string
 	vm       *goja.Runtime
+	loop     *script.EventLoop
 	onChange func(ExecutionState)
 }
 
@@ -58,12 +62,14 @@ func (r *Runner) Run(wf *Workflow, onChange func(ExecutionState)) ExecutionState
 
 	r.vm = goja.New()
 
-	if err := r.setupConsole(); err != nil {
-		return r.finalize(StatusFailed, fmt.Sprintf("console setup failed: %v", err))
-	}
-
 	if err := r.setupPmAPI(); err != nil {
 		return r.finalize(StatusFailed, fmt.Sprintf("pm API setup failed: %v", err))
+	}
+
+	// After the pm API, which installs its own console: the workflow's must win
+	// so console output lands in the run log.
+	if err := r.setupConsole(); err != nil {
+		return r.finalize(StatusFailed, fmt.Sprintf("console setup failed: %v", err))
 	}
 
 	if err := script.SetupCryptoJS(r.vm); err != nil {
@@ -88,6 +94,11 @@ func (r *Runner) Run(wf *Workflow, onChange func(ExecutionState)) ExecutionState
 	}()
 
 	_, err := r.vm.RunString(transformed)
+	if err == nil {
+		for _, callbackErr := range r.loop.Drain() {
+			r.addLog(fmt.Sprintf("[SCRIPT ERROR] %v", callbackErr))
+		}
+	}
 	close(done)
 
 	select {
@@ -209,25 +220,16 @@ func (r *Runner) setupConsole() error {
 }
 
 func (r *Runner) setupPmAPI() error {
-	result := &script.TestResult{}
-	if err := script.SetupPmAPI(r.vm, r.ctx, result); err != nil {
+	r.ctx.SendRequest = r.httpExecutor.SendRequest
+	if r.environment != nil {
+		r.ctx.EnvironmentName = r.environment.Name
+	}
+	loop, err := script.SetupPmAPI(r.vm, r.ctx, &script.TestResult{})
+	if err != nil {
 		return err
 	}
-
-	// Add pm.environment as an alias for pm.environmentVariables (Postman-standard name).
-	pmVal := r.vm.Get("pm")
-	if pmVal == nil {
-		return nil
-	}
-	pmObj, ok := pmVal.(*goja.Object)
-	if !ok {
-		return nil
-	}
-	envVarsVal := pmObj.Get("environmentVariables")
-	if envVarsVal == nil {
-		return nil
-	}
-	return pmObj.Set("environment", envVarsVal)
+	r.loop = loop
+	return nil
 }
 
 func (r *Runner) setupWFAPI() error {
@@ -396,16 +398,17 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 		ss.Progress = i + 1
 		r.notifyProgress()
 
-		stepResp, rawResp, execErr := r.executeItem(item)
+		outcome, execErr := r.executeItem(item, requestPath)
 		if execErr != nil {
 			ss.Status = StatusFailed
 			r.notifyProgress()
 			return nil, execErr
 		}
+		stepResp := outcome.step
 		responses = append(responses, stepResp)
 		last = stepResp
-		if rawResp != nil {
-			ss.LastResponse = rawResp
+		if outcome.raw != nil {
+			ss.LastResponse = outcome.raw
 		}
 
 		if opts.Until != nil && opts.Until(stepResp) {
@@ -429,6 +432,12 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 		Responses: responses,
 		Last:      last,
 	}, nil
+}
+
+// folderPathOf returns the folders of a "folder/sub/request" path.
+func folderPathOf(requestPath string) []string {
+	parts := strings.Split(requestPath, requestPathSeparator)
+	return parts[:len(parts)-1]
 }
 
 func (r *Runner) findRequestPath(stepID string) string {
@@ -471,7 +480,7 @@ func (r *Runner) resolveRequest(path string) (*postman.Item, error) {
 		return nil, fmt.Errorf("no collection loaded")
 	}
 
-	parts := strings.Split(path, "/")
+	parts := strings.Split(path, requestPathSeparator)
 	current := r.collection.Items
 
 	for depth, part := range parts {
@@ -496,30 +505,44 @@ func (r *Runner) resolveRequest(path string) (*postman.Item, error) {
 	return nil, fmt.Errorf("request %q not found", path)
 }
 
-func (r *Runner) executeItem(item *postman.Item) (*StepResponse, *http.Response, error) {
+// itemOutcome is what executing one collection item produced.
+type itemOutcome struct {
+	step    *StepResponse
+	raw     *http.Response
+	scripts *script.TestResult
+}
+
+func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcome, error) {
 	// Write workflow-script variable changes to the collection before running.
 	r.syncToCollection()
+
+	scope := script.RequestScope{
+		Collection:  r.collection,
+		Environment: r.environment,
+		FolderPath:  folderPathOf(requestPath),
+		Item:        item,
+		Sender:      r.httpExecutor.SendRequest,
+	}
 
 	variables := r.getVariables()
 
 	if item.IsGRPC() {
-		stepResp, err := r.executeGRPC(item, variables)
-		return stepResp, nil, err
+		return r.executeGRPC(item, scope, variables), nil
 	}
 
 	if item.IsServiceBus() {
-		return r.executeMessageBus(item, "ASB")
+		return r.executeMessageBus(item, scope, "ASB")
 	}
 
 	if item.IsAMQP() {
-		return r.executeMessageBus(item, "AMQP")
+		return r.executeMessageBus(item, scope, "AMQP")
 	}
 
 	if !item.IsRequest() || item.Request == nil {
-		return nil, nil, fmt.Errorf("item %q is not a request", item.Name)
+		return itemOutcome{}, fmt.Errorf("item %q is not a request", item.Name)
 	}
 
-	resp, _ := r.httpExecutor.Execute(item.Request, item, r.collection, r.environment, variables)
+	resp, scriptResult := r.httpExecutor.Execute(item.Request, &scope, variables)
 
 	// Pick up variable changes from pre/post-request scripts.
 	r.syncFromCollection()
@@ -535,21 +558,23 @@ func (r *Runner) executeItem(item *postman.Item) (*StepResponse, *http.Response,
 		r.addLog(fmt.Sprintf("[HTTP ERROR] %v", resp.Error))
 	}
 
-	return stepResp, resp, nil
+	return itemOutcome{step: stepResp, raw: resp, scripts: scriptResult}, nil
 }
 
-func (r *Runner) executeMessageBus(item *postman.Item, protocol string) (*StepResponse, *http.Response, error) {
+func (r *Runner) executeMessageBus(item *postman.Item, scope script.RequestScope, protocol string) (itemOutcome, error) {
 	if item.Request == nil {
-		return nil, nil, fmt.Errorf("item %q has no request", item.Name)
+		return itemOutcome{}, fmt.Errorf("item %q has no request", item.Name)
 	}
 
 	// Run Postman pre-request scripts (e.g. to generate IDs before the send).
-	if len(item.Events) > 0 {
-		errs := script.ExecutePreRequestScripts(item.Events, r.ctx)
-		for _, e := range errs {
-			r.addLog(fmt.Sprintf("[%s PRE-SCRIPT ERROR] %s", protocol, e))
-		}
-		r.syncFromCollection()
+	request, preResult := script.NewRequestRun(scope).PreRequest(item.Request)
+	for _, e := range preResult.Errors {
+		r.addLog(fmt.Sprintf("[%s PRE-SCRIPT ERROR] %s", protocol, e))
+	}
+	r.syncFromCollection()
+	if preResult.Skipped {
+		r.addLog(fmt.Sprintf("[%s SKIPPED] %s", protocol, item.Name))
+		return itemOutcome{step: &StepResponse{}, raw: &http.Response{Skipped: true, Status: http.SkippedStatus}, scripts: preResult}, nil
 	}
 
 	variables := r.getVariables()
@@ -557,11 +582,11 @@ func (r *Runner) executeMessageBus(item *postman.Item, protocol string) (*StepRe
 	var resp *http.Response
 	switch protocol {
 	case "ASB":
-		resp = servicebus.Send(item.Request, variables)
+		resp = servicebus.Send(request, variables)
 	case "AMQP":
-		resp = amqp.Publish(item.Request, variables)
+		resp = amqp.Publish(request, variables)
 	default:
-		return nil, nil, fmt.Errorf("unknown message bus protocol: %s", protocol)
+		return itemOutcome{}, fmt.Errorf("unknown message bus protocol: %s", protocol)
 	}
 
 	r.syncFromCollection()
@@ -576,29 +601,26 @@ func (r *Runner) executeMessageBus(item *postman.Item, protocol string) (*StepRe
 		r.addLog(fmt.Sprintf("[%s ERROR] %v", protocol, resp.Error))
 	}
 
-	return stepResp, resp, nil
+	return itemOutcome{step: stepResp, raw: resp, scripts: preResult}, nil
 }
 
-func (r *Runner) executeGRPC(item *postman.Item, variables []postman.VariableSource) (*StepResponse, error) {
-	resp, _ := r.grpcExecutor.Execute(item.Request, item, r.collection, r.environment, variables)
+func (r *Runner) executeGRPC(item *postman.Item, scope script.RequestScope, variables []postman.VariableSource) itemOutcome {
+	resp, scriptResult := r.grpcExecutor.Execute(item.Request, &scope, variables)
 
 	// Pick up variable changes from pre/post-request scripts.
 	r.syncFromCollection()
 
-	if resp.Error != nil {
-		r.addLog(fmt.Sprintf("[gRPC ERROR] %v", resp.Error))
-		return &StepResponse{
-			Code: resp.StatusCode,
-			Body: fmt.Sprintf(`{"error":%q}`, resp.Error.Error()),
-			Time: resp.Duration.Milliseconds(),
-		}, nil
-	}
-
-	return &StepResponse{
+	stepResp := &StepResponse{
 		Code: resp.StatusCode,
 		Body: resp.Body,
 		Time: resp.Duration.Milliseconds(),
-	}, nil
+	}
+	if resp.Error != nil {
+		r.addLog(fmt.Sprintf("[gRPC ERROR] %v", resp.Error))
+		stepResp.Body = fmt.Sprintf(`{"error":%q}`, resp.Error.Error())
+	}
+
+	return itemOutcome{step: stepResp, raw: resp, scripts: scriptResult}
 }
 
 func (r *Runner) getVariables() []postman.VariableSource {

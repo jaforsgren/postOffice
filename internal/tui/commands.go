@@ -198,6 +198,14 @@ func (cr *CommandRegistry) registerCommands() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeInfo, ModeJSON},
 		},
 		{
+			Name:        "run",
+			Aliases:     []string{"runner"},
+			Description: "Run every request in the current folder like Postman's Collection Runner (follows setNextRequest)",
+			ShortHelp:   ":run",
+			Handler:     handleRunCommand,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Name:        "wf",
 			Aliases:     []string{"workflow", "workflows"},
 			Description: "Manage and run workflows (:wf [run|new] <name>)",
@@ -566,6 +574,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			ShortHelp:   "ctrl+g",
 			Handler:     handleVimEditWorkflowKey,
 			AvailableIn: []ViewMode{ModeWorkflows, ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{"L"},
+			Description: "Open run report (steps + logs) in editor",
+			ShortHelp:   "L",
+			Handler:     Model.openRunInEditor,
+			AvailableIn: []ViewMode{ModeWorkflowDetail, ModeWorkflowRun},
 		},
 		{
 			Keys:        []string{" "},
@@ -984,7 +999,13 @@ func handleResponseViewKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.mode == ModeWorkflowRun {
-		if m.activeWorkflow != nil && m.workflowChan == nil {
+		if m.workflowChan != nil {
+			return m, nil
+		}
+		if m.isCollectionRun {
+			return m.startCollectionRun(m.collectionRunFolder)
+		}
+		if m.activeWorkflow != nil {
 			return m.startWorkflow(m.activeWorkflow)
 		}
 		return m, nil
@@ -1178,6 +1199,11 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Returned to workflows list"
 		return m, nil
 	case ModeWorkflowRun:
+		if m.isCollectionRun {
+			m.mode = ModeRequests
+			m.statusMessage = "Returned to requests"
+			return m, nil
+		}
 		if m.previousMode == ModeWorkflowDetail {
 			m.mode = ModeWorkflowDetail
 		} else {
@@ -1392,6 +1418,10 @@ func handleDiscardAllKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Discarded all changes and reloaded from file"
 	}
 	return m, nil
+}
+
+func handleRunCommand(m Model, args []string) (Model, tea.Cmd) {
+	return m.startCollectionRun(append([]string{}, m.breadcrumb...))
 }
 
 func handleWorkflowCommand(m Model, args []string) (Model, tea.Cmd) {

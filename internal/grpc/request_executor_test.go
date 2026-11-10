@@ -19,6 +19,7 @@ import (
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/types/descriptorpb"
 	"postOffice/internal/postman"
+	"postOffice/internal/script"
 )
 
 const (
@@ -97,6 +98,10 @@ func healthItem(endpoint string, events ...postman.Event) *postman.Item {
 	}
 }
 
+func scopeOf(item *postman.Item, collection *postman.Collection, environment *postman.Environment) *script.RequestScope {
+	return &script.RequestScope{Collection: collection, Environment: environment, Item: item}
+}
+
 func scriptEvent(listen string, lines ...string) postman.Event {
 	return postman.Event{Listen: listen, Script: postman.Script{Type: "text/javascript", Exec: lines}}
 }
@@ -130,7 +135,7 @@ func TestExecutor_Execute_SendsMetadataAndRunsScripts(t *testing.T) {
 		),
 	)
 
-	resp, result := NewExecutor().Execute(item.Request, item, collection, environment, nil)
+	resp, result := NewExecutor().Execute(item.Request, scopeOf(item, collection, environment), nil)
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %v", resp.Error)
@@ -157,7 +162,7 @@ func TestExecutor_Execute_ReportsGRPCStatusOnFailure(t *testing.T) {
 	environment := testEnvironment(unknownService)
 	item := healthItem(server.endpoint, scriptEvent("test", "pm.environment.set('"+statusVariable+"', 'ran');"))
 
-	resp, result := NewExecutor().Execute(item.Request, item, &postman.Collection{}, environment, nil)
+	resp, _ := NewExecutor().Execute(item.Request, scopeOf(item, &postman.Collection{}, environment), nil)
 
 	if resp.Error == nil {
 		t.Fatal("expected an error for an unknown health service")
@@ -165,7 +170,7 @@ func TestExecutor_Execute_ReportsGRPCStatusOnFailure(t *testing.T) {
 	if resp.Status != expectedNotFound {
 		t.Errorf("status = %q, want %q", resp.Status, expectedNotFound)
 	}
-	if result != nil || envValue(environment, statusVariable) != "" {
+	if envValue(environment, statusVariable) != "" {
 		t.Error("test scripts should not run when the call fails")
 	}
 }
@@ -174,7 +179,7 @@ func TestExecutor_Execute_StopsOnPreRequestScriptError(t *testing.T) {
 	server := startHealthServer(t, withReflection)
 	item := healthItem(server.endpoint, scriptEvent("prerequest", "throw new Error('boom');"))
 
-	resp, _ := NewExecutor().Execute(item.Request, item, &postman.Collection{}, testEnvironment(servingService), nil)
+	resp, _ := NewExecutor().Execute(item.Request, scopeOf(item, &postman.Collection{}, testEnvironment(servingService)), nil)
 
 	if resp.Error == nil {
 		t.Fatal("expected the pre-request script error")
@@ -190,7 +195,7 @@ func TestExecutor_Execute_ResolvesVariablesWithoutItem(t *testing.T) {
 	item := healthItem(server.endpoint)
 	variables := postman.GetAllVariables(nil, nil, environment)
 
-	resp, result := NewExecutor().Execute(item.Request, nil, nil, nil, variables)
+	resp, result := NewExecutor().Execute(item.Request, nil, variables)
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %v", resp.Error)
@@ -227,7 +232,7 @@ func TestExecutor_Execute_FallsBackToProtosetWithoutReflection(t *testing.T) {
 	environment.Values = append(environment.Values, postman.EnvVariable{Key: ProtosetVariable, Value: writeHealthProtoset(t), Enabled: true})
 	item := healthItem(server.endpoint)
 
-	resp, _ := NewExecutor().Execute(item.Request, item, &postman.Collection{}, environment, nil)
+	resp, _ := NewExecutor().Execute(item.Request, scopeOf(item, &postman.Collection{}, environment), nil)
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %v", resp.Error)
@@ -241,7 +246,7 @@ func TestExecutor_Execute_ReportsMissingReflectionWithoutProtoset(t *testing.T) 
 	server := startHealthServer(t, withoutReflection)
 	item := healthItem(server.endpoint)
 
-	resp, _ := NewExecutor().Execute(item.Request, item, &postman.Collection{}, testEnvironment(servingService), nil)
+	resp, _ := NewExecutor().Execute(item.Request, scopeOf(item, &postman.Collection{}, testEnvironment(servingService)), nil)
 
 	if !errors.Is(resp.Error, ErrReflectionUnavailable) {
 		t.Errorf("error = %v, want ErrReflectionUnavailable", resp.Error)
