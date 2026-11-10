@@ -191,6 +191,10 @@ func (m Model) getModeString() string {
 		return "Saved Responses"
 	case ModeHelp:
 		return "Help"
+	case ModeHistory:
+		return "Request History"
+	case ModeHistoryDiff:
+		return "History Diff"
 	default:
 		return ""
 	}
@@ -295,10 +299,12 @@ func (m Model) renderStatusBar() string {
 	switch m.mode {
 	case ModeResponse:
 		help = "ctrl+r: resend | s: save | y: copy body | Y: copy all | q: close | j/k: scroll"
-	case ModeInfo, ModeJSON, ModeLog:
+	case ModeInfo, ModeJSON, ModeLog, ModeHistoryDiff:
 		help = "q: close | j/k: scroll"
 	case ModeSavedResponses:
 		help = "enter: view | d: delete | esc: back | j/k: navigate"
+	case ModeHistory:
+		help = "enter: replay | d: diff vs current | esc: back | j/k: navigate"
 	default:
 		help = "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
 	}

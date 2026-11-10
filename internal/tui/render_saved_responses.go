@@ -27,7 +27,7 @@ func (m Model) renderSavedResponsesView() string {
 			if sr.StatusCode < 200 || sr.StatusCode >= 300 {
 				statusStyle = errStyle
 			}
-			ts := sr.SavedAt.Format("2006-01-02 15:04:05")
+			ts := sr.SavedAt.Format(timestampLayout)
 			status := statusStyle.Render(sr.Status)
 			duration := helpStyle.Render(fmt.Sprintf("(%dms)", sr.DurationMS))
 			line := fmt.Sprintf("  %s  %s  %s", ts, status, duration)

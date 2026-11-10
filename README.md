@@ -14,6 +14,7 @@ A terminal UI for browsing and executing Postman collections with vim-style navi
 - Workflow automation with inline JavaScript orchestration
 - Path parameter editing (`:id` style) per request
 - Variable autocomplete with resolved value preview when typing `{{`
+- Request history across HTTP, gRPC, Service Bus and AMQP with instant replay and response diffing
 
 ## Installation
 
@@ -48,6 +49,7 @@ go build -o postOffice
 - `i` — show info for selected item
 - `J` — show raw JSON for selected item
 - `H` — view saved responses for selected request
+- `ctrl+o` — open request history
 - `r` — refresh current view
 - `/` — search / filter items
 - `?` — show help
@@ -67,6 +69,12 @@ go build -o postOffice
 - `y` — copy response body (in response view)
 - `Y` — copy full response (in response view)
 - `s` — save response (in response view)
+
+**Request history view (`ctrl+o` or `:history`):**
+- `j/k` or `↓/↑` — navigate entries (newest first)
+- `enter` — replay the selected entry and show its response
+- `d` — diff the selected entry's response against the current response
+- `q` or `esc/h/backspace` — close (closes the diff first when one is open)
 
 **Workflow detail view:**
 - `j/k` — navigate steps
@@ -100,6 +108,7 @@ Press `:` to enter command mode:
 - `:w` — save changes to file
 - `:wq` — save changes and quit
 - `:changes` or `:ch` — show unsaved changes
+- `:history` or `:hist` / `:hi` — show request history
 - `:help` or `:h` or `?` — show help
 - `:quit` or `:q` — exit
 
@@ -127,6 +136,16 @@ When loading files, `~/` is expanded to your home directory:
 3. View the response — use `j/k` to scroll, `d/u` for half-page scrolling
 4. Press `q` or `esc` to close
 5. Press `ctrl+r` to view the last response without re-executing
+
+## Request History
+
+Every execution started from the TUI (HTTP, gRPC, Service Bus and AMQP, including replays) is recorded with its resolved URL/target, headers and body, environment name, status, duration, timestamp and response size. Workflow runs are not recorded.
+
+- Open it with `ctrl+o` or `:history` (`:hist`, `:hi`)
+- `enter` replays the entry with exactly the recorded resolved inputs. Variables are not re-resolved and pre-request/test scripts do not run
+- `d` shows a line diff (`-` history entry, `+` current response) of status, sorted headers and pretty-printed body
+
+History is persisted to `~/.postoffice_history.json` (capped at the 200 most recent entries). Because entries contain resolved secrets such as auth headers and connection strings, the file is written with owner-only permissions (`0600`).
 
 ## Editing Requests
 
@@ -218,7 +237,7 @@ See [docs/workflows.md](docs/workflows.md) for full documentation.
 
 ## gRPC Requests
 
-PostOffice supports gRPC requests stored in Postman collections (method `GRPC` or URL scheme `grpc://`). A dedicated edit form replaces the standard HTTP edit fields.
+PostOffice supports gRPC requests stored in Postman collections (method `GRPC` or URL scheme `grpc://`). A dedicated edit form replaces the standard HTTP edit fields. Unary calls are executed with `enter`/`ctrl+e` like HTTP requests, using server reflection for the message types.
 
 ### Editing a gRPC Request
 

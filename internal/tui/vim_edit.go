@@ -172,7 +172,7 @@ func (m Model) applyVimEditToEditState(payload vimEditPayload) Model {
 	m.editRequest.Header = payload.Headers
 
 	if m.editRequest.Body == nil {
-		m.editRequest.Body = &postman.Body{Mode: "raw"}
+		m.editRequest.Body = &postman.Body{Mode: postman.BodyModeRaw}
 	}
 	m.editRequest.Body.Raw = payload.Body
 
@@ -192,7 +192,7 @@ func (m Model) applyVimEditToCollection(msg VimEditCompleteMsg, payload vimEditP
 		Header: payload.Headers,
 	}
 	if payload.Body != "" {
-		updatedReq.Body = &postman.Body{Mode: "raw", Raw: payload.Body}
+		updatedReq.Body = &postman.Body{Mode: postman.BodyModeRaw, Raw: payload.Body}
 	}
 
 	if !m.updateRequestInCollection(msg.FolderPath, msg.OriginalName, newName, updatedReq) {

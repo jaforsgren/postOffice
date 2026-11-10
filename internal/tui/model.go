@@ -2,6 +2,7 @@ package tui
 
 import (
 	"postOffice/internal/grpc"
+	"postOffice/internal/history"
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
@@ -34,6 +35,8 @@ const (
 	ModeWorkflowDetail
 	ModeSavedResponses
 	ModeHelp
+	ModeHistory
+	ModeHistoryDiff
 )
 
 type GRPCReflectPhase int
@@ -76,13 +79,16 @@ type RequestExecution struct {
 }
 
 type RequestCompleteMsg struct {
-	ItemID      string
-	Response    *http.Response
-	TestResult  *script.TestResult
-	Collection  *postman.Collection
-	Environment *postman.Environment
-	ItemName    string
-	IsModified  bool
+	ItemID          string
+	Response        *http.Response
+	TestResult      *script.TestResult
+	Collection      *postman.Collection
+	Environment     *postman.Environment
+	EnvironmentName string
+	Protocol        history.Protocol
+	ItemName        string
+	IsModified      bool
+	Replayed        bool
 }
 
 type Model struct {
@@ -190,6 +196,11 @@ type Model struct {
 
 	helpViewport viewport.Model
 	helpShowAll  bool
+
+	requestHistory       *history.Store
+	requestHistoryCursor int
+	historyReturnMode    ViewMode
+	historyDiffViewport  viewport.Model
 }
 
 // GRPCReflectMsg carries the result of an async gRPC server reflection call.
@@ -213,7 +224,7 @@ func waitForWorkflow(ch <-chan workflow.ExecutionState) tea.Cmd {
 	}
 }
 
-func NewModel(parser *postman.Parser) Model {
+func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
 	cmdInput := textinput.New()
 	cmdInput.Placeholder = "Enter command..."
 	cmdInput.CharLimit = 500
@@ -259,6 +270,9 @@ func NewModel(parser *postman.Parser) Model {
 		workflowViewport:      viewport.New(0, 0),
 		savedResponseViewport: viewport.New(0, 0),
 		helpViewport:          viewport.New(0, 0),
+		requestHistory:        requestHistory,
+		historyReturnMode:     modeUnset,
+		historyDiffViewport:   viewport.New(0, 0),
 		requestExecutions:     make(map[string]*RequestExecution),
 	}
 	m = m.restoreSession()

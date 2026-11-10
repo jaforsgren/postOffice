@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	"postOffice/internal/history"
 	"postOffice/internal/postman"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -81,7 +82,7 @@ func createTestModel() Model {
 	collection := createMockCollection()
 	parser.LoadCollection("test_collection.json")
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.collection = collection
 	m.mode = ModeRequests
 	m = m.loadRequestsList()
@@ -1549,24 +1550,5 @@ func TestItemDisplayPrefix(t *testing.T) {
 				t.Errorf("Expected prefix %q, got %q", tt.expected, result)
 			}
 		})
-	}
-}
-
-func TestExecuteRequest_GRPCReturnsUnsupported(t *testing.T) {
-	m := createTestModel()
-	grpcItem := postman.Item{
-		Name: "SayHello",
-		Request: &postman.Request{
-			Method: "GRPC",
-			URL:    postman.URL{Raw: "grpc://localhost:50051/helloworld.Greeter/SayHello"},
-		},
-	}
-
-	newM, cmd := m.executeRequest(grpcItem)
-	if cmd != nil {
-		t.Error("Expected no command for gRPC request execution")
-	}
-	if newM.statusMessage == "" {
-		t.Error("Expected status message for unsupported gRPC execution")
 	}
 }

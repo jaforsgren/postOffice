@@ -61,6 +61,12 @@ func (m Model) renderContent() []string {
 	case ModeHelp:
 		return []string{m.renderHelpView()}
 
+	case ModeHistory:
+		return []string{m.renderHistoryView()}
+
+	case ModeHistoryDiff:
+		return []string{m.renderHistoryDiffView()}
+
 	default:
 		return []string{m.renderMainWindow()}
 	}
