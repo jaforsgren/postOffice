@@ -186,50 +186,96 @@ func (m Model) renderWorkflowDetail() string {
 }
 
 func (m Model) renderWorkflowRunView() string {
-	return strings.Join(m.buildWorkflowRunLines(), "\n")
+	return m.workflowViewport.View()
 }
 
+// refreshWorkflowRunViewport re-renders the run view, following the newest
+// output while the run is in progress so its progress stays visible.
+func (m Model) refreshWorkflowRunViewport() Model {
+	m.configureViewport(&m.workflowViewport, strings.Join(m.buildWorkflowRunLines(), "\n"))
+	if m.workflowState.Status == workflow.StatusRunning {
+		m.workflowViewport.GotoBottom()
+	}
+	return m
+}
+
+// runStyler decorates run report text. The TUI renders it with colours; the
+// editor export uses plainRunStyler, since ANSI codes would show up as noise.
+type runStyler struct {
+	title   func(string) string
+	heading func(string) string
+	status  func(status, text string) string
+	subtle  func(string) string
+	failure func(string) string
+}
+
+func render(style lipgloss.Style) func(string) string {
+	return func(text string) string { return style.Render(text) }
+}
+
+func identity(text string) string { return text }
+
+var (
+	styledRunStyler = runStyler{
+		title:   render(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))),
+		heading: render(lipgloss.NewStyle().Bold(true)),
+		status:  func(status, text string) string { return workflowStatusStyle(status).Render(text) },
+		subtle:  func(text string) string { return subtleStyle.Render(text) },
+		failure: render(lipgloss.NewStyle().Foreground(lipgloss.Color("9"))),
+	}
+	plainRunStyler = runStyler{
+		title:   identity,
+		heading: identity,
+		status:  func(_, text string) string { return text },
+		subtle:  identity,
+		failure: identity,
+	}
+)
+
 func (m Model) buildWorkflowRunLines() []string {
-	state := m.workflowState
+	return runReportLines(m.workflowState, styledRunStyler)
+}
+
+// runReportLines lays out a workflow or collection run: header, one line per
+// step (with the request and HTTP result once it has run), logs and error.
+func runReportLines(state workflow.ExecutionState, style runStyler) []string {
 	var lines []string
 
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-	statusStyle := workflowStatusStyle(state.Status)
-
-	lines = append(lines, titleStyle.Render(state.WorkflowName)+" "+statusStyle.Render("["+state.Status+"]"))
+	lines = append(lines, style.title(state.WorkflowName)+" "+style.status(state.Status, "["+state.Status+"]"))
 	lines = append(lines, "")
 
 	if len(state.Steps) == 0 {
-		lines = append(lines, subtleStyle.Render("(no steps defined)"))
+		lines = append(lines, style.subtle("(no steps defined)"))
 	} else {
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Steps:"))
+		lines = append(lines, style.heading("Steps:"))
 		for _, ss := range state.Steps {
-			icon := stepIcon(ss.Status)
-			repeatInfo := ""
+			detail := ""
 			if ss.Total > 1 {
-				repeatInfo = fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total)
+				detail = fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total)
 			}
-			line := fmt.Sprintf("  %s %-20s %s%s",
-				icon,
+			if ss.LastResponse != nil {
+				detail += fmt.Sprintf("  %s  %s  %v", ss.Request, ss.LastResponse.Status, ss.LastResponse.Duration.Round(time.Millisecond))
+			}
+			lines = append(lines, fmt.Sprintf("  %s %-20s %s%s",
+				stepIcon(ss.Status),
 				ss.ID,
-				workflowStatusStyle(ss.Status).Render(ss.Status),
-				subtleStyle.Render(repeatInfo),
-			)
-			lines = append(lines, line)
+				style.status(ss.Status, ss.Status),
+				style.subtle(detail),
+			))
 		}
 	}
 
 	if len(state.Logs) > 0 {
 		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Logs:"))
+		lines = append(lines, style.heading("Logs:"))
 		for _, log := range state.Logs {
-			lines = append(lines, "  "+subtleStyle.Render(log))
+			lines = append(lines, "  "+style.subtle(log))
 		}
 	}
 
 	if state.Error != "" {
 		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render("Error: "+state.Error))
+		lines = append(lines, style.failure("Error: "+state.Error))
 	}
 
 	return lines

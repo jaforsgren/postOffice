@@ -85,10 +85,12 @@ func TestExecuteTestScript_ResponseHeaders(t *testing.T) {
 	script := postman.Script{
 		Type: "text/javascript",
 		Exec: []string{
-			"pm.test('can access headers map', () => {",
-			"    const contentType = pm.response.headers['Content-Type'];",
-			"    if (!contentType || contentType[0] !== 'application/json') {",
+			"pm.test('can read headers case-insensitively', () => {",
+			"    if (pm.response.headers.get('content-type') !== 'application/json') {",
 			"        throw new Error('Expected Content-Type application/json');",
+			"    }",
+			"    if (!pm.response.headers.has('X-Custom', 'test-value')) {",
+			"        throw new Error('Expected X-Custom header');",
 			"    }",
 			"});",
 		},

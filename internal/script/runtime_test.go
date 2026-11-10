@@ -237,7 +237,7 @@ func TestExecuteTestScript_EmptyScript(t *testing.T) {
 	}
 }
 
-func TestExecuteTestScripts_MultipleEvents(t *testing.T) {
+func TestExecuteChain_MultipleTestEvents(t *testing.T) {
 	events := []postman.Event{
 		{
 			Listen: "test",
@@ -270,14 +270,14 @@ func TestExecuteTestScripts_MultipleEvents(t *testing.T) {
 		},
 	}
 
-	result := ExecuteTestScripts(events, ctx)
+	result := NewRuntime().ExecuteChain(PhaseTest, [][]postman.Event{events}, ctx)
 
 	if len(result.Tests) != 2 {
 		t.Fatalf("Expected 2 tests, got %d", len(result.Tests))
 	}
 }
 
-func TestExecuteTestScripts_IgnoreNonTestEvents(t *testing.T) {
+func TestExecuteChain_IgnoresOtherPhases(t *testing.T) {
 	events := []postman.Event{
 		{
 			Listen: "prerequest",
@@ -308,7 +308,7 @@ func TestExecuteTestScripts_IgnoreNonTestEvents(t *testing.T) {
 		},
 	}
 
-	result := ExecuteTestScripts(events, ctx)
+	result := NewRuntime().ExecuteChain(PhaseTest, [][]postman.Event{events}, ctx)
 
 	if len(result.Tests) != 1 {
 		t.Fatalf("Expected 1 test (pre-request should be ignored), got %d", len(result.Tests))
@@ -344,7 +344,7 @@ func TestExecutePreRequestScripts_Simple(t *testing.T) {
 	}
 }
 
-func TestExecutePreRequestScripts_Multiple(t *testing.T) {
+func TestExecuteChain_MultiplePreRequestEvents(t *testing.T) {
 	events := []postman.Event{
 		{
 			Listen: "prerequest",
@@ -380,7 +380,7 @@ func TestExecutePreRequestScripts_Multiple(t *testing.T) {
 		EnvironmentVars: []postman.EnvVariable{},
 	}
 
-	errors := ExecutePreRequestScripts(events, ctx)
+	errors := NewRuntime().ExecuteChain(PhasePreRequest, [][]postman.Event{events}, ctx).Errors
 
 	if len(errors) > 0 {
 		t.Errorf("Expected no errors, got: %v", errors)
@@ -393,11 +393,11 @@ func TestExecutePreRequestScripts_Multiple(t *testing.T) {
 	}
 }
 
-func TestExecutePreRequestScripts_Empty(t *testing.T) {
+func TestExecuteChain_NoEvents(t *testing.T) {
 	events := []postman.Event{}
 	ctx := &ExecutionContext{}
 
-	errors := ExecutePreRequestScripts(events, ctx)
+	errors := NewRuntime().ExecuteChain(PhasePreRequest, [][]postman.Event{events}, ctx).Errors
 
 	if len(errors) != 0 {
 		t.Errorf("Expected no errors, got: %v", errors)

@@ -31,6 +31,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.responseViewport.Width = msg.Width - viewportPadding
 		m.infoViewport.Width = msg.Width - viewportPadding
 		m.jsonViewport.Width = msg.Width - viewportPadding
+		m.workflowViewport.Width = msg.Width - viewportPadding
 		return m, nil
 
 	case RequestCompleteMsg:
@@ -66,7 +67,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		if msg.Response.Error != nil {
+		if msg.Response.Skipped {
+			m.statusMessage = fmt.Sprintf("Skipped by pre-request script: %s (see console log)", msg.ItemName)
+			logger.Log(fmt.Sprintf("[REQUEST] SKIPPED %s", msg.ItemName))
+		} else if msg.Response.Error != nil {
 			m.statusMessage = fmt.Sprintf("Request failed: %s - %v", msg.ItemName, msg.Response.Error)
 			logger.Log(fmt.Sprintf("[REQUEST] ERROR %s - %v", msg.ItemName, msg.Response.Error))
 		} else {
@@ -86,15 +90,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case WorkflowMsg:
 		m.workflowState = msg.State
+		m = m.refreshWorkflowRunViewport()
 		if msg.Done {
+			runLabel := fmt.Sprintf("Workflow %q", msg.State.WorkflowName)
+			if m.isCollectionRun {
+				runLabel = msg.State.WorkflowName
+			}
 			if msg.State.Status == workflow.StatusSuccess {
-				m.statusMessage = fmt.Sprintf("Workflow %q completed", msg.State.WorkflowName)
+				m.statusMessage = fmt.Sprintf("%s completed", runLabel)
 			} else {
 				errMsg := msg.State.Error
 				if errMsg == "" {
 					errMsg = msg.State.Status
 				}
-				m.statusMessage = fmt.Sprintf("Workflow %q %s: %s", msg.State.WorkflowName, msg.State.Status, errMsg)
+				m.statusMessage = fmt.Sprintf("%s %s: %s", runLabel, msg.State.Status, errMsg)
 			}
 			m.workflowChan = nil
 			if m.collection != nil {
@@ -138,6 +147,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case VimScriptEditCompleteMsg:
 		m = m.applyVimScriptEdit(msg)
+		return m, nil
+
+	case VimRunViewCompleteMsg:
+		m = m.applyVimRunView(msg)
 		return m, nil
 
 	case VimEnvEditCompleteMsg:
@@ -755,10 +768,6 @@ func (m Model) handleSelection() Model {
 }
 
 func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	if item.IsGRPC() {
-		m.statusMessage = "gRPC execution not yet supported — use :info to inspect the request"
-		return m, nil
-	}
 	if !item.IsRequest() || item.Request == nil {
 		m.statusMessage = "Cannot execute: not a request"
 		return m, nil
@@ -801,13 +810,20 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 
 	variables := postman.GetAllVariables(m.collection, folderPath, m.environment)
 
-	executor := m.executor
+	executor := m.executorFor(item)
 	collection := m.collection
 	environment := m.environment
 	itemCopy := item
 
+	scope := &script.RequestScope{
+		Collection:  collection,
+		Environment: environment,
+		FolderPath:  slices.Clone(folderPath),
+		Item:        &itemCopy,
+	}
+
 	return m, func() tea.Msg {
-		response, testResult := executor.Execute(requestToExecute, &itemCopy, collection, environment, variables)
+		response, testResult := executor.Execute(requestToExecute, scope, variables)
 
 		return RequestCompleteMsg{
 			ItemID:      itemID,
@@ -819,6 +835,13 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 			IsModified:  isModified,
 		}
 	}
+}
+
+func (m Model) executorFor(item postman.Item) requestExecutor {
+	if item.IsGRPC() {
+		return m.grpcExecutor
+	}
+	return m.executor
 }
 
 func (m Model) executeServiceBusRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
@@ -849,31 +872,34 @@ func (m Model) executeMessageItem(
 	collection := m.collection
 	environment := m.environment
 	itemCopy := item
+	scope := script.RequestScope{
+		Collection:  collection,
+		Environment: environment,
+		FolderPath:  slices.Clone(folderPath),
+		Item:        &itemCopy,
+		Sender:      m.executor.SendRequest,
+	}
 
 	return m, func() tea.Msg {
-		// Run pre-request scripts so they can set variables (e.g. generate IDs).
-		if len(itemCopy.Events) > 0 {
-			ctx := &script.ExecutionContext{}
-			if collection != nil {
-				ctx.CollectionVars = collection.Variables
-			}
-			if environment != nil {
-				ctx.EnvironmentVars = environment.Values
-			}
-			_ = script.ExecutePreRequestScripts(itemCopy.Events, ctx)
-			if collection != nil {
-				collection.Variables = ctx.CollectionVars
-			}
-			if environment != nil {
-				environment.Values = ctx.EnvironmentVars
+		// Pre-request scripts can set variables (e.g. generate IDs) or skip the send.
+		request, preResult := script.NewRequestRun(scope).PreRequest(itemCopy.Request)
+		if preResult.Skipped {
+			return RequestCompleteMsg{
+				ItemID:      itemID,
+				Response:    &internalhttp.Response{Skipped: true, Status: internalhttp.SkippedStatus},
+				TestResult:  preResult,
+				Collection:  collection,
+				Environment: environment,
+				ItemName:    itemCopy.Name,
 			}
 		}
 
-		variables := postman.GetAllVariables(collection, nil, environment)
-		resp := send(itemCopy.Request, variables)
+		variables := postman.GetAllVariables(collection, folderPath, environment)
+		resp := send(request, variables)
 		return RequestCompleteMsg{
 			ItemID:      itemID,
 			Response:    resp,
+			TestResult:  preResult,
 			Collection:  collection,
 			Environment: environment,
 			ItemName:    itemCopy.Name,
@@ -3040,25 +3066,65 @@ func (m Model) startWorkflow(wf *workflow.Workflow) (Model, tea.Cmd) {
 		m.workflowStepCursor = 0
 	}
 	m.statusMessage = fmt.Sprintf("Running workflow: %s", wf.Name)
+	m.isCollectionRun = false
 
-	progressChan := make(chan workflow.ExecutionState, 20)
+	return m.launchRun(func(runner *workflow.Runner, onChange func(workflow.ExecutionState)) workflow.ExecutionState {
+		return runner.Run(wf, onChange)
+	})
+}
+
+// startCollectionRun runs every request under folderPath (the whole
+// collection when empty), following pm.execution.setNextRequest.
+func (m Model) startCollectionRun(folderPath []string) (Model, tea.Cmd) {
+	if m.collection == nil {
+		m.statusMessage = "Load a collection first"
+		return m, nil
+	}
+	if m.isViewingMergedCollection() {
+		m.statusMessage = "Collection runs are unavailable in combined collection view"
+		return m, nil
+	}
+	if m.workflowChan != nil {
+		m.statusMessage = "A run is already in progress"
+		return m, nil
+	}
+
+	runName := workflow.RunName(m.collection, folderPath)
+	m.workflowState = workflow.ExecutionState{
+		WorkflowName: runName,
+		Status:       workflow.StatusPending,
+		StepIndex:    make(map[string]*workflow.StepState),
+	}
+	m.isCollectionRun = true
+	m.collectionRunFolder = folderPath
+	if m.mode != ModeWorkflowRun {
+		m.previousMode = m.mode
+		m.mode = ModeWorkflowRun
+	}
+	m = m.refreshWorkflowRunViewport()
+	m.statusMessage = runName
+
+	return m.launchRun(func(runner *workflow.Runner, onChange func(workflow.ExecutionState)) workflow.ExecutionState {
+		return runner.RunCollection(folderPath, onChange)
+	})
+}
+
+// launchRun runs a workflow or collection run in a goroutine, streaming
+// state snapshots to the TUI until it finishes.
+func (m Model) launchRun(run func(*workflow.Runner, func(workflow.ExecutionState)) workflow.ExecutionState) (Model, tea.Cmd) {
+	progressChan := make(chan workflow.ExecutionState, workflowProgressBuffer)
 	m.workflowChan = progressChan
 
-	collection := m.collection
-	environment := m.environment
-	executor := m.executor
+	runner := workflow.NewRunner(m.collection, m.environment, m.executor)
 
 	return m, tea.Batch(
-		// Run the workflow in a goroutine; close the channel when done.
 		func() tea.Msg {
-			runner := workflow.NewRunner(collection, environment, executor)
-			finalState := runner.Run(wf, func(state workflow.ExecutionState) {
+			finalState := run(runner, func(state workflow.ExecutionState) {
 				progressChan <- state
 			})
 			close(progressChan)
 			return WorkflowMsg{State: finalState, Done: true}
 		},
-		// Start receiving progress updates.
 		waitForWorkflow(progressChan),
 	)
 }
