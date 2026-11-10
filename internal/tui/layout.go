@@ -1,8 +1,8 @@
 package tui
 
 const (
-	topBarHeight = 7
-	statusHeight = 2
+	statusHeight     = 2
+	commandBarHeight = 1
 )
 
 type layoutMetrics struct {
@@ -15,7 +15,8 @@ type layoutMetrics struct {
 }
 
 func (m Model) calculateLayout() layoutMetrics {
-	totalOverhead := topBarHeight + statusHeight
+	// Content views are bordered, and lipgloss Height excludes the border.
+	totalOverhead := topBarHeight + statusHeight + commandBarHeight + paneBorderSize
 	contentHeight := m.height - totalOverhead
 
 	return layoutMetrics{

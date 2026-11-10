@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestBuildLoadedNamesLine_None(t *testing.T) {
@@ -116,5 +118,25 @@ func TestBuildShortcutsDisplay_DropsColumnsThatDoNotFit(t *testing.T) {
 
 	if columnWidth(narrow) >= columnWidth(wide) {
 		t.Errorf("expected fewer shortcut columns when narrow, got %d vs %d", columnWidth(narrow), columnWidth(wide))
+	}
+}
+
+func TestView_FitsTheTerminalHeight(t *testing.T) {
+	parser := createMockParser()
+	for _, name := range []string{"Dev", "Staging", "Prod"} {
+		parser.LoadEnvironment(writeTempEnvironmentFile(t, name))
+	}
+	for _, width := range []int{60, 100, 160, 240} {
+		m := createTestModel()
+		m.parser = parser
+		m.width, m.height = width, 40
+		m.statusMessage = "status"
+
+		if got := lipgloss.Height(m.View()); got > m.height {
+			t.Errorf("width %d: view is %d lines, taller than the %d-line terminal, so its top scrolls away", width, got, m.height)
+		}
+		if got := lipgloss.Height(m.renderTopBar()); got != topBarHeight {
+			t.Errorf("width %d: top bar is %d lines, layout assumes %d", width, got, topBarHeight)
+		}
 	}
 }

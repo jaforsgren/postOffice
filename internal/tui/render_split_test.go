@@ -12,7 +12,7 @@ import (
 
 const (
 	splitTestWidth  = 120
-	splitTestHeight = 40
+	splitTestHeight = 50
 	folderIndex     = 0
 	requestIndex    = 1
 )

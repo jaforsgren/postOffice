@@ -8,10 +8,22 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
-	topBarSectionRows  = 6 // rows under each section heading
+	topBarSectionRows = 6 // rows under each section heading
+	topBarTitleRows   = 2 // the title and the blank line under it
+	topBarHeadingRows = 1
+	topBarPaddingRows = 2 // titleStyle's vertical padding
+	topBarPaddingCols = 2 // titleStyle's horizontal padding
+
+	statusBarPaddingCols = 2 // statusBarStyle's horizontal padding
+
+	// topBarHeight is the rendered height; renderTopBar truncates lines so
+	// they never wrap and grow it.
+	topBarHeight = topBarTitleRows + topBarHeadingRows + topBarSectionRows + topBarPaddingRows
+
 	topBarNameMax      = 25
 	topBarSeparator    = " │ "
 	topBarShortcutsGap = 3
@@ -33,14 +45,17 @@ func (m Model) renderTopBar() string {
 		topBarSection("CONTEXT", m.buildContextInfo()),
 		topBarSection("ENVIRONMENTS", m.buildEnvironmentsSection()),
 	}
-	used := 0
+	used := topBarPaddingCols
 	for _, section := range sections {
 		used += columnWidth(section) + lipgloss.Width(topBarSeparator)
 	}
 	sections = append(sections, topBarSection("SHORTCUTS", m.buildShortcutsDisplay(m.width-used)))
 
-	content := titleOrangeStyle.Render("PostOffice") + "\n\n" + joinTopBarSections(sections)
-	return titleStyle.Width(m.width).Render(content)
+	lines := strings.Split(titleOrangeStyle.Render("PostOffice")+"\n\n"+joinTopBarSections(sections), "\n")
+	for i := range lines {
+		lines[i] = ansi.Truncate(lines[i], max(m.width-topBarPaddingCols, 0), "")
+	}
+	return titleStyle.Width(m.width).Render(strings.Join(lines, "\n"))
 }
 
 func topBarSection(heading string, lines []string) []string {
@@ -332,7 +347,7 @@ func (m Model) buildShortcutsDisplay(width int) []string {
 		if start > 0 {
 			gap = topBarShortcutsGap
 		}
-		if start > 0 && used+gap+columnW > width {
+		if used+gap+columnW > width {
 			break
 		}
 		for i := range rows {
@@ -410,6 +425,9 @@ func (m Model) renderStatusBar() string {
 	default:
 		help = "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
 	}
+
+	// Wrapping would make the status bar taller than statusHeight.
+	help = ansi.Truncate(help, max(m.width-statusBarPaddingCols, 0), "…")
 
 	if m.statusMessage == "" {
 		return statusBarStyle.Width(m.width).Render("\n" + help)
