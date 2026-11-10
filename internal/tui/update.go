@@ -755,10 +755,6 @@ func (m Model) handleSelection() Model {
 }
 
 func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	if item.IsGRPC() {
-		m.statusMessage = "gRPC execution not yet supported — use :info to inspect the request"
-		return m, nil
-	}
 	if !item.IsRequest() || item.Request == nil {
 		m.statusMessage = "Cannot execute: not a request"
 		return m, nil
@@ -801,7 +797,7 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 
 	variables := postman.GetAllVariables(m.collection, folderPath, m.environment)
 
-	executor := m.executor
+	executor := m.executorFor(item)
 	collection := m.collection
 	environment := m.environment
 	itemCopy := item
@@ -819,6 +815,13 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 			IsModified:  isModified,
 		}
 	}
+}
+
+func (m Model) executorFor(item postman.Item) requestExecutor {
+	if item.IsGRPC() {
+		return m.grpcExecutor
+	}
+	return m.executor
 }
 
 func (m Model) executeServiceBusRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {

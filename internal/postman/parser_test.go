@@ -561,7 +561,7 @@ func TestSaveEnvironment_NoPath(t *testing.T) {
 }
 
 func TestExpandPath_WithTilde(t *testing.T) {
-	result, err := expandPath("~/test/file.json")
+	result, err := ExpandPath("~/test/file.json")
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -576,7 +576,7 @@ func TestExpandPath_WithTilde(t *testing.T) {
 
 func TestExpandPath_WithoutTilde(t *testing.T) {
 	input := "/absolute/path/file.json"
-	result, err := expandPath(input)
+	result, err := ExpandPath(input)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -588,7 +588,7 @@ func TestExpandPath_WithoutTilde(t *testing.T) {
 
 func TestExpandPath_WithWhitespace(t *testing.T) {
 	input := "  /path/with/spaces  "
-	result, err := expandPath(input)
+	result, err := ExpandPath(input)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)

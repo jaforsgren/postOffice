@@ -10,7 +10,7 @@ A terminal UI for browsing and executing Postman collections with vim-style navi
 - Persistent session state
 - Environment variable support
 - Request and collection editing
-- gRPC request editing with live server reflection
+- gRPC request execution and editing, with live server reflection or a descriptor set
 - Workflow automation with inline JavaScript orchestration
 - Path parameter editing (`:id` style) per request
 - Variable autocomplete with resolved value preview when typing `{{`
@@ -219,6 +219,30 @@ See [docs/workflows.md](docs/workflows.md) for full documentation.
 ## gRPC Requests
 
 PostOffice supports gRPC requests stored in Postman collections (method `GRPC` or URL scheme `grpc://`). A dedicated edit form replaces the standard HTTP edit fields.
+
+### Executing a gRPC Request
+
+Press `enter` on a gRPC request to send it, just like an HTTP request; workflows run gRPC steps the same way. Only unary calls are supported.
+
+- **Variables** — `{{var}}` placeholders in the URL, metadata keys and values, and the message body are resolved before sending.
+- **Metadata** — the request's headers are sent as gRPC metadata. Values of keys ending in `-bin` are written base64-encoded (as in Postman) and sent as binary.
+- **Scripts** — pre-request and test scripts run as for HTTP requests, so a create call can store the id it returns for later requests:
+
+  ```js
+  pm.environment.set("claim_id", pm.response.json().claimId);
+  ```
+
+  The response body is the reply message as protobuf JSON, with camelCase field names. A successful call has `pm.response.code` 200 so `pm.response.to.have.status(200)` works; a failed call shows its gRPC status (e.g. `NotFound`) and does not run test scripts.
+
+### Servers Without Reflection
+
+Message types are looked up through server reflection. For servers that don't offer it, point the `GRPC_PROTOSET` variable (environment or collection) at a descriptor set compiled from the service's protos:
+
+```bash
+protoc -I protos --include_imports --descriptor_set_out=services.protoset $(find protos -name '*.proto')
+```
+
+PostOffice falls back to the descriptor set when the server answers reflection with `Unimplemented`; without one, the request fails with a message saying so.
 
 ### Editing a gRPC Request
 

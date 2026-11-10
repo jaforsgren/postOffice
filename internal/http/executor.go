@@ -48,7 +48,7 @@ func (e *Executor) Execute(
 
 	updatedVariables := variables
 	if item != nil {
-		preReqErrors := e.executePreRequestScripts(item, collection, environment)
+		preReqErrors := script.RunItemPreRequestScripts(item, collection, environment)
 		if len(preReqErrors) > 0 {
 			resp.Error = fmt.Errorf("pre-request script errors: %v", preReqErrors)
 			resp.Duration = time.Since(start)
@@ -100,82 +100,16 @@ func (e *Executor) Execute(
 	resp.Body = string(body)
 	resp.Duration = time.Since(start)
 
-	testResult := e.executeTestScripts(item, collection, environment, resp)
-
-	return resp, testResult
-}
-
-func (e *Executor) executePreRequestScripts(
-	item *postman.Item,
-	collection *postman.Collection,
-	environment *postman.Environment,
-) []string {
-	ctx := &script.ExecutionContext{}
-
-	if collection != nil {
-		ctx.CollectionVars = collection.Variables
-	}
-
-	if environment != nil {
-		ctx.EnvironmentVars = environment.Values
-	}
-
-	errors := script.ExecutePreRequestScripts(item.Events, ctx)
-
-	if collection != nil {
-		collection.Variables = ctx.CollectionVars
-	}
-
-	if environment != nil {
-		environment.Values = ctx.EnvironmentVars
-	}
-
-	return errors
-}
-
-func (e *Executor) executeTestScripts(
-	item *postman.Item,
-	collection *postman.Collection,
-	environment *postman.Environment,
-	resp *Response,
-) *script.TestResult {
-	if item == nil {
-		return nil
-	}
-
-	responseData := &script.ResponseData{
+	testResult := script.RunItemTestScripts(item, collection, environment, &script.ResponseData{
 		StatusCode:   resp.StatusCode,
 		Status:       resp.Status,
 		Body:         resp.Body,
 		Headers:      resp.Headers,
 		ResponseTime: resp.Duration.Milliseconds(),
-	}
+	})
 
-	ctx := &script.ExecutionContext{
-		Response: responseData,
-	}
-
-	if collection != nil {
-		ctx.CollectionVars = collection.Variables
-	}
-
-	if environment != nil {
-		ctx.EnvironmentVars = environment.Values
-	}
-
-	result := script.ExecuteTestScripts(item.Events, ctx)
-
-	if collection != nil {
-		collection.Variables = ctx.CollectionVars
-	}
-
-	if environment != nil {
-		environment.Values = ctx.EnvironmentVars
-	}
-
-	return result
+	return resp, testResult
 }
-
 
 func (e *Executor) buildRequest(req *postman.Request, variables []postman.VariableSource) (*http.Request, error) {
 	url := req.URL.Raw

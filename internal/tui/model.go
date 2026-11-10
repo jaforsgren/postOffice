@@ -75,6 +75,18 @@ type RequestExecution struct {
 	TestResult *script.TestResult
 }
 
+// requestExecutor sends a request and runs its scripts; HTTP and gRPC
+// requests each have one.
+type requestExecutor interface {
+	Execute(
+		req *postman.Request,
+		item *postman.Item,
+		collection *postman.Collection,
+		environment *postman.Environment,
+		variables []postman.VariableSource,
+	) (*http.Response, *script.TestResult)
+}
+
 type RequestCompleteMsg struct {
 	ItemID      string
 	Response    *http.Response
@@ -88,6 +100,7 @@ type RequestCompleteMsg struct {
 type Model struct {
 	parser              *postman.Parser
 	executor            *http.Executor
+	grpcExecutor        *grpc.Executor
 	commandRegistry     *CommandRegistry
 	mode                ViewMode
 	commandMode         bool
@@ -246,6 +259,7 @@ func NewModel(parser *postman.Parser) Model {
 	m := Model{
 		parser:                parser,
 		executor:              http.NewExecutor(),
+		grpcExecutor:          grpc.NewExecutor(),
 		commandRegistry:       NewCommandRegistry(),
 		mode:                  ModeCollections,
 		commandMode:           false,

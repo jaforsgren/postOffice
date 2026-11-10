@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -23,6 +22,7 @@ type Runner struct {
 	collection   *postman.Collection
 	environment  *postman.Environment
 	httpExecutor *http.Executor
+	grpcExecutor *internalgrpc.Executor
 
 	wfSteps  []Step
 	ctx      *script.ExecutionContext
@@ -42,6 +42,7 @@ func NewRunner(
 		collection:   collection,
 		environment:  environment,
 		httpExecutor: httpExecutor,
+		grpcExecutor: internalgrpc.NewExecutor(),
 	}
 }
 
@@ -579,37 +580,24 @@ func (r *Runner) executeMessageBus(item *postman.Item, protocol string) (*StepRe
 }
 
 func (r *Runner) executeGRPC(item *postman.Item, variables []postman.VariableSource) (*StepResponse, error) {
-	rawURL := postman.ResolveVariables(item.Request.URL.Raw, variables)
+	resp, _ := r.grpcExecutor.Execute(item.Request, item, r.collection, r.environment, variables)
 
-	resolvedReq := *item.Request
-	resolvedReq.URL.Raw = rawURL
-	if item.Request.Body != nil {
-		resolvedReq.Body = &postman.Body{
-			Mode: item.Request.Body.Mode,
-			Raw:  postman.ResolveVariables(item.Request.Body.Raw, variables),
-		}
-	}
+	// Pick up variable changes from pre/post-request scripts.
+	r.syncFromCollection()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	start := time.Now()
-	respJSON, err := internalgrpc.ExecuteRequest(ctx, &resolvedReq)
-	elapsed := time.Since(start).Milliseconds()
-
-	if err != nil {
-		r.addLog(fmt.Sprintf("[gRPC ERROR] %v", err))
+	if resp.Error != nil {
+		r.addLog(fmt.Sprintf("[gRPC ERROR] %v", resp.Error))
 		return &StepResponse{
-			Code: 0,
-			Body: fmt.Sprintf(`{"error":%q}`, err.Error()),
-			Time: elapsed,
+			Code: resp.StatusCode,
+			Body: fmt.Sprintf(`{"error":%q}`, resp.Error.Error()),
+			Time: resp.Duration.Milliseconds(),
 		}, nil
 	}
 
 	return &StepResponse{
-		Code: 200,
-		Body: respJSON,
-		Time: elapsed,
+		Code: resp.StatusCode,
+		Body: resp.Body,
+		Time: resp.Duration.Milliseconds(),
 	}, nil
 }
 
