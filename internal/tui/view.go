@@ -61,6 +61,9 @@ func (m Model) renderContent() []string {
 	case ModeHelp:
 		return []string{m.renderHelpView()}
 
+	case ModeTiming:
+		return []string{m.renderTimingPopup()}
+
 	default:
 		return []string{m.renderMainWindow()}
 	}

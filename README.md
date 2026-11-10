@@ -65,6 +65,7 @@ go build -o postOffice
 - `ctrl+e` — re-execute selected request
 - `ctrl+r` — view last response for selected request (without re-executing)
 - `y` — copy response body (in response view)
+- `t` — toggle request timing breakdown popup (in response view; also `:timing` / `:t`)
 - `Y` — copy full response (in response view)
 - `s` — save response (in response view)
 
@@ -127,6 +128,17 @@ When loading files, `~/` is expanded to your home directory:
 3. View the response — use `j/k` to scroll, `d/u` for half-page scrolling
 4. Press `q` or `esc` to close
 5. Press `ctrl+r` to view the last response without re-executing
+
+### Timing Breakdown
+
+Press `t` (or run `:timing`) in the response view to open a waterfall popup of the request's phases:
+
+- **HTTP** — DNS lookup, TCP connect, TLS handshake, TTFB and content download. On a reused connection, DNS/TCP/TLS show as `reused`; phases that don't apply (DNS for an IP address, TLS for plain HTTP) show as `n/a`.
+- **gRPC** (workflow steps) — connect + reflection, invoke
+- **AMQP** — dial (DNS + TCP), handshake (TLS + AMQP), open channel, publish
+- **Azure Service Bus** — total only
+
+Phases the request never reached because it failed are left out. Press `t`, `q` or `esc` to close.
 
 ## Editing Requests
 

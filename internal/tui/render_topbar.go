@@ -191,6 +191,8 @@ func (m Model) getModeString() string {
 		return "Saved Responses"
 	case ModeHelp:
 		return "Help"
+	case ModeTiming:
+		return "Timing"
 	default:
 		return ""
 	}
@@ -294,7 +296,9 @@ func (m Model) renderStatusBar() string {
 
 	switch m.mode {
 	case ModeResponse:
-		help = "ctrl+r: resend | s: save | y: copy body | Y: copy all | q: close | j/k: scroll"
+		help = "ctrl+r: resend | t: timing | s: save | y: copy body | Y: copy all | q: close | j/k: scroll"
+	case ModeTiming:
+		help = "t/q/esc: close timing"
 	case ModeInfo, ModeJSON, ModeLog:
 		help = "q: close | j/k: scroll"
 	case ModeSavedResponses:
