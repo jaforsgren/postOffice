@@ -7,6 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"postOffice/internal/http"
+	"postOffice/internal/postman"
+	"postOffice/internal/script"
 )
 
 const yankResponseBody = `{"ok":true}`
@@ -110,17 +112,75 @@ func TestCurrentYankTarget_InfoViewOverEnvironmentsIsRejected(t *testing.T) {
 	}
 }
 
-func TestFullReport_HasRequestInfoAndResponse(t *testing.T) {
+func TestMarkdownReport_HasHeadingsAndFencedSnippets(t *testing.T) {
 	m := withExecutedResponse(modelWithCursorOn(t, formRequestName), formRequestName)
 	target, _ := m.currentYankTarget()
 
-	report, err := target.fullReport()
+	report, err := target.markdownReport()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"REQUEST INFO", formRequestName, "RESPONSE", "true"} {
+	for _, want := range []string{
+		"# " + formRequestName,
+		"## Definition",
+		"## Sent request\n\n```http\nPOST https://sent.example.com/api/create\nX-A: 1\nX-B: 2\n```",
+		"## Response",
+		"```json\n{\n  \"ok\": true\n}\n```",
+		"## curl\n\n```bash\ncurl",
+	} {
 		if !strings.Contains(report, want) {
-			t.Errorf("expected the report to contain %q, got %q", want, report)
+			t.Errorf("expected the report to contain %q, got:\n%s", want, report)
+		}
+	}
+	if strings.Contains(report, "\x1b[") {
+		t.Error("expected no terminal colour codes in the report")
+	}
+}
+
+func TestMarkdownReport_ScriptsAndTestsAsSnippets(t *testing.T) {
+	m := withExecutedResponse(modelWithCursorOn(t, formRequestName), formRequestName)
+	m.currentItems[m.cursor].Events = []postman.Event{{Listen: "test", Script: postman.Script{Exec: []string{"pm.test('ok', () => {})"}}}}
+	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, nil, formRequestName)
+	m.requestExecutions[itemID].TestResult = &script.TestResult{
+		Tests:       []script.Test{{Name: "ok", Passed: true}, {Name: "has id", Error: "expected id"}},
+		ConsoleLogs: []string{"hello"},
+	}
+	target, _ := m.currentYankTarget()
+
+	report, _ := target.markdownReport()
+
+	for _, want := range []string{
+		"### Test script\n\n```javascript\npm.test('ok', () => {})\n```",
+		"## Tests (1/2 passed)",
+		testPassedMarker + "ok",
+		testFailedMarker + "has id\n  - expected id",
+		"## Console\n\n```text\nhello\n```",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("expected the report to contain %q, got:\n%s", want, report)
+		}
+	}
+}
+
+func TestMarkdownReport_NothingToOpen(t *testing.T) {
+	if _, err := (yankTarget{}).markdownReport(); !errors.Is(err, errNothingToOpen) {
+		t.Errorf("expected errNothingToOpen, got %v", err)
+	}
+}
+
+func TestFencedBlock_OutgrowsBackticksInContent(t *testing.T) {
+	block := fencedBlock(langText, "a ``` b")
+
+	if block[0] != "````"+langText || block[2] != "````" {
+		t.Errorf("expected a four-backtick fence, got %q", block)
+	}
+}
+
+func TestBodyBlock_PicksLanguage(t *testing.T) {
+	cases := map[string]string{`{"a":1}`: langJSON, "<a/>": langXML, "plain": langText}
+	for body, lang := range cases {
+		if got := bodyBlock(body)[0]; got != markdownFence+lang {
+			t.Errorf("body %q: expected fence %q, got %q", body, markdownFence+lang, got)
 		}
 	}
 }

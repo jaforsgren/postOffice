@@ -70,7 +70,7 @@ go build -o postOffice
 - `yb` — copy response body
 - `yr` — copy as curl (or grpcurl for gRPC requests)
 - `yy` — copy the resolved URL
-- `ctrl+g` — open request info, response, test results and console logs in your editor (response and info views)
+- `ctrl+g` — open the request as a Markdown report in your editor (response and info views): definition, sent request, response, tests, console logs and curl, each under its own heading with fenced `json`/`http`/`javascript`/`bash` snippets
 - `s` — save response (in response view)
 
 **Workflow detail view:**

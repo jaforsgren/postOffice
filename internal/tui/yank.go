@@ -136,26 +136,6 @@ func (t yankTarget) exchangeReport() string {
 	return plainText(t.model.buildResponseLines())
 }
 
-// fullReport adds the request's definition (scripts, description, ...) in
-// front of the exchange, for reading everything about a request in the editor.
-func (t yankTarget) fullReport() (string, error) {
-	var lines []string
-	if t.definition != nil {
-		lines = append(lines, "REQUEST INFO", "")
-		lines = append(lines, t.model.withInfoItemAtCursor(*t.definition).buildItemDetailLines()...)
-	}
-	if t.response != nil {
-		if len(lines) > 0 {
-			lines = append(lines, "")
-		}
-		lines = append(lines, t.model.buildResponseLines()...)
-	}
-	if len(lines) == 0 {
-		return "", errNothingToOpen
-	}
-	return plainText(lines), nil
-}
-
 func plainText(lines []string) string {
 	return ansi.Strip(strings.Join(lines, "\n")) + "\n"
 }
@@ -232,7 +212,7 @@ type VimRequestReportCompleteMsg struct {
 }
 
 // handleOpenRequestReportKey shows the request info, the exchange and its
-// logs as plain text in the editor, for searching and copying through large
+// logs as Markdown in the editor, for searching and copying through large
 // bodies. It is a snapshot: edits are discarded.
 func handleOpenRequestReportKey(m Model) (Model, tea.Cmd) {
 	target, err := m.currentYankTarget()
@@ -240,13 +220,13 @@ func handleOpenRequestReportKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = err.Error()
 		return m, nil
 	}
-	report, err := target.fullReport()
+	report, err := target.markdownReport()
 	if err != nil {
 		m.statusMessage = err.Error()
 		return m, nil
 	}
 
-	tempFilePath, err := writeTempFile("postoffice-request-*.txt", report)
+	tempFilePath, err := writeTempFile(requestReportFilePattern, report)
 	if err != nil {
 		m.statusMessage = err.Error()
 		return m, nil
