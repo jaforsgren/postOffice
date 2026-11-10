@@ -272,6 +272,9 @@ type Model struct {
 	historyReturnMode    ViewMode
 	historyDiffViewport  viewport.Model
 
+	// lastRepeatableKey is the key of the last repeatable action, which "." repeats.
+	lastRepeatableKey string
+
 	// jumps is the jumplist of requests view locations, oldest first, with
 	// jumpIndex the position ctrl+o/ctrl+i move from (len(jumps) when not
 	// jumping). lastJumpLocation is where the requests view last was, and

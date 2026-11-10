@@ -553,7 +553,7 @@ func (m Model) applyTreeItems(items []postman.Item, itemsFolderPath []string) Mo
 
 // folderPathForIndex returns the real folder path of the entry at index in
 // the requests view — which is only different from m.breadcrumb when index
-// refers to a row revealed by expanding a nested folder with ".".
+// refers to a row revealed by expanding a nested folder with "z".
 func (m Model) folderPathForIndex(index int) []string {
 	if m.mode == ModeRequests && index >= 0 && index < len(m.currentItemPaths) {
 		return m.currentItemPaths[index]
@@ -993,7 +993,7 @@ func (m Model) navigateInto(item postman.Item) Model {
 
 // navigateIntoAt navigates into item as if browsing were currently at
 // parentPath. This matters when item was reached via the tree-expand view
-// ("."), where item's real parent can be deeper than m.breadcrumb.
+// ("z"), where item's real parent can be deeper than m.breadcrumb.
 func (m Model) navigateIntoAt(item postman.Item, parentPath []string) Model {
 	m.breadcrumb = append(append([]string{}, parentPath...), item.Name)
 	m = m.applyTreeItems(item.Items, m.breadcrumb)

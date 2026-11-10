@@ -35,6 +35,8 @@ type KeyBinding struct {
 	ShortHelp   string
 	Handler     KeyHandler
 	AvailableIn []ViewMode
+	// Repeatable bindings are what repeatLastActionKey repeats, like Vim's ".".
+	Repeatable bool
 }
 
 type CommandRegistry struct {
@@ -304,6 +306,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			ShortHelp:   "ctrl+e",
 			Handler:     handleExecuteKey,
 			AvailableIn: []ViewMode{ModeRequests},
+			Repeatable:  true,
 		},
 		{
 			Keys:        []string{"ctrl+r"},
@@ -444,6 +447,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			ShortHelp:   "d",
 			Handler:     handleDeleteRequestKey,
 			AvailableIn: []ViewMode{ModeRequests},
+			Repeatable:  true,
 		},
 		{
 			Keys:        []string{"D"},
@@ -451,6 +455,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			ShortHelp:   "D",
 			Handler:     handleDuplicateKey,
 			AvailableIn: []ViewMode{ModeRequests},
+			Repeatable:  true,
 		},
 		{
 			Keys:        []string{"E"},
@@ -465,6 +470,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			ShortHelp:   "f",
 			Handler:     Model.toggleFavoriteAtCursor,
 			AvailableIn: []ViewMode{ModeRequests},
+			Repeatable:  true,
 		},
 		{
 			Keys:        []string{"F"},
@@ -565,17 +571,25 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
-			Keys:        []string{"."},
+			Keys:        []string{expandFolderKey},
 			Description: "Expand/collapse folder tree",
-			ShortHelp:   ".",
+			ShortHelp:   expandFolderKey,
 			Handler:     handleToggleExpandKey,
+			AvailableIn: []ViewMode{ModeRequests},
+			Repeatable:  true,
+		},
+		{
+			Keys:        []string{expandAllFoldersKey},
+			Description: "Expand/collapse all folders",
+			ShortHelp:   expandAllFoldersKey,
+			Handler:     handleToggleExpandAllKey,
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
-			Keys:        []string{">"},
-			Description: "Expand/collapse all folders",
-			ShortHelp:   ">",
-			Handler:     handleToggleExpandAllKey,
+			Keys:        []string{repeatLastActionKey},
+			Description: "Repeat last action",
+			ShortHelp:   repeatLastActionKey,
+			Handler:     handleRepeatLastActionKey,
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
@@ -802,6 +816,9 @@ func (cr *CommandRegistry) HandleKey(m Model, key string) (Model, tea.Cmd, bool)
 		for _, k := range kb.Keys {
 			if k == key {
 				newModel, cmd := kb.Handler(m)
+				if kb.Repeatable {
+					newModel.lastRepeatableKey = key
+				}
 				return newModel, cmd, true
 			}
 		}
