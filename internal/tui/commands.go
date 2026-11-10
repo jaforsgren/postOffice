@@ -428,6 +428,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
+			Keys:        []string{"tab"},
+			Description: "Toggle split view",
+			ShortHelp:   "tab",
+			Handler:     handleToggleSplitViewKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Keys:        []string{"d"},
 			Description: "Discard selected",
 			ShortHelp:   "d",
@@ -1311,6 +1318,11 @@ func handleFavoritesKey(m Model) (Model, tea.Cmd) {
 		return m.exitFavoritesView(), nil
 	}
 	return m.enterFavoritesView()
+}
+
+func handleToggleSplitViewKey(m Model) (Model, tea.Cmd) {
+	m.splitViewActive = !m.splitViewActive
+	return m, nil
 }
 
 func handleEditScriptKey(m Model) (Model, tea.Cmd) {

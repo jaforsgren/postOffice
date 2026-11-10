@@ -173,7 +173,7 @@ func TestFormatItemLine_ShowsLocationColumnForCollections(t *testing.T) {
 	m = m.loadCollectionsList()
 	m.width = 200
 
-	line := m.formatItemLine(0)
+	line := m.formatItemLine(0, itemNameWidth)
 	if !strings.Contains(line, path) {
 		t.Errorf("expected rendered line to contain location %q, got %q", path, line)
 	}
@@ -183,7 +183,7 @@ func TestFormatItemLine_NoLocationColumnForRequests(t *testing.T) {
 	m := createTestModel()
 	m.width = 200
 
-	line := m.formatItemLine(0)
+	line := m.formatItemLine(0, itemNameWidth)
 	if strings.Contains(line, ".json") {
 		t.Errorf("expected no location column in requests mode, got %q", line)
 	}

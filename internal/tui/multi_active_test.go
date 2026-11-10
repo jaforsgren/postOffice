@@ -236,7 +236,7 @@ func TestActiveMarker_RenderedForActiveCollections(t *testing.T) {
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 
-	line := m.formatItemLine(0)
+	line := m.formatItemLine(0, itemNameWidth)
 	if !strings.Contains(line, "[x]") {
 		t.Errorf("expected active collection line to show [x] marker, got %q", line)
 	}

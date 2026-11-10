@@ -61,6 +61,12 @@ func (m Model) renderContent() []string {
 	case ModeHelp:
 		return []string{m.renderHelpView()}
 
+	case ModeRequests:
+		if m.splitViewActive {
+			return []string{m.renderRequestSplitView()}
+		}
+		return []string{m.renderMainWindow()}
+
 	default:
 		return []string{m.renderMainWindow()}
 	}

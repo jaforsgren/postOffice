@@ -174,6 +174,8 @@ type Model struct {
 	requestExecutions  map[string]*RequestExecution
 	lastExecutedItemID string
 
+	splitViewActive bool
+
 	grpcEditEndpoint    string
 	grpcEditMethod      string
 	grpcEditTLS         bool

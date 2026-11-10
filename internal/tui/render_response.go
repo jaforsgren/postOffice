@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"postOffice/internal/http"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -13,18 +14,20 @@ func (m Model) renderResponsePopup(availableHeight int) string {
 		return m.renderEmptyPopup("No response available", availableHeight)
 	}
 
-	borderColor := lipgloss.Color("5")
-	if m.lastResponse.StatusCode < 200 || m.lastResponse.StatusCode >= 300 {
-		borderColor = lipgloss.Color("1")
-	}
-
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
+		BorderForeground(responseBorderColor(m.lastResponse)).
 		Height(availableHeight).
 		Width(m.width-4).
 		Padding(1, 2).
 		Render(m.responseViewport.View())
+}
+
+func responseBorderColor(response *http.Response) lipgloss.Color {
+	if response != nil && (response.StatusCode < 200 || response.StatusCode >= 300) {
+		return errorBorderColor
+	}
+	return popupBorderColor
 }
 
 func (m Model) renderResponseView() string {
@@ -37,8 +40,8 @@ func (m Model) renderResponseView() string {
 	}
 
 	return mainWindowStyle.
-		Height(m.height-8).
-		Width(m.width-4).
+		Height(m.height - 8).
+		Width(m.width - 4).
 		Render(m.responseViewport.View())
 }
 
@@ -247,7 +250,7 @@ func prettyBodyLines(body string) []string {
 func (m Model) renderEmptyPopup(message string, availableHeight int) string {
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("5")).
+		BorderForeground(popupBorderColor).
 		Height(availableHeight).
 		Width(m.width-4).
 		Padding(1, 2).

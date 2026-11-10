@@ -48,6 +48,7 @@ go build -o postOffice
 - `i` — show info for selected item
 - `J` — show raw JSON for selected item
 - `H` — view saved responses for selected request
+- `tab` — toggle split view (list | info + response)
 - `r` — refresh current view
 - `/` — search / filter items
 - `?` — show help
