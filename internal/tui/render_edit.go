@@ -279,7 +279,7 @@ func (m Model) buildEditFields() []string {
 
 		// Resolved URL preview below URL field
 		if i == 2 && !m.editFieldMode && f.value != "" {
-			vars := postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+			vars := m.variablesAt(m.breadcrumb)
 			resolved := postman.ResolveVariables(f.value, vars)
 			for name, val := range m.pathParams {
 				if val != "" {
@@ -295,7 +295,7 @@ func (m Model) buildEditFields() []string {
 
 		// Resolved body preview below Body field
 		if f.label == "Body" && !m.editFieldMode && f.value != "" {
-			vars := postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+			vars := m.variablesAt(m.breadcrumb)
 			resolved := postman.ResolveVariables(f.value, vars)
 			if resolved != f.value {
 				lines = append(lines, "    "+dimStyle.Render("── resolved ──"))

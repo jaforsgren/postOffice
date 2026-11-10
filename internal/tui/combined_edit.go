@@ -64,3 +64,11 @@ func (m Model) favoriteID(folderPath []string, name string) string {
 	collection, path := m.collectionScope(folderPath)
 	return m.getRequestIdentifierByPath(collection.Info.Name, path, name)
 }
+
+// variablesAt resolves the variables visible at folderPath from the collection
+// holding it, so a request in the combined view never resolves another
+// collection's values.
+func (m Model) variablesAt(folderPath []string) []postman.VariableSource {
+	collection, path := m.collectionScope(folderPath)
+	return postman.GetAllVariables(collection, path, m.environment)
+}

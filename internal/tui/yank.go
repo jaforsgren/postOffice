@@ -83,7 +83,7 @@ func (m Model) currentYankTarget() (yankTarget, error) {
 func (m Model) definitionYankTarget(item postman.Item) yankTarget {
 	target := yankTarget{
 		request:    item,
-		vars:       postman.GetAllVariables(m.collection, m.requestsViewFolderPath(), m.environment),
+		vars:       m.variablesAt(m.requestsViewFolderPath()),
 		definition: &item,
 		model:      m,
 	}

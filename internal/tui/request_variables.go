@@ -115,9 +115,8 @@ func (m Model) unresolvedVariablesLines(req *postman.Request, folderPath []strin
 }
 
 func (m Model) variableRows(req *postman.Request, requestFolderPath []string) []requestVariableRow {
-	collection, folderPath := m.collectionScope(requestFolderPath)
 	resolved := make(map[string]postman.VariableSource)
-	for _, variable := range postman.GetAllVariables(collection, folderPath, m.environment) {
+	for _, variable := range m.variablesAt(requestFolderPath) {
 		resolved[variable.Key] = variable
 	}
 

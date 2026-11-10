@@ -864,18 +864,19 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 		TestResult: nil,
 	}
 
-	variables := postman.GetAllVariables(m.collection, folderPath, m.environment)
+	variables := m.variablesAt(folderPath)
 
 	executor := m.executorFor(item)
 	collection := m.collection
+	scopeCollection, scopePath := m.collectionScope(folderPath)
 	environment := m.environment
 	environmentName := m.environmentName()
 	itemCopy := item
 
 	scope := &script.RequestScope{
-		Collection:  collection,
+		Collection:  scopeCollection,
 		Environment: environment,
-		FolderPath:  slices.Clone(folderPath),
+		FolderPath:  slices.Clone(scopePath),
 		Item:        &itemCopy,
 	}
 
@@ -934,13 +935,14 @@ func (m Model) executeProtocolItem(
 	}
 
 	collection := m.collection
+	scopeCollection, scopePath := m.collectionScope(folderPath)
 	environment := m.environment
 	environmentName := m.environmentName()
 	itemCopy := item
 	scope := script.RequestScope{
-		Collection:  collection,
+		Collection:  scopeCollection,
 		Environment: environment,
-		FolderPath:  slices.Clone(folderPath),
+		FolderPath:  slices.Clone(scopePath),
 		Item:        &itemCopy,
 		Sender:      m.executor.SendRequest,
 	}
@@ -959,7 +961,7 @@ func (m Model) executeProtocolItem(
 			}
 		}
 
-		variables := postman.GetAllVariables(collection, folderPath, environment)
+		variables := postman.GetAllVariables(scopeCollection, scopePath, environment)
 		resp := send(request, variables)
 		return RequestCompleteMsg{
 			ItemID:          itemID,
@@ -1288,7 +1290,7 @@ func (m Model) loadEnvironment(path string) Model {
 }
 
 func (m Model) loadVariablesList() Model {
-	m.variables = postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+	m.variables = m.variablesAt(m.breadcrumb)
 
 	m.items = []string{}
 	for _, variable := range m.variables {
@@ -3173,7 +3175,7 @@ func detectVarPrefix(value string) (prefix string, active bool) {
 
 // computeVarSuggestions returns variables matching the given prefix from the current context.
 func (m Model) computeVarSuggestions(prefix string) []postman.VariableSource {
-	all := postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
+	all := m.variablesAt(m.breadcrumb)
 	if prefix == "" {
 		return all
 	}
