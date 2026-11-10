@@ -2,9 +2,38 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+)
+
+const (
+	helpHeadingColor = "214"
+	helpKeyColor     = "33"
+	helpDescColor    = "252"
+	helpDimColor     = "240"
+
+	helpDividerWidth     = 50
+	helpKeyIndent        = "  "
+	helpKeyDescGap       = "  "
+	helpMaxKeyWidth      = 34
+	helpColumnGap        = 4
+	helpShortcutsTitle   = "Shortcuts"
+	helpCommandsTitle    = "Commands"
+	helpAllContextsTitle = "Keyboard Shortcuts — All Contexts"
+	helpCommandPrefix    = ":"
+	helpAliasSeparator   = " / "
+	// Below this terminal width the commands column is stacked under the
+	// shortcuts instead of beside them.
+	helpTwoColumnMinWidth = 110
+)
+
+var (
+	helpHeadingStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(helpHeadingColor))
+	helpKeyStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(helpKeyColor))
+	helpDescStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color(helpDescColor))
+	helpDimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color(helpDimColor))
 )
 
 func (m Model) renderHelpView() string {
@@ -12,48 +41,53 @@ func (m Model) renderHelpView() string {
 }
 
 func (m Model) buildHelpContent() string {
-	headingStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
-	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("33"))
-	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	sectionDivider := dimStyle.Render(strings.Repeat("─", 50))
+	title := helpAllContextsTitle
+	if !m.helpShowAll {
+		title = fmt.Sprintf("Keyboard Shortcuts — %s", helpModeTitle(m.helpContextMode()))
+	}
 
-	var sb strings.Builder
+	shortcuts := m.renderShortcutsColumn()
+	commands := renderHelpSection(helpCommandsTitle, m.buildCommandHelpEntries())
 
-	if m.helpShowAll {
-		sb.WriteString(headingStyle.Render("Keyboard Shortcuts — All Contexts"))
+	var body string
+	if m.width >= helpTwoColumnMinWidth {
+		body = lipgloss.JoinHorizontal(lipgloss.Top, shortcuts, strings.Repeat(" ", helpColumnGap), commands)
 	} else {
-		sb.WriteString(headingStyle.Render(fmt.Sprintf("Keyboard Shortcuts — %s", helpModeTitle(m.helpContextMode()))))
-	}
-	sb.WriteString("\n\n")
-
-	groups := m.buildHelpGroups()
-	for _, group := range groups {
-		sb.WriteString(headingStyle.Render(group.title))
-		sb.WriteString("\n")
-		sb.WriteString(sectionDivider)
-		sb.WriteString("\n")
-
-		for _, entry := range group.entries {
-			key := keyStyle.Render(fmt.Sprintf("%-14s", entry.key))
-			desc := descStyle.Render(entry.desc)
-			sb.WriteString(fmt.Sprintf("  %s  %s\n", key, desc))
-		}
-		sb.WriteString("\n")
+		body = lipgloss.JoinVertical(lipgloss.Left, shortcuts, "", commands)
 	}
 
-	// Commands section (always shown)
-	sb.WriteString(headingStyle.Render("Commands"))
-	sb.WriteString("\n")
-	sb.WriteString(sectionDivider)
-	sb.WriteString("\n")
-	for _, entry := range m.buildCommandHelpEntries() {
-		key := keyStyle.Render(fmt.Sprintf("%-14s", entry.key))
-		desc := descStyle.Render(entry.desc)
-		sb.WriteString(fmt.Sprintf("  %s  %s\n", key, desc))
-	}
+	return helpHeadingStyle.Render(title) + "\n\n" + body
+}
 
-	return sb.String()
+func (m Model) renderShortcutsColumn() string {
+	var sections []string
+	for _, group := range m.buildHelpGroups() {
+		sections = append(sections, renderHelpSection(group.title, group.entries))
+	}
+	if len(sections) == 0 {
+		return helpHeadingStyle.Render(helpShortcutsTitle)
+	}
+	return strings.Join(sections, "\n\n")
+}
+
+// renderHelpSection renders a heading, a divider and the entries, with the key
+// column as wide as the section's longest key (up to helpMaxKeyWidth).
+func renderHelpSection(title string, entries []helpEntry) string {
+	keyWidth := 0
+	for _, entry := range entries {
+		keyWidth = max(keyWidth, lipgloss.Width(entry.key))
+	}
+	keyWidth = min(keyWidth, helpMaxKeyWidth)
+
+	lines := []string{
+		helpHeadingStyle.Render(title),
+		helpDimStyle.Render(strings.Repeat("─", helpDividerWidth)),
+	}
+	for _, entry := range entries {
+		key := helpKeyStyle.Render(fmt.Sprintf("%-*s", keyWidth, entry.key))
+		lines = append(lines, helpKeyIndent+key+helpKeyDescGap+helpDescStyle.Render(entry.desc))
+	}
+	return strings.Join(lines, "\n")
 }
 
 type helpEntry struct {
@@ -66,31 +100,33 @@ type helpGroup struct {
 	entries []helpEntry
 }
 
-// helpModeTitles maps each mode with its own help section to a display title,
-// in the order sections should appear in the "All Contexts" view.
-var helpModeTitles = []struct {
-	mode  ViewMode
+// helpSections maps the modes that share a help section to its display title,
+// in the order sections appear in the "All Contexts" view.
+var helpSections = []struct {
+	modes []ViewMode
 	title string
 }{
-	{ModeCollections, "Collections"},
-	{ModeRequests, "Requests"},
-	{ModeResponse, "Response"},
-	{ModeInfo, "Info / JSON / Logs"},
-	{ModeEnvironments, "Environments"},
-	{ModeVariables, "Variables"},
-	{ModeEdit, "Edit"},
-	{ModeChanges, "Changes"},
-	{ModeWorkflows, "Workflows"},
-	{ModeWorkflowDetail, "Workflow Detail"},
-	{ModeSavedResponses, "Saved Responses"},
+	{[]ViewMode{ModeCollections}, "Collections"},
+	{[]ViewMode{ModeRequests}, "Requests"},
+	{[]ViewMode{ModeResponse}, "Response"},
+	{[]ViewMode{ModeInfo, ModeJSON, ModeLog}, "Info / JSON / Logs"},
+	{[]ViewMode{ModeEnvironments}, "Environments"},
+	{[]ViewMode{ModeVariables}, "Variables"},
+	{[]ViewMode{ModeEdit}, "Edit"},
+	{[]ViewMode{ModeChanges}, "Changes"},
+	{[]ViewMode{ModeWorkflows}, "Workflows"},
+	{[]ViewMode{ModeWorkflowRun}, "Workflow Run"},
+	{[]ViewMode{ModeWorkflowDetail}, "Workflow Detail"},
+	{[]ViewMode{ModeSavedResponses}, "Saved Responses"},
+	{[]ViewMode{ModeHelp}, "Help"},
 }
 
 // helpModeTitle returns the section title for mode, or a numeric fallback for
-// modes without a dedicated help section (e.g. ModeHelp itself).
+// modes without a help section.
 func helpModeTitle(mode ViewMode) string {
-	for _, m := range helpModeTitles {
-		if m.mode == mode {
-			return m.title
+	for _, section := range helpSections {
+		if slices.Contains(section.modes, mode) {
+			return section.title
 		}
 	}
 	return fmt.Sprintf("Mode %d", int(mode))
@@ -107,71 +143,54 @@ func (m Model) helpContextMode() ViewMode {
 }
 
 func (m Model) buildHelpGroups() []helpGroup {
-	orderedModes := make([]ViewMode, len(helpModeTitles))
-	for i, entry := range helpModeTitles {
-		orderedModes[i] = entry.mode
-	}
 	contextMode := m.helpContextMode()
-
-	// Track seen shorthelp per group to deduplicate
-	type dedupeKey struct {
-		mode ViewMode
-		key  string
-	}
-	seen := make(map[dedupeKey]bool)
-
 	var groups []helpGroup
 
-	for _, mode := range orderedModes {
-		if !m.helpShowAll && mode != contextMode {
+	for _, section := range helpSections {
+		if !m.helpShowAll && !slices.Contains(section.modes, contextMode) {
 			continue
 		}
 
+		seen := make(map[string]bool)
 		var entries []helpEntry
 		for _, kb := range m.commandRegistry.keyBindings {
-			if !isInModes(mode, kb.AvailableIn) {
+			if kb.Description == "" || seen[kb.ShortHelp] || !availableInAny(section.modes, kb.AvailableIn) {
 				continue
 			}
-			if kb.Description == "" {
-				continue
-			}
-			dk := dedupeKey{mode: mode, key: kb.ShortHelp}
-			if seen[dk] {
-				continue
-			}
-			seen[dk] = true
-
-			keyStr := strings.Join(kb.Keys, "/")
-			if len(keyStr) > 12 {
-				keyStr = keyStr[:12]
-			}
-			entries = append(entries, helpEntry{key: "<" + keyStr + ">", desc: kb.Description})
+			seen[kb.ShortHelp] = true
+			entries = append(entries, helpEntry{key: "<" + strings.Join(kb.Keys, "/") + ">", desc: kb.Description})
 		}
 
 		if len(entries) > 0 {
-			groups = append(groups, helpGroup{title: helpModeTitle(mode), entries: entries})
+			groups = append(groups, helpGroup{title: section.title, entries: entries})
 		}
 	}
 
 	return groups
 }
 
+func availableInAny(modes []ViewMode, available []ViewMode) bool {
+	return slices.ContainsFunc(modes, func(mode ViewMode) bool { return isInModes(mode, available) })
+}
+
+// buildCommandHelpEntries lists every command once, sorted by name; the
+// registry map also holds each alias, which is skipped.
 func (m Model) buildCommandHelpEntries() []helpEntry {
-	seen := make(map[string]bool)
-	var entries []helpEntry
-
+	var commands []*Command
 	for name, cmd := range m.commandRegistry.commands {
-		if name != cmd.Name || seen[cmd.Name] || cmd.Description == "" {
-			continue
+		if name == cmd.Name && cmd.Description != "" {
+			commands = append(commands, cmd)
 		}
-		seen[cmd.Name] = true
-
-		key := ":" + cmd.Name
-		if len(cmd.Aliases) > 0 {
-			key += " / :" + cmd.Aliases[0]
-		}
-		entries = append(entries, helpEntry{key: key, desc: cmd.Description})
 	}
+	slices.SortFunc(commands, func(a, b *Command) int { return strings.Compare(a.Name, b.Name) })
 
+	entries := make([]helpEntry, 0, len(commands))
+	for _, cmd := range commands {
+		names := append([]string{cmd.Name}, cmd.Aliases...)
+		for i, name := range names {
+			names[i] = helpCommandPrefix + name
+		}
+		entries = append(entries, helpEntry{key: strings.Join(names, helpAliasSeparator), desc: cmd.Description})
+	}
 	return entries
 }

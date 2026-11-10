@@ -51,7 +51,7 @@ go build -o postOffice
 - `tab` — toggle split view (list | info + response)
 - `r` — refresh current view
 - `/` — search / filter items
-- `?` — show help
+- `?` — show help for the current view: shortcuts on the left, commands on the right (`:h` shows every view)
 - `h/esc/backspace` — go back / up one folder level
 - `q` or `ctrl+c` — quit
 
