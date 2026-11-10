@@ -31,7 +31,7 @@ func responseBorderColor(response *http.Response) lipgloss.Color {
 }
 
 func (m Model) renderResponseView() string {
-	if m.lastResponse == nil {
+	if m.lastResponse == nil && m.responsePanelItem == nil {
 		metrics := m.calculateLayout()
 		return mainWindowStyle.
 			Height(metrics.contentHeight).

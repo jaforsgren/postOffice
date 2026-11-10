@@ -45,7 +45,7 @@ go build -o postOffice
 - `E` — edit scripts for selected request
 - `d` — delete selected request
 - `D` — duplicate selected request
-- `i` — show info for selected item
+- `i` — show info for selected item; on a request, its definition and its last response, test results and console in one view (`ctrl+r` sends it from there, `s` saves the response)
 - `J` — show raw JSON for selected item
 - `H` — view saved responses for selected request
 - `V` — edit just the `{{variables}}` the selected request uses: each shows its value and source, `enter`/`e` edits it in place and saves to the environment, collection or folder that defines it (undefined ones are added to the collection)
@@ -65,7 +65,7 @@ go build -o postOffice
 **Request execution:**
 - `enter` — execute selected request
 - `ctrl+e` — re-execute selected request; on a folder, run it as a workflow (asks `y/n` first, see [Workflows](#workflows))
-- `ctrl+r` — view last response for selected request (without re-executing)
+- `ctrl+r` — resend the request (response view)
 - `ya` — copy request and response (requests, response and info views)
 - `yb` — copy response body
 - `yr` — copy as curl (or grpcurl for gRPC requests)
@@ -133,7 +133,7 @@ When loading files, `~/` is expanded to your home directory:
 2. Press `enter` to execute
 3. View the response — use `j/k` to scroll, `d/u` for half-page scrolling
 4. Press `q` or `esc` to close
-5. Press `ctrl+r` to view the last response without re-executing
+5. Press `i` to see the request together with its last response without re-executing; `ctrl+r` there sends it again
 
 ### Scripts
 

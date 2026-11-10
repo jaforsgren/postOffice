@@ -53,14 +53,17 @@ func (m Model) currentYankTarget() (yankTarget, error) {
 	switch m.mode {
 	case ModeResponse:
 		if m.lastResponse == nil {
+			if m.responsePanelItem != nil {
+				return m.definitionYankTarget(*m.responsePanelItem), nil
+			}
 			return yankTarget{}, errYankNoResponse
 		}
-		target := yankTarget{request: sentRequestItem(m.lastResponse), response: m.lastResponse, model: m}
-		if item, ok := m.selectedItem(); ok && m.previousMode == ModeRequests && item.IsRequest() &&
-			m.requestsViewItemID(item) == m.lastExecutedItemID {
-			target.definition = &item
-		}
-		return target, nil
+		return yankTarget{
+			request:    sentRequestItem(m.lastResponse),
+			response:   m.lastResponse,
+			definition: m.responsePanelItem,
+			model:      m,
+		}, nil
 	case ModeInfo:
 		showsRequestInfo := m.previousMode == ModeRequests || m.previousMode == ModeWorkflowDetail
 		if !showsRequestInfo || m.currentInfoItem == nil || !m.currentInfoItem.IsRequest() {

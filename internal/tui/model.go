@@ -177,6 +177,9 @@ type Model struct {
 	scriptSelectionMode bool
 	editIsNewItem       bool
 	pendingYank         bool
+	// responsePanelItem is the request the Response view was opened on with
+	// i, whose definition it shows above the exchange; nil otherwise.
+	responsePanelItem *postman.Item
 
 	requestVarsItem          postman.Item
 	requestVarsFolderPath    []string
