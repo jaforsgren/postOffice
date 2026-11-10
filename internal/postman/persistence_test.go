@@ -25,9 +25,7 @@ func TestSaveState_Success(t *testing.T) {
 	parser.LoadEnvironment(envPath1)
 
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	err := parser.SaveState()
 
@@ -62,9 +60,7 @@ func TestSaveState_EmptyParser(t *testing.T) {
 	parser := NewParser()
 
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	err := parser.SaveState()
 
@@ -95,9 +91,7 @@ func TestLoadState_FileNotExists(t *testing.T) {
 	parser := NewParser()
 
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	err := parser.LoadState()
 
@@ -117,9 +111,7 @@ func TestLoadState_Success(t *testing.T) {
 	envPath1 := createTempEnvironment(t, env1)
 
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	config := PersistenceConfig{
 		CollectionPaths:  []string{path1, path2},
@@ -165,9 +157,7 @@ func TestLoadState_Success(t *testing.T) {
 
 func TestLoadState_InvalidJSON(t *testing.T) {
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	configPath := filepath.Join(tmpHome, configFileName)
 	invalidJSON := `{invalid json}`
@@ -183,9 +173,7 @@ func TestLoadState_InvalidJSON(t *testing.T) {
 
 func TestLoadState_NonexistentPaths(t *testing.T) {
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	config := PersistenceConfig{
 		CollectionPaths: []string{
@@ -226,9 +214,7 @@ func TestSaveSession_Success(t *testing.T) {
 	}
 
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	err := parser.SaveSession(session)
 
@@ -274,9 +260,7 @@ func TestSaveSession_EmptySession(t *testing.T) {
 	session := &Session{}
 
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	err := parser.SaveSession(session)
 
@@ -307,9 +291,7 @@ func TestLoadSession_FileNotExists(t *testing.T) {
 	parser := NewParser()
 
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	session, err := parser.LoadSession()
 
@@ -323,9 +305,7 @@ func TestLoadSession_FileNotExists(t *testing.T) {
 
 func TestLoadSession_Success(t *testing.T) {
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	originalSession := Session{
 		CollectionName:  "Test Collection",
@@ -371,9 +351,7 @@ func TestLoadSession_Success(t *testing.T) {
 
 func TestLoadSession_InvalidJSON(t *testing.T) {
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	sessionPath := filepath.Join(tmpHome, sessionFileName)
 	invalidJSON := `{not valid json}`
@@ -448,9 +426,7 @@ func TestSaveAndLoadState_RoundTrip(t *testing.T) {
 	parser1.LoadEnvironment(envPath)
 
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	err := parser1.SaveState()
 	if err != nil {
@@ -493,9 +469,7 @@ func TestSaveAndLoadSession_RoundTrip(t *testing.T) {
 	parser := NewParser()
 
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	originalSession := &Session{
 		CollectionName:  "RT Collection",
@@ -549,9 +523,7 @@ func TestLoadState_PartialFailure(t *testing.T) {
 	path1 := createTempCollection(t, collection1)
 
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	config := PersistenceConfig{
 		CollectionPaths: []string{
@@ -587,9 +559,7 @@ func TestSaveSession_NilSession(t *testing.T) {
 	parser := NewParser()
 
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	err := parser.SaveSession(nil)
 
@@ -604,9 +574,7 @@ func TestSaveSession_NilSession(t *testing.T) {
 // now uses a uniquely-named temp file per call, cleaned up via rename.
 func TestSaveState_NoLeftoverTempFile(t *testing.T) {
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	parser := NewParser()
 	collection := &Collection{Info: Info{Name: "Temp File Test"}}
@@ -638,9 +606,7 @@ func TestSaveState_NoLeftoverTempFile(t *testing.T) {
 // new content lands in the link target.
 func TestSaveState_PreservesSymlinkedConfig(t *testing.T) {
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	targetPath := filepath.Join(t.TempDir(), configFileName)
 	if err := os.WriteFile(targetPath, []byte(`{"collection_paths":[]}`), 0600); err != nil {
@@ -684,9 +650,7 @@ func TestSaveState_PreservesSymlinkedConfig(t *testing.T) {
 // is exactly the "collections disappear between sessions" bug this guards.
 func TestMultipleSaveState_MergesAcrossConcurrentSessions(t *testing.T) {
 	tmpHome := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", tmpHome)
 
 	parser1 := NewParser()
 	collection1 := &Collection{Info: Info{Name: "First Save"}}
