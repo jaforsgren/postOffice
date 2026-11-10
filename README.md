@@ -48,6 +48,7 @@ go build -o postOffice
 - `i` — show info for selected item
 - `J` — show raw JSON for selected item
 - `H` — view saved responses for selected request
+- `V` — edit just the `{{variables}}` the selected request uses: each shows its value and source, `enter`/`e` edits it in place and saves to the environment, collection or folder that defines it (undefined ones are added to the collection)
 - `tab` — toggle split view (list | info + response)
 - `r` — refresh current view
 - `/` — search / filter items

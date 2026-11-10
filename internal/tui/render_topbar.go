@@ -254,6 +254,8 @@ func (m Model) getModeString() string {
 		return "Help"
 	case ModeGRPCReflect:
 		return "gRPC Reflection"
+	case ModeRequestVariables:
+		return "Request Variables"
 	case ModeWorkflows:
 		return "Workflows"
 	case ModeWorkflowDetail:

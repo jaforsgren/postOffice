@@ -188,6 +188,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == ModeGRPCReflect {
 			return m.handleGRPCReflectKeys(msg)
 		}
+		if m.mode == ModeRequestVariables {
+			return m.handleRequestVariablesKeys(msg)
+		}
 		if m.mode == ModeEdit {
 			if m.editFieldMode {
 				return m.handleFieldEdit(msg)

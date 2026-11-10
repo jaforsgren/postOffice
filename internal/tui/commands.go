@@ -535,6 +535,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
+			Keys:        []string{requestVariablesKey},
+			Description: "Edit the variables this request uses",
+			ShortHelp:   requestVariablesKey,
+			Handler:     handleRequestVariablesKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Keys:        []string{yankPrefixKey},
 			Description: "Yank: ya req+resp, yb body, yr curl, yy url",
 			ShortHelp:   yankPrefixKey,

@@ -38,6 +38,10 @@ func (m Model) renderContent() []string {
 		metrics := m.calculateLayout()
 		return []string{m.renderGRPCReflect(metrics.contentHeight)}
 
+	case ModeRequestVariables:
+		metrics := m.calculateLayout()
+		return []string{m.renderRequestVariables(metrics.contentHeight)}
+
 	case ModeVariables:
 		return []string{m.renderVariablesView()}
 
