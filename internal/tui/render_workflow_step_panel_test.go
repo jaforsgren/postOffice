@@ -246,3 +246,34 @@ func TestRenderWorkflowDetailWithStepPanel_FitsMainWindow(t *testing.T) {
 			lipgloss.Width(split), lipgloss.Height(split), lipgloss.Width(single), lipgloss.Height(single))
 	}
 }
+
+func TestShowWorkflowStepInfo_ListsTheStepRunLogs(t *testing.T) {
+	m := panelTestModel()
+	m.activeWorkflow.Steps[0].Request = formRequestName
+	m.workflowStepCursor = 0
+
+	m, _ = m.showWorkflowStepInfo()
+
+	if m.mode != ModeInfo {
+		t.Fatalf("expected the info view, got mode %v (%s)", m.mode, m.statusMessage)
+	}
+	info := ansi.Strip(m.infoViewport.View())
+	if !strings.Contains(info, formRequestName) || !strings.Contains(info, "LOGS") || !strings.Contains(info, loginPassLog) {
+		t.Errorf("expected the request info followed by the step's logs, got:\n%s", info)
+	}
+	if strings.Contains(info, listFailLog) || strings.Contains(info, workflowScriptLog) {
+		t.Errorf("expected only this step's logs, got:\n%s", info)
+	}
+}
+
+func TestShowWorkflowStepInfo_NotRunStepHasNoLogsSection(t *testing.T) {
+	m := panelTestModel()
+	m.activeWorkflow.Steps[0].Request = formRequestName
+	m.workflowState = workflow.ExecutionState{}
+
+	m, _ = m.showWorkflowStepInfo()
+
+	if info := ansi.Strip(m.infoViewport.View()); strings.Contains(info, "LOGS") {
+		t.Errorf("expected no logs section before the step has run, got:\n%s", info)
+	}
+}

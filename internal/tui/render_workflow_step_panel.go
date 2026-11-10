@@ -100,16 +100,8 @@ func (m Model) buildStepPanelLines(width int) []string {
 		lines = append(lines, subtleStyle.Render(fmt.Sprintf("iteration %d/%d", ss.Iteration, m.workflowState.Iterations)))
 	}
 
-	lines = append(lines, "", lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11")).Render("LOGS"))
-	stepLogs, _ := groupLogsByStep(m.workflowState)
-	if logs := stepLogs[stepRunKeyOf(ss)]; len(logs) > 0 {
-		for _, msg := range logs {
-			lines = append(lines, styleLogMessage(msg, styledRunStyler))
-		}
-	} else {
-		lines = append(lines, subtleStyle.Render(stepPanelNoLogsMessage))
-	}
-
+	lines = append(lines, "")
+	lines = append(lines, m.stepLogLines(ss)...)
 	lines = append(lines, "")
 	if ss.LastResponse == nil {
 		lines = append(lines, subtleStyle.Render(stepPanelNoResponseMessage))
@@ -133,6 +125,21 @@ func (m Model) stepPanelBorderColor() lipgloss.Color {
 		return responseBorderColor(ss.LastResponse)
 	}
 	return popupBorderColor
+}
+
+// stepLogLines is the LOGS section of one step run: its log messages (script
+// console output, test results, errors), or a placeholder when it has none.
+func (m Model) stepLogLines(ss *workflow.StepState) []string {
+	lines := []string{lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11")).Render("LOGS")}
+	stepLogs, _ := groupLogsByStep(m.workflowState)
+	logs := stepLogs[stepRunKeyOf(ss)]
+	if len(logs) == 0 {
+		return append(lines, subtleStyle.Render(stepPanelNoLogsMessage))
+	}
+	for _, msg := range logs {
+		lines = append(lines, styleLogMessage(msg, styledRunStyler))
+	}
+	return lines
 }
 
 func (m Model) selectedWorkflowStep() (workflow.Step, bool) {

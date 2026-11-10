@@ -2,8 +2,11 @@ package tui
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"postOffice/internal/postman"
 )
 
@@ -21,13 +24,17 @@ func withFormBody(m Model) Model {
 	return m
 }
 
-func findRootRequest(m Model, name string) *postman.Request {
+func findRootItem(m Model, name string) postman.Item {
 	for _, item := range m.collection.Items {
 		if item.Name == name {
-			return item.Request
+			return item
 		}
 	}
-	return nil
+	return postman.Item{}
+}
+
+func findRootRequest(m Model, name string) *postman.Request {
+	return findRootItem(m, name).Request
 }
 
 func TestApplyVimEditToCollection_KeepsWhatTheEditorDoesNotShow(t *testing.T) {
@@ -59,5 +66,83 @@ func TestApplyPathParamsToReq_KeepsTheBody(t *testing.T) {
 	}
 	if modified.Body == nil || len(modified.Body.FormData) != 1 {
 		t.Errorf("expected the form fields to be kept, got %+v", modified.Body)
+	}
+}
+
+func writeEditorResult(t *testing.T, content []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "edited.json")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestApplyVimEdit_UnchangedFileLeavesRequestClean(t *testing.T) {
+	m := createTestModel()
+	original := []byte(`{"name":"POST Request"}`)
+	msg := VimEditCompleteMsg{TempFile: writeEditorResult(t, original), OriginalContent: original, OriginalName: formRequestName, ItemID: formRequestName}
+
+	m = m.applyVimEdit(msg)
+
+	if m.modifiedItems[formRequestName] || len(m.modifiedCollections) != 0 {
+		t.Errorf("expected nothing marked modified, got items=%v collections=%v", m.modifiedItems, m.modifiedCollections)
+	}
+	if m.statusMessage != noEditorChangesMessage {
+		t.Errorf("expected %q, got %q", noEditorChangesMessage, m.statusMessage)
+	}
+}
+
+func TestApplyVimBulkEdit_UnchangedFileLeavesCollectionClean(t *testing.T) {
+	m := createTestModel()
+	original := []byte(`[]`)
+
+	m = m.applyVimBulkEdit(VimBulkEditCompleteMsg{TempFile: writeEditorResult(t, original), OriginalContent: original})
+
+	if len(m.modifiedCollections) != 0 {
+		t.Errorf("expected no modified collections, got %v", m.modifiedCollections)
+	}
+	if len(m.collection.Items) == 0 {
+		t.Error("expected the collection items to be left untouched")
+	}
+}
+
+func TestApplyVimScriptEdit_UnchangedFileKeepsTextArea(t *testing.T) {
+	m := createTestModel()
+	m.editFieldTextArea.SetValue("pm.test()")
+	original := []byte("pm.test()")
+
+	m = m.applyVimScriptEdit(VimScriptEditCompleteMsg{TempFile: writeEditorResult(t, original), OriginalContent: original})
+
+	if m.statusMessage != noEditorChangesMessage {
+		t.Errorf("expected %q, got %q", noEditorChangesMessage, m.statusMessage)
+	}
+}
+
+func TestEditModeEsc_UnchangedRequestIsNotMarkedModified(t *testing.T) {
+	m := createTestModel()
+	m = m.enterEditMode(findRootItem(m, formRequestName), nil)
+
+	updated, _ := m.handleEditModeKeys(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+
+	if len(m.modifiedItems) != 0 || len(m.modifiedCollections) != 0 {
+		t.Errorf("expected nothing marked modified, got items=%v collections=%v", m.modifiedItems, m.modifiedCollections)
+	}
+	if m.mode == ModeEdit {
+		t.Error("expected Esc to leave edit mode")
+	}
+}
+
+func TestEditModeEsc_ChangedRequestIsMarkedModified(t *testing.T) {
+	m := createTestModel()
+	m = m.enterEditMode(findRootItem(m, formRequestName), nil)
+	m.editRequest.Method = "PATCH"
+
+	updated, _ := m.handleEditModeKeys(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+
+	if len(m.modifiedCollections) == 0 {
+		t.Error("expected the collection to be marked modified")
 	}
 }

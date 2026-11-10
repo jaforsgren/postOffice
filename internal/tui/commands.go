@@ -535,18 +535,25 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
-			Keys:        []string{"y"},
-			Description: "Copy response body",
-			ShortHelp:   "y",
-			Handler:     handleCopyResponseBodyKey,
-			AvailableIn: []ViewMode{ModeResponse},
+			Keys:        []string{requestVariablesKey},
+			Description: "Edit the variables this request uses",
+			ShortHelp:   requestVariablesKey,
+			Handler:     handleRequestVariablesKey,
+			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
-			Keys:        []string{"Y"},
-			Description: "Copy full response",
-			ShortHelp:   "Y",
-			Handler:     handleCopyFullResponseKey,
-			AvailableIn: []ViewMode{ModeResponse},
+			Keys:        []string{yankPrefixKey},
+			Description: "Yank: ya req+resp, yb body, yr curl, yy url",
+			ShortHelp:   yankPrefixKey,
+			Handler:     handleYankPrefixKey,
+			AvailableIn: []ViewMode{ModeRequests, ModeResponse, ModeInfo},
+		},
+		{
+			Keys:        []string{openRequestReportKey},
+			Description: "Open request info, response and logs in editor",
+			ShortHelp:   openRequestReportKey,
+			Handler:     handleOpenRequestReportKey,
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo},
 		},
 		{
 			Keys:        []string{"s"},
@@ -1730,31 +1737,6 @@ func handleSavedResponsesKey(m Model) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func handleCopyResponseBodyKey(m Model) (Model, tea.Cmd) {
-	if m.lastResponse == nil {
-		return m, nil
-	}
-	if err := clipboard.WriteAll(m.lastResponse.Body); err != nil {
-		m.statusMessage = fmt.Sprintf("Copy failed: %v", err)
-		return m, nil
-	}
-	m.statusMessage = "Response body copied to clipboard"
-	return m, nil
-}
-
-func handleCopyFullResponseKey(m Model) (Model, tea.Cmd) {
-	if m.lastResponse == nil {
-		return m, nil
-	}
-	lines := m.buildResponseLines()
-	if err := clipboard.WriteAll(strings.Join(lines, "\n")); err != nil {
-		m.statusMessage = fmt.Sprintf("Copy failed: %v", err)
-		return m, nil
-	}
-	m.statusMessage = "Full response copied to clipboard"
-	return m, nil
-}
-
 func handleSaveResponseKey(m Model) (Model, tea.Cmd) {
 	if m.lastResponse == nil || m.lastExecutedItemID == "" {
 		m.statusMessage = "No response to save"
@@ -1830,38 +1812,6 @@ func handleEditRequestKey(m Model) (Model, tea.Cmd) {
 	} else {
 		m.statusMessage = "No editable item selected"
 	}
-	return m, nil
-}
-
-func handleCopyCurlKey(m Model) (Model, tea.Cmd) {
-	if m.mode != ModeRequests || m.cursor >= len(m.currentItems) {
-		return m, nil
-	}
-	item := m.currentItems[m.cursor]
-	if !item.IsRequest() {
-		m.statusMessage = "Select a request to copy"
-		return m, nil
-	}
-
-	vars := postman.GetAllVariables(m.collection, m.breadcrumb, m.environment)
-
-	var curlCmd string
-	if item.IsGRPC() {
-		curlCmd = buildGRPCCurlCommand(item, vars)
-	} else {
-		curlCmd = buildCurlCommand(item.Request, vars)
-	}
-
-	if err := clipboard.WriteAll(curlCmd); err != nil {
-		m.statusMessage = fmt.Sprintf("Copy failed: %v", err)
-		return m, nil
-	}
-
-	kind := "curl"
-	if item.IsGRPC() {
-		kind = "grpcurl"
-	}
-	m.statusMessage = fmt.Sprintf("Copied as %s: %s", kind, item.Name)
 	return m, nil
 }
 

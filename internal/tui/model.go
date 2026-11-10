@@ -34,6 +34,7 @@ const (
 	ModeWorkflowDetail
 	ModeSavedResponses
 	ModeHelp
+	ModeRequestVariables
 )
 
 type GRPCReflectPhase int
@@ -146,6 +147,7 @@ type Model struct {
 
 	editType             EditType
 	editRequest          *postman.Request
+	editRequestSnapshot  *postman.Request
 	editVariable         *postman.Variable
 	editEnvVariable      *postman.EnvVariable
 	editItemName         string
@@ -169,11 +171,17 @@ type Model struct {
 	varSuggestionCursor int
 	varSuggestionActive bool
 
-	editScript               *postman.Script
-	editScriptType           ScriptType
-	editScriptItemName       string
-	scriptSelectionMode      bool
-	editIsNewItem            bool
+	editScript          *postman.Script
+	editScriptType      ScriptType
+	editScriptItemName  string
+	scriptSelectionMode bool
+	editIsNewItem       bool
+	pendingYank         bool
+
+	requestVarsItem          postman.Item
+	requestVarsFolderPath    []string
+	requestVarsCursor        int
+	requestVarEditing        bool
 	requestTypeSelectionMode bool
 
 	responseViewport viewport.Model

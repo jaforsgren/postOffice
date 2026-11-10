@@ -11,6 +11,7 @@ import (
 	"postOffice/internal/script"
 	"postOffice/internal/servicebus"
 	"postOffice/internal/workflow"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -147,6 +148,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.applyVimScriptEdit(msg)
 		return m, nil
 
+	case VimRequestReportCompleteMsg:
+		m = m.applyVimRequestReport(msg)
+		return m, nil
+
 	case VimRunViewCompleteMsg:
 		m = m.applyVimRunView(msg)
 		return m, nil
@@ -177,8 +182,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.searchMode {
 			return m.handleSearchMode(msg)
 		}
+		if m.pendingYank {
+			return m.handleYankKey(msg)
+		}
 		if m.mode == ModeGRPCReflect {
 			return m.handleGRPCReflectKeys(msg)
+		}
+		if m.mode == ModeRequestVariables {
+			return m.handleRequestVariablesKeys(msg)
 		}
 		if m.mode == ModeEdit {
 			if m.editFieldMode {
@@ -193,6 +204,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleNormalMode(msg)
 			}
 			if key == resendStepKey && m.mode == ModeResponse && m.previousMode == ModeWorkflowDetail {
+				return m.handleNormalMode(msg)
+			}
+			if (m.mode == ModeResponse || m.mode == ModeInfo) && (key == yankPrefixKey || key == openRequestReportKey) {
 				return m.handleNormalMode(msg)
 			}
 
@@ -1290,6 +1304,7 @@ func (m Model) enterEditMode(item postman.Item, folderPath []string) Model {
 	}
 
 	m.editRequest = item.Request.Clone()
+	m.editRequestSnapshot = item.Request.Clone()
 	m.editItemName = item.Name
 	m.editOriginalName = item.Name
 	m.editFieldCursor = 0
@@ -1400,6 +1415,12 @@ func (m Model) saveEdit() (Model, error) {
 	return m, nil
 }
 
+// editStateChanged reports whether the request being edited differs from the
+// one edit mode was entered with.
+func (m Model) editStateChanged() bool {
+	return m.editItemName != m.editOriginalName || !reflect.DeepEqual(m.editRequest, m.editRequestSnapshot)
+}
+
 func (m Model) saveAllModifiedRequests() (Model, error) {
 	if len(m.modifiedCollections) == 0 {
 		m.statusMessage = "No unsaved changes"
@@ -1450,6 +1471,16 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.editFieldMode = false
 			m = m.refreshCurrentView()
 			m.statusMessage = "New request discarded"
+			return m, nil
+		}
+
+		if !m.editStateChanged() {
+			m = m.saveCurrentPathParams()
+			m.mode = m.previousMode
+			m.editType = EditTypeNone
+			m.editFieldMode = false
+			m = m.refreshCurrentView()
+			m.statusMessage = "No changes"
 			return m, nil
 		}
 
@@ -2926,7 +2957,12 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 	m.previousMode = ModeWorkflowDetail
 	m.mode = ModeInfo
 
-	m.configureViewport(&m.infoViewport, strings.Join(m.buildItemInfoLines(), "\n"))
+	lines := m.buildItemInfoLines()
+	if ss := m.runStepState(step.ID); ss != nil {
+		lines = append(lines, "")
+		lines = append(lines, m.stepLogLines(ss)...)
+	}
+	m.configureViewport(&m.infoViewport, strings.Join(lines, "\n"))
 	m.statusMessage = fmt.Sprintf("Inspecting: %s  (esc to return to workflow)", step.Request)
 	return m, nil
 }

@@ -48,6 +48,7 @@ go build -o postOffice
 - `i` — show info for selected item
 - `J` — show raw JSON for selected item
 - `H` — view saved responses for selected request
+- `V` — edit just the `{{variables}}` the selected request uses: each shows its value and source, `enter`/`e` edits it in place and saves to the environment, collection or folder that defines it (undefined ones are added to the collection)
 - `tab` — toggle split view (list | info + response)
 - `r` — refresh current view
 - `/` — search / filter items
@@ -65,8 +66,11 @@ go build -o postOffice
 - `enter` — execute selected request
 - `ctrl+e` — re-execute selected request; on a folder, run it as a workflow (asks `y/n` first, see [Workflows](#workflows))
 - `ctrl+r` — view last response for selected request (without re-executing)
-- `y` — copy response body (in response view)
-- `Y` — copy full response (in response view)
+- `ya` — copy request and response (requests, response and info views)
+- `yb` — copy response body
+- `yr` — copy as curl (or grpcurl for gRPC requests)
+- `yy` — copy the resolved URL
+- `ctrl+g` — open the request as a Markdown report in your editor (response and info views): definition, sent request, response, tests, console logs and curl, each under its own heading with fenced `json`/`http`/`javascript`/`bash` snippets
 - `s` — save response (in response view)
 
 **Workflow detail view:**
