@@ -2,6 +2,7 @@ package tui
 
 import (
 	"postOffice/internal/history"
+	"slices"
 	"testing"
 
 	"postOffice/internal/postman"
@@ -136,45 +137,42 @@ func TestSessionResume_RequestsViewBreadcrumbSurvivesRelaunch(t *testing.T) {
 	}
 }
 
-func TestSessionResume_MergedCollectionViewDoesNotBreakRestore(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-
-	pathA := writeTempCollectionFile(t, "Collection A")
-	pathB := writeTempCollectionFile(t, "Collection B")
-
-	parser := postman.NewParser()
-	m := NewModel(parser, history.NewStore(""))
-	m = m.loadCollection(pathA)
-	m = m.loadCollection(pathB)
-
-	m.mode = ModeCollections
-	m = m.loadCollectionsList()
-	m.cursor = 0
-	newModel, _ := handleToggleActiveCollectionKey(m)
-	m = newModel
-	m.cursor = 1
-	newModel, _ = handleToggleActiveCollectionKey(m)
-	m = newModel
-	m.cursor = 0
-	m = m.handleSelection() // enters the synthetic combined view
-
-	if !m.isViewingMergedCollection() {
-		t.Fatal("expected to be viewing the merged collection before saving session")
+func TestSessionResume_ReopensTheCombinedView(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m, _, _ := combinedModel(t)
+	m = cursorOn(t, openFolder(t, openFolder(t, m, combinedB), ordersFolder), ordersRequest)
+	if err := m.parser.SaveState(); err != nil {
+		t.Fatalf("SaveState failed: %v", err)
 	}
 
 	m.saveSession()
+	m2 := simulateRelaunch(t)
+
+	if !m2.isViewingMergedCollection() || m2.mode != ModeRequests {
+		t.Fatalf("expected the combined view restored, got mode %v (%s)", m2.mode, m2.statusMessage)
+	}
+	if want := []string{combinedB, ordersFolder}; !slices.Equal(m2.breadcrumb, want) {
+		t.Errorf("expected breadcrumb %v, got %v", want, m2.breadcrumb)
+	}
+	if item, ok := m2.selectedItem(); !ok || item.Name != ordersRequest {
+		t.Errorf("expected the cursor on %s, got %+v", ordersRequest, item)
+	}
+}
+
+func TestSessionResume_CombinedViewWithoutActiveCollectionsFallsBack(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m, _, _ := combinedModel(t)
+	m.mode = ModeRequests
+	m.saveSession()
+	m.parser.ToggleActiveCollection(combinedA)
+	m.parser.ToggleActiveCollection(combinedB)
+	if err := m.parser.SaveState(); err != nil {
+		t.Fatalf("SaveState failed: %v", err)
+	}
 
 	m2 := simulateRelaunch(t)
 
-	// The synthetic merged collection isn't itself restorable (it has no
-	// backing file), so relaunch should fall back to the collections list
-	// rather than getting stuck — and the active set (which is what actually
-	// makes the combined view reproducible) should still be persisted.
-	if m2.mode != ModeCollections {
-		t.Errorf("expected fallback to ModeCollections, got %v", m2.mode)
-	}
-	if m2.parser.ActiveCollectionCount() != 2 {
-		t.Errorf("expected both collections to still be active after relaunch, got %d", m2.parser.ActiveCollectionCount())
+	if m2.mode != ModeCollections || m2.collection != nil {
+		t.Errorf("expected fallback to the collections list, got mode %v with %+v", m2.mode, m2.collection)
 	}
 }

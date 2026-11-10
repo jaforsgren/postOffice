@@ -41,11 +41,14 @@ func mergeUniqueStrings(a, b []string) []string {
 }
 
 type Session struct {
-	CollectionName  string   `json:"collection_name"`
-	EnvironmentName string   `json:"environment_name"`
-	Mode            int      `json:"mode"`
-	Breadcrumb      []string `json:"breadcrumb"`
-	Cursor          int      `json:"cursor"`
+	CollectionName  string `json:"collection_name"`
+	EnvironmentName string `json:"environment_name"`
+	// CombinedView reopens the combined view of the active collections
+	// instead of CollectionName.
+	CombinedView bool     `json:"combined_view,omitempty"`
+	Mode         int      `json:"mode"`
+	Breadcrumb   []string `json:"breadcrumb"`
+	Cursor       int      `json:"cursor"`
 }
 
 func (p *Parser) SaveState() error {

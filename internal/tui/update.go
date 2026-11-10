@@ -2506,6 +2506,7 @@ func (m Model) saveSession() {
 	session := &postman.Session{
 		CollectionName:  collectionName,
 		EnvironmentName: environmentName,
+		CombinedView:    m.isViewingMergedCollection(),
 		Mode:            int(m.mode),
 		Breadcrumb:      m.breadcrumb,
 		Cursor:          m.cursor,
@@ -2522,7 +2523,14 @@ func (m Model) restoreSession() Model {
 	}
 
 	collectionRestored := true
-	if session.CollectionName != "" {
+	if session.CombinedView {
+		if merged := m.parser.MergedCollection(); merged != nil {
+			m.collection = merged
+			m.mergedCollectionActive = true
+		} else {
+			collectionRestored = false
+		}
+	} else if session.CollectionName != "" {
 		if collection, exists := m.parser.GetCollection(session.CollectionName); exists {
 			m.collection = collection
 		} else {
@@ -2548,9 +2556,9 @@ func (m Model) restoreSession() Model {
 	m.cursor = session.Cursor
 
 	if m.mode == ModeRequests && m.collection == nil {
-		// The last-viewed collection is gone (renamed/removed, or it was the
-		// synthetic combined view, which isn't restored) — fall back to the
-		// collections list instead of showing an empty Requests screen.
+		// The last-viewed collection is gone (renamed/removed, or no
+		// collections are active any more for the combined view) — fall back
+		// to the collections list instead of showing an empty Requests screen.
 		m.mode = ModeCollections
 	}
 
