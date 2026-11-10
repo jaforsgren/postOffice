@@ -43,7 +43,9 @@ g/G       First/last item
 enter     Open or execute
 h/esc     Go back
 /         Search
-tab       Toggle split view
+|         Toggle split view
+ctrl+o    Jump back (previous folder or collection)
+ctrl+i    Jump forward (also tab)
 r         Refresh
 ctrl+n    Next environment
 ?         Help
@@ -116,7 +118,7 @@ Paths support `~/` expansion.
 
 Every execution started from the TUI (HTTP, gRPC, Service Bus and AMQP, including replays) is recorded with its resolved URL/target, headers and body, environment name, status, duration, timestamp and response size. Workflow runs are not recorded.
 
-- Open it with `ctrl+o` or `:history` (`:hist`, `:hi`)
+- Open it with `ctrl+y` or `:history` (`:hist`, `:hi`)
 - `enter` replays the entry with exactly the recorded resolved inputs. Variables are not re-resolved and pre-request/test scripts do not run
 - `d` shows a line diff (`-` history entry, `+` current response) of status, sorted headers and pretty-printed body
 

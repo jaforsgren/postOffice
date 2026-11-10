@@ -120,7 +120,7 @@ func TestRecordHistory_KeepsCursorOnSelectedEntry(t *testing.T) {
 func TestOpenAndCloseRequestHistory(t *testing.T) {
 	m := sizedTestModel()
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyCtrlO})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyCtrlY})
 	if m.mode != ModeHistory {
 		t.Fatalf("mode = %v, want ModeHistory", m.mode)
 	}

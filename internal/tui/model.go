@@ -269,6 +269,15 @@ type Model struct {
 	historyReturnMode    ViewMode
 	historyDiffViewport  viewport.Model
 
+	// jumps is the jumplist of requests view locations, oldest first, with
+	// jumpIndex the position ctrl+o/ctrl+i move from (len(jumps) when not
+	// jumping). lastJumpLocation is where the requests view last was, and
+	// jumping marks a move made by the jumplist itself, which isn't recorded.
+	jumps            []jumpLocation
+	jumpIndex        int
+	lastJumpLocation jumpLocation
+	jumping          bool
+
 	// favorites maps a request's "collection/folder/.../name" identifier
 	// (see requestItemID) to true when it's been favorited.
 	favorites             map[string]bool

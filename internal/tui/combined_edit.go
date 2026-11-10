@@ -98,14 +98,20 @@ func (m Model) showCollectionFolder(collectionName string, folderPath []string) 
 		m.mergedCollectionActive = false
 	}
 
+	return m.openRequestsFolder(viewPath), true
+}
+
+// openRequestsFolder shows the current collection's requests view at
+// viewPath, or at its top level when viewPath no longer exists.
+func (m Model) openRequestsFolder(viewPath []string) Model {
 	m.mode = ModeRequests
 	m = m.loadRequestsList()
 	if len(viewPath) == 0 {
-		return m, true
+		return m
 	}
 	if folderItems := traverseToDepth(m.collection.Items, viewPath); folderItems != nil {
-		m.breadcrumb = viewPath
-		m = m.applyTreeItems(folderItems, viewPath)
+		m.breadcrumb = slices.Clone(viewPath)
+		m = m.applyTreeItems(folderItems, m.breadcrumb)
 	}
-	return m, true
+	return m
 }

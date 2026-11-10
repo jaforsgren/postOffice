@@ -8,6 +8,8 @@ import (
 )
 
 const (
+	toggleSplitViewKey = "|"
+
 	// itemStatusColumnWidth reserves room in the list pane for the cursor,
 	// markers and the "<status> <time ago>" column that follow the item name.
 	itemStatusColumnWidth = 28

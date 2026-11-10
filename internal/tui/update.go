@@ -25,7 +25,6 @@ import (
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -187,68 +186,74 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if m.pendingFolderRun != nil {
-			return m.handleFolderRunConfirmKeys(msg)
-		}
-		if m.commandMode {
-			return m.handleCommandMode(msg)
-		}
-		if m.searchMode {
-			return m.handleSearchMode(msg)
-		}
-		if m.pendingYank {
-			return m.handleYankKey(msg)
-		}
-		if m.mode == ModeRequests && m.splitViewActive && m.splitFocus != splitPaneNone {
-			focused, cmd, handled := m.handleSplitFocusKeys(msg)
-			if handled {
-				return focused, cmd
-			}
-			m = focused
-		}
-		if m.mode == ModeGRPCReflect {
-			return m.handleGRPCReflectKeys(msg)
-		}
-		if m.mode == ModeRequestVariables {
-			return m.handleRequestVariablesKeys(msg)
-		}
-		if m.mode == ModeEdit {
-			if m.editFieldMode {
-				return m.handleFieldEdit(msg)
-			}
-			return m.handleEditModeKeys(msg)
-		}
-
-		if m.mode == ModeResponse || m.mode == ModeInfo || m.mode == ModeJSON || m.mode == ModeHelp || m.mode == ModeHistoryDiff {
-			key := msg.String()
-			if key == "esc" || key == "h" || key == "backspace" || key == "q" {
-				return m.handleNormalMode(msg)
-			}
-			if !isViewportScrollKey(msg) {
-				return m.handleNormalMode(msg)
-			}
-
-			switch m.mode {
-			case ModeResponse:
-				m.responseViewport, cmd = m.responseViewport.Update(msg)
-			case ModeInfo:
-				m.infoViewport, cmd = m.infoViewport.Update(msg)
-			case ModeJSON:
-				m.jsonViewport, cmd = m.jsonViewport.Update(msg)
-			case ModeLog:
-				m.logsViewport, cmd = m.logsViewport.Update(msg)
-			case ModeHelp:
-				m.helpViewport, cmd = m.helpViewport.Update(msg)
-			case ModeHistoryDiff:
-				m.historyDiffViewport, cmd = m.historyDiffViewport.Update(msg)
-			}
-			return m, cmd
-		}
-
-		return m.handleNormalMode(msg)
+		updated, cmd := m.handleKeyMsg(msg)
+		return updated.(Model).recordJump(m), cmd
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	if m.pendingFolderRun != nil {
+		return m.handleFolderRunConfirmKeys(msg)
+	}
+	if m.commandMode {
+		return m.handleCommandMode(msg)
+	}
+	if m.searchMode {
+		return m.handleSearchMode(msg)
+	}
+	if m.pendingYank {
+		return m.handleYankKey(msg)
+	}
+	if m.mode == ModeRequests && m.splitViewActive && m.splitFocus != splitPaneNone {
+		focused, cmd, handled := m.handleSplitFocusKeys(msg)
+		if handled {
+			return focused, cmd
+		}
+		m = focused
+	}
+	if m.mode == ModeGRPCReflect {
+		return m.handleGRPCReflectKeys(msg)
+	}
+	if m.mode == ModeRequestVariables {
+		return m.handleRequestVariablesKeys(msg)
+	}
+	if m.mode == ModeEdit {
+		if m.editFieldMode {
+			return m.handleFieldEdit(msg)
+		}
+		return m.handleEditModeKeys(msg)
+	}
+
+	if m.mode == ModeResponse || m.mode == ModeInfo || m.mode == ModeJSON || m.mode == ModeHelp || m.mode == ModeHistoryDiff {
+		key := msg.String()
+		if key == "esc" || key == "h" || key == "backspace" || key == "q" {
+			return m.handleNormalMode(msg)
+		}
+		if !isViewportScrollKey(msg) {
+			return m.handleNormalMode(msg)
+		}
+
+		switch m.mode {
+		case ModeResponse:
+			m.responseViewport, cmd = m.responseViewport.Update(msg)
+		case ModeInfo:
+			m.infoViewport, cmd = m.infoViewport.Update(msg)
+		case ModeJSON:
+			m.jsonViewport, cmd = m.jsonViewport.Update(msg)
+		case ModeLog:
+			m.logsViewport, cmd = m.logsViewport.Update(msg)
+		case ModeHelp:
+			m.helpViewport, cmd = m.helpViewport.Update(msg)
+		case ModeHistoryDiff:
+			m.historyDiffViewport, cmd = m.historyDiffViewport.Update(msg)
+		}
+		return m, cmd
+	}
+
+	return m.handleNormalMode(msg)
 }
 
 // resendStepKey resends the request, or reruns the workflow step, whose
