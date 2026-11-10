@@ -2957,7 +2957,12 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 	m.previousMode = ModeWorkflowDetail
 	m.mode = ModeInfo
 
-	m.configureViewport(&m.infoViewport, strings.Join(m.buildItemInfoLines(), "\n"))
+	lines := m.buildItemInfoLines()
+	if ss := m.runStepState(step.ID); ss != nil {
+		lines = append(lines, "")
+		lines = append(lines, m.stepLogLines(ss)...)
+	}
+	m.configureViewport(&m.infoViewport, strings.Join(lines, "\n"))
 	m.statusMessage = fmt.Sprintf("Inspecting: %s  (esc to return to workflow)", step.Request)
 	return m, nil
 }
