@@ -252,8 +252,13 @@ Variable mutations made in the workflow script are immediately visible to subseq
   response: Response;  // alias of last
   last: Response;      // final execution result
   responses: Response[]; // all results when repeat > 1
+  nextRequest?: string | null; // the request's pm.execution.setNextRequest target, null for setNextRequest(null);
+                               // absent when it made no such call
+  nextStep?: string;   // ID of the step nextRequest names (by request name, id or path), when it is in this workflow
 }
 ```
+
+Folder runs (`ctrl+e` on a folder, `postOffice run --folder`) use these to behave like Postman's Collection Runner: their generated script jumps to `nextStep`, stops on `null`, fails when the target is not in the run, and stops after 1000 requests. Hand-written workflows can use them the same way or ignore them. A saved folder workflow still using the older plain sequential script is regenerated the next time the folder runs, unless it was edited.
 
 ### Step status
 

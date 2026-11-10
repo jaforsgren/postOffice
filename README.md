@@ -302,9 +302,58 @@ The reflection connection is insecure (no TLS). For TLS-enabled servers, edit th
 3. Edit variable values directly in the UI
 4. Variables are automatically applied to requests
 
+## Headless / CLI
+
+Every collection, script and workflow that runs in the TUI also runs without it, so the same tests work in CI. `./postOffice --help` lists the commands and `./postOffice <command> --help` shows each command's options.
+
+```bash
+# one request, with its collection → folder → request scripts
+./postOffice run collection.json "Users/Create User" -e dev.json
+
+# every request in a folder, or in the whole collection, in collection order
+./postOffice run collection.json --folder smoke -e staging.json
+./postOffice run collection.json -e staging.json
+
+# a workflow file (see Workflows)
+./postOffice workflow run workflows/deploy-check.yaml -e staging.json
+
+# CI: JUnit XML to a file, human-readable summary on stdout
+./postOffice run collection.json --folder smoke -e ci.json --output junit --report results.xml
+```
+
+**Running requests (`run`, `workflow run`)**
+
+- Request and folder paths use `/` between folder names, exactly as `./postOffice ls request` prints them. Requests whose names contain `/` cannot be addressed by path; `ls request` marks them.
+- Folder and collection runs behave like Postman's Collection Runner: `pm.execution.setNextRequest("name" | id | path)` jumps to that request in the run, `setNextRequest(null)` ends it, and a request whose pre-request script calls `pm.execution.skipRequest()` is reported as skipped. A target outside the run fails it, and a run stops after 1000 requests to catch setNextRequest loops.
+- `-e, --environment <env.json>` picks the environment; without it only collection variables resolve.
+- `--output text|json|junit` picks the report format (default `text`). `json` is one object with a summary and every request's status, HTTP status, duration, tests, errors and console output. `junit` writes one `<testsuite>` per request with one `<testcase>` per `pm.test`, plus a `request` testcase for request-level failures and skips.
+- `--report <file>` writes the `json`/`junit` report to a file and prints the text report.
+- Variable changes made by scripts are **not** written back to the collection or environment files unless you pass `--persist`. `--persist` refuses OpenAPI files, which saving would overwrite.
+- `workflow run` finds the workflow's collection on its own: first the loaded collection (see `ls`) whose `workflows/` directory holds the file, otherwise the only Postman collection `.json` in the directory above `workflows/`. Pass `-c <collection.json>` when neither finds exactly one.
+
+**Exit codes**
+
+| Code | Meaning |
+|------|---------|
+| `0` | Every request, test and script passed |
+| `1` | The run finished, but a request, test or script failed |
+| `2` | Usage or input error: bad arguments, an unreadable file, invalid JSON/YAML, an unknown request or folder |
+
+**Listing (`ls`)**
+
+```bash
+./postOffice ls                                   # loaded collections, environments and their workflows
+./postOffice ls var                               # variables of the loaded collections and environments, with their source
+./postOffice ls var -c collection.json -e dev.json
+./postOffice ls request                           # "METHOD  Folder/Sub/Request" for the loaded collections
+./postOffice ls r -c collection.json              # one collection file
+```
+
+"Loaded" means what the TUI has loaded (`~/.postoffice_collections.json`). `ls var` also accepts `vars`/`variables`, and `ls request` accepts `requests`/`r`.
+
 ## Merging Collections and Environments
 
-Merge two Postman collections or two environment files headlessly, without starting the TUI:
+Merge two Postman collections or two environment files headlessly, without starting the TUI (`./postOffice merge ...` is the same as `-m`):
 
 ```bash
 # file2's conflicting items/variables win, result written back to file1
@@ -329,7 +378,7 @@ Merge two Postman collections or two environment files headlessly, without start
 
 ### Headless Aliases
 
-Save a headless command (currently `merge`) with its arguments as a named alias in `~/.postoffice_aliases.json`, then run it by name:
+Save a headless command (`run`, `workflow`, `ls` or `merge`) with its arguments as a named alias in `~/.postoffice_aliases.json`, then run it by name:
 
 ```bash
 ./postOffice alias add <name> <command> [args...]   # e.g. alias add sapi-testenv-merge merge a.json b.json --forceMerge -o merged.json
@@ -351,9 +400,10 @@ Save a headless command (currently `merge`) with its arguments as a named alias 
 }
 ```
 
-- `command` selects the headless command to run (`merge` today); `args` are passed through exactly as if typed after `-m`.
+- `command` selects the headless command to run (`run`, `workflow`, `ls` or `merge`); `args` are passed through exactly as if typed after it, e.g. `alias add smoke run collection.json --folder smoke -e ci.json`.
 - Paths in `args` are resolved relative to the current working directory when the alias runs.
-- The command registry (`headlessCommands` in `alias.go`) is designed to grow — adding a future headless command only requires registering it there, and it becomes usable from any alias.
+- An alias run exits with the command's own exit code.
+- Headless commands are registered once in `cli.go`; a command marked aliasable there is usable from any alias.
 
 ## Debugging
 
