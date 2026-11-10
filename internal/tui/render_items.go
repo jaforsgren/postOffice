@@ -92,6 +92,7 @@ func (m Model) formatItemLine(index int, nameWidth int) string {
 	} else if m.mode == ModeEnvironments && m.parser.IsEnvironmentActive(line) {
 		modifiedPrefix = "[x] "
 	}
+	modifiedPrefix += m.unsavedPrefix(index)
 
 	if m.mode == ModeRequests && index < len(m.currentItems) {
 		item := m.currentItems[index]
@@ -104,7 +105,7 @@ func (m Model) formatItemLine(index int, nameWidth int) string {
 				modifiedPrefix = "★ "
 			}
 			if m.isItemModified(itemID) {
-				modifiedPrefix += "* "
+				modifiedPrefix += unsavedMarker
 			}
 
 			if exec, exists := m.requestExecutions[itemID]; exists {

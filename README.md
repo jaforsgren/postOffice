@@ -159,6 +159,8 @@ Use `V` to edit a request's variables at their source.
 
 A variable can hold a list of choices (`"choices": ["01", "02"]` next to its `value` in the environment or collection file). Its `value` is the chosen one. In the `V` panel, `enter` opens a dropdown to pick another choice, `a` adds a choice (turning a plain variable into a choice list) and `d` deletes one. Reference a specific choice with `{{persona_id[1]}}` (zero-based).
 
+Unsaved edits are marked with `*` on the request, every folder above it and its collection (and on edited environments).
+
 Use `:changes` to review unsaved edits. Press `d` to discard one or `ctrl+d` to discard all.
 
 ## Scripts and Tests
