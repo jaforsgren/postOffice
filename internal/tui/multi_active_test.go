@@ -150,39 +150,6 @@ func TestHandleSelection_ModeEnvironments_MultiActiveMerges(t *testing.T) {
 	}
 }
 
-func TestEnterEditMode_BlockedForMergedCollection(t *testing.T) {
-	pathA := writeTempCollectionFile(t, "Collection A")
-	pathB := writeTempCollectionFile(t, "Collection B")
-	parser := createMockParser()
-	parser.LoadCollection(pathA)
-	parser.LoadCollection(pathB)
-	parser.ToggleActiveCollection("Collection A")
-	parser.ToggleActiveCollection("Collection B")
-
-	m := NewModel(parser, history.NewStore(""))
-	m.mode = ModeCollections
-	m = m.loadCollectionsList()
-	m.cursor = 0
-	m = m.handleSelection()
-
-	if len(m.currentItems) == 0 {
-		t.Fatal("expected merged view to have at least one top-level group folder")
-	}
-
-	before := m.mode
-	m = m.enterEditMode(m.currentItems[0], m.breadcrumb)
-
-	if m.mode != before {
-		t.Errorf("expected enterEditMode to be blocked (mode unchanged), got %v", m.mode)
-	}
-	if m.statusMessage == "" {
-		t.Error("expected a status message explaining why editing is blocked")
-	}
-	if !m.statusIsError {
-		t.Error("expected the blocked-edit message to be flagged as an error")
-	}
-}
-
 func TestStatusIsError_ResetOnNextKeypress(t *testing.T) {
 	pathA := writeTempCollectionFile(t, "Collection A")
 	pathB := writeTempCollectionFile(t, "Collection B")
@@ -197,10 +164,10 @@ func TestStatusIsError_ResetOnNextKeypress(t *testing.T) {
 	m = m.loadCollectionsList()
 	m.cursor = 0
 	m = m.handleSelection()
-	m = m.enterEditMode(m.currentItems[0], m.breadcrumb)
+	m, _ = handleAddNewRequestKey(m)
 
 	if !m.statusIsError {
-		t.Fatal("expected blocked edit to set statusIsError")
+		t.Fatal("expected adding a request at the combined view's top level to set statusIsError")
 	}
 
 	newModel, _ := m.handleNormalMode(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})

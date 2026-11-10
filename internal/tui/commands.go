@@ -1908,8 +1908,8 @@ func handleAddNewRequestKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Load a collection first"
 		return m, nil
 	}
-	if m.isViewingMergedCollection() {
-		return m.blockMergedCollectionEdit(), nil
+	if m.isCombinedRoot(m.breadcrumb) {
+		return m.blockCombinedRootEdit(), nil
 	}
 	m = m.enterRequestTypeSelectionMode()
 	return m, nil

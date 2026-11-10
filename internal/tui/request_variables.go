@@ -34,9 +34,6 @@ func handleRequestVariablesKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Select a request to edit its variables"
 		return m, nil
 	}
-	if m.isViewingMergedCollection() {
-		return m.blockMergedCollectionEdit(), nil
-	}
 	if len(postman.ReferencedVariables(item.Request)) == 0 {
 		m.statusMessage = fmt.Sprintf("%s uses no {{variables}}", item.Name)
 		return m, nil
@@ -53,8 +50,9 @@ func handleRequestVariablesKey(m Model) (Model, tea.Cmd) {
 }
 
 func (m Model) requestVariableRows() []requestVariableRow {
+	collection, folderPath := m.collectionScope(m.requestVarsFolderPath)
 	resolved := make(map[string]postman.VariableSource)
-	for _, variable := range postman.GetAllVariables(m.collection, m.requestVarsFolderPath, m.environment) {
+	for _, variable := range postman.GetAllVariables(collection, folderPath, m.environment) {
 		resolved[variable.Key] = variable
 	}
 
@@ -144,14 +142,16 @@ func (m Model) variableEnvironments() []*postman.Environment {
 }
 
 func (m Model) saveRequestVariable(key, value string) Model {
-	owner := postman.SetVariable(m.collection, m.requestVarsFolderPath, m.variableEnvironments(), key, value)
+	collection, folderPath := m.collectionScope(m.requestVarsFolderPath)
+	owner := postman.SetVariable(collection, folderPath, m.variableEnvironments(), key, value)
 
 	var err error
 	if owner.Scope == postman.VariableScopeEnvironment {
 		err = m.parser.SaveEnvironment(owner.Name)
 		m = m.reloadActiveEnvironment()
 	} else {
-		err = m.parser.SaveCollection(m.collection.Info.Name)
+		err = m.saveOwningCollection(m.requestVarsFolderPath)
+		m = m.reloadMergedCollection()
 	}
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Set {{%s}} but failed to save %s: %v", key, owner.Name, err)
@@ -159,6 +159,16 @@ func (m Model) saveRequestVariable(key, value string) Model {
 		return m
 	}
 	m.statusMessage = fmt.Sprintf("Saved {{%s}} to %s", key, owner.Name)
+	return m
+}
+
+// reloadMergedCollection rebuilds the combined view after a collection's
+// variables changed, since it holds copies of them.
+func (m Model) reloadMergedCollection() Model {
+	if !m.isViewingMergedCollection() {
+		return m
+	}
+	m.collection = m.parser.MergedCollection()
 	return m
 }
 

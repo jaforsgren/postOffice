@@ -217,12 +217,12 @@ func containsName(list []string, name string) bool {
 	return slices.Contains(list, name)
 }
 
-// MergedCollection combines every active collection into a single read-only
-// browsing tree, nesting each collection's items under a top-level folder
-// named after it so items never collide across collections. It returns nil
-// if no collections are active. The result's Info.Name is not a real
-// collection name, so it never resolves through pathMap/collections lookups
-// — callers use that to detect and block edits against the merged view.
+// MergedCollection combines every active collection into a single browsing
+// tree, nesting each collection's items under a top-level group folder named
+// after it so items never collide across collections. It returns nil if no
+// collections are active. The result's Info.Name is not a real collection
+// name, so it never resolves through pathMap/collections lookups: edits made
+// in the tree reach the collections through SyncMergedCollection.
 func (p *Parser) MergedCollection() *Collection {
 	var items []Item
 	var variables []Variable
@@ -256,6 +256,19 @@ func (p *Parser) MergedCollection() *Collection {
 		Items:     items,
 		Variables: variables,
 		Events:    events,
+	}
+}
+
+// SyncMergedCollection writes each group folder of merged, as built by
+// MergedCollection, back to the collection it groups. Items below a group
+// folder are shared with that collection, but the group's own item list is a
+// copy, so items added to or removed from a collection's top level in the
+// merged tree only reach the collection through this.
+func (p *Parser) SyncMergedCollection(merged *Collection) {
+	for _, group := range merged.Items {
+		if coll, exists := p.collections[group.Name]; exists && containsName(p.activeCollections, group.Name) {
+			coll.Items = group.Items
+		}
 	}
 }
 

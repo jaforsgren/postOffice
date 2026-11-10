@@ -106,9 +106,6 @@ type VimEditCompleteMsg struct {
 }
 
 func (m Model) openVimForItem(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	if m.isViewingMergedCollection() {
-		return m.blockMergedCollectionEdit(), nil
-	}
 	if item.Request == nil {
 		m.statusMessage = "No request data to edit"
 		return m, nil
@@ -276,7 +273,7 @@ func (m Model) applyVimEditToCollection(msg VimEditCompleteMsg, payload vimEditP
 	m.modifiedRequests[msg.ItemID] = updatedReq
 	m.modifiedItems[msg.ItemID] = true
 	if m.collection != nil {
-		m.modifiedCollections[m.collection.Info.Name] = true
+		m.markCollectionModified(msg.FolderPath)
 	}
 
 	m = m.refreshCurrentView()
@@ -553,12 +550,12 @@ type VimBulkEditCompleteMsg struct {
 }
 
 func (m Model) openVimForCurrentLevel() (Model, tea.Cmd) {
-	if m.isViewingMergedCollection() {
-		return m.blockMergedCollectionEdit(), nil
-	}
 	if m.collection == nil {
 		m.statusMessage = "No collection loaded"
 		return m, nil
+	}
+	if m.isCombinedRoot(m.breadcrumb) {
+		return m.blockCombinedRootEdit(), nil
 	}
 	folderPath := append([]string{}, m.breadcrumb...)
 	items := traverseToDepth(m.collection.Items, folderPath)
@@ -625,7 +622,7 @@ func (m Model) applyVimBulkEdit(msg VimBulkEditCompleteMsg) Model {
 	}
 	*target = items
 
-	m.modifiedCollections[m.collection.Info.Name] = true
+	m.markCollectionModified(msg.FolderPath)
 	m = m.refreshCurrentView()
 
 	depth := "root"

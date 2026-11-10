@@ -215,3 +215,50 @@ func TestActiveSets_LoadStateDropsNamesThatFailedToLoad(t *testing.T) {
 		t.Errorf("expected active names for collections that never loaded to be dropped, got %v", parser.ActiveCollections())
 	}
 }
+
+func mergedTestParser(t *testing.T) *Parser {
+	t.Helper()
+	p := NewParser()
+	p.LoadCollection(createTempCollection(t, &Collection{
+		Info:  Info{Name: "Collection A"},
+		Items: []Item{{Name: "Get Users", Request: &Request{Method: "GET"}}},
+	}))
+	p.LoadCollection(createTempCollection(t, &Collection{
+		Info:  Info{Name: "Collection B"},
+		Items: []Item{{Name: "Get Orders", Request: &Request{Method: "GET"}}},
+	}))
+	p.ToggleActiveCollection("Collection A")
+	p.ToggleActiveCollection("Collection B")
+	return p
+}
+
+func TestSyncMergedCollection_WritesTopLevelChangesBack(t *testing.T) {
+	p := mergedTestParser(t)
+	merged := p.MergedCollection()
+	merged.Items[0].Items = append(merged.Items[0].Items, Item{Name: "Create User", Request: &Request{Method: "POST"}})
+	merged.Items[1].Items = nil
+
+	p.SyncMergedCollection(merged)
+
+	a, _ := p.GetCollection("Collection A")
+	b, _ := p.GetCollection("Collection B")
+	if len(a.Items) != 2 || a.Items[1].Name != "Create User" {
+		t.Errorf("expected the added request in Collection A, got %+v", a.Items)
+	}
+	if len(b.Items) != 0 {
+		t.Errorf("expected Collection B's removed request gone, got %+v", b.Items)
+	}
+}
+
+func TestSyncMergedCollection_IgnoresInactiveCollections(t *testing.T) {
+	p := mergedTestParser(t)
+	merged := p.MergedCollection()
+	p.ToggleActiveCollection("Collection B")
+	merged.Items[1].Items = nil
+
+	p.SyncMergedCollection(merged)
+
+	if b, _ := p.GetCollection("Collection B"); len(b.Items) != 1 {
+		t.Errorf("expected an inactive collection left alone, got %+v", b.Items)
+	}
+}

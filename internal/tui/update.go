@@ -757,7 +757,7 @@ func (m Model) handleSelection() Model {
 				m.mergedCollectionActive = true
 				m.mode = ModeRequests
 				m = m.loadRequestsList()
-				m.statusMessage = fmt.Sprintf("Combined view: %d collections merged (read-only — space to unselect, then Enter one to edit)", m.parser.ActiveCollectionCount())
+				m.statusMessage = fmt.Sprintf("Combined view: %d collections merged (edits are saved to each request's own collection)", m.parser.ActiveCollectionCount())
 			}
 		} else if m.cursor < len(m.items) {
 			collectionName := m.items[m.cursor]
@@ -1017,6 +1017,7 @@ func (m Model) refreshCurrentView() Model {
 	if m.collection == nil {
 		return m
 	}
+	m.syncMergedCollection()
 
 	if m.viewingFavorites {
 		return m.applyFavoritesView()
@@ -1312,9 +1313,10 @@ func (m Model) loadVariablesList() Model {
 	return m
 }
 
-// isViewingMergedCollection reports whether m.collection is the synthetic,
-// read-only tree built by Parser.MergedCollection rather than a real loaded
-// collection.
+// isViewingMergedCollection reports whether m.collection is the synthetic
+// combined tree built by Parser.MergedCollection rather than a real loaded
+// collection. Edits in it go to the collection owning each path (see
+// owningCollectionName).
 func (m Model) isViewingMergedCollection() bool {
 	return m.mergedCollectionActive && m.collection != nil
 }
@@ -1325,21 +1327,7 @@ func (m Model) isViewingMergedEnvironment() bool {
 	return m.mergedEnvironmentActive && m.environment != nil
 }
 
-const mergedCollectionReadOnlyMessage = "Error: combined view is read-only — deactivate collections (space) down to one to edit"
-
-// blockMergedCollectionEdit reports the standard error for any edit/save/add/
-// delete attempt against the synthetic merged collection tree, so every entry
-// point shows the same message styled as an error (see isViewingMergedCollection).
-func (m Model) blockMergedCollectionEdit() Model {
-	m.statusMessage = mergedCollectionReadOnlyMessage
-	m.statusIsError = true
-	return m
-}
-
 func (m Model) enterEditMode(item postman.Item, folderPath []string) Model {
-	if m.isViewingMergedCollection() {
-		return m.blockMergedCollectionEdit()
-	}
 	if !item.IsRequest() || item.Request == nil {
 		m.statusMessage = "Cannot edit: not a request"
 		return m
@@ -1426,10 +1414,10 @@ func (m Model) saveEdit() (Model, error) {
 		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
 		m.modifiedRequests[itemID] = m.editRequest
 		m.modifiedItems[itemID] = true
-		m.modifiedCollections[m.editCollectionName] = true
+		m.markCollectionModified(m.editItemPath)
 		m = m.saveCurrentPathParams()
 
-		if err := m.parser.SaveCollection(m.editCollectionName); err != nil {
+		if err := m.saveOwningCollection(m.editItemPath); err != nil {
 			m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
 			return m, err
 		}
@@ -1437,18 +1425,18 @@ func (m Model) saveEdit() (Model, error) {
 		m.statusMessage = "Saved changes to collection file"
 		delete(m.modifiedItems, itemID)
 		if len(m.modifiedItems) == 0 {
-			delete(m.modifiedCollections, m.editCollectionName)
+			delete(m.modifiedCollections, m.owningCollectionName(m.editItemPath))
 		}
 	case EditTypeScript:
 		m = m.saveScript()
-		if err := m.parser.SaveCollection(m.editCollectionName); err != nil {
+		if err := m.saveOwningCollection(m.editItemPath); err != nil {
 			m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
 			return m, err
 		}
 		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editScriptItemName)
 		delete(m.modifiedItems, itemID)
 		if len(m.modifiedItems) == 0 {
-			delete(m.modifiedCollections, m.editCollectionName)
+			delete(m.modifiedCollections, m.owningCollectionName(m.editItemPath))
 		}
 	case EditTypeWorkflowStepScript:
 		m = m.saveWorkflowStepScript()
@@ -1472,6 +1460,7 @@ func (m Model) saveAllModifiedRequests() (Model, error) {
 	savedCount := 0
 	var errs []string
 
+	m.syncMergedCollection()
 	for collectionName := range m.modifiedCollections {
 		if err := m.parser.SaveCollection(collectionName); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", collectionName, err))
@@ -1534,7 +1523,7 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
 		m.modifiedRequests[itemID] = m.editRequest
 		m.modifiedItems[itemID] = true
-		m.modifiedCollections[m.editCollectionName] = true
+		m.markCollectionModified(m.editItemPath)
 		m = m.saveCurrentPathParams()
 		m.mode = m.previousMode
 		m.editType = EditTypeNone
@@ -2429,6 +2418,10 @@ func (m Model) insertItemAtCursor(item postman.Item) Model {
 		return m
 	}
 
+	if m.isCombinedRoot(m.breadcrumb) {
+		return m.blockCombinedRootEdit()
+	}
+
 	items := traverseToDepthPtr(&m.collection.Items, m.breadcrumb)
 	if items == nil {
 		m.statusMessage = "Error: Could not find folder"
@@ -2444,9 +2437,9 @@ func (m Model) insertItemAtCursor(item postman.Item) Model {
 	copy((*items)[insertIdx+1:], (*items)[insertIdx:])
 	(*items)[insertIdx] = item
 
-	m.modifiedCollections[m.collection.Info.Name] = true
+	m.markCollectionModified(m.breadcrumb)
 
-	if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {
+	if err := m.saveOwningCollection(m.breadcrumb); err != nil {
 		m.statusMessage = fmt.Sprintf("Added %q but failed to save: %v", item.Name, err)
 		return m
 	}
@@ -2458,9 +2451,6 @@ func (m Model) insertItemAtCursor(item postman.Item) Model {
 }
 
 func (m Model) duplicateRequest(item postman.Item, folderPath []string) Model {
-	if m.isViewingMergedCollection() {
-		return m.blockMergedCollectionEdit()
-	}
 	if m.collection == nil || !item.IsRequest() || item.Request == nil {
 		m.statusMessage = "Error: Cannot duplicate request"
 		return m
@@ -2480,9 +2470,9 @@ func (m Model) duplicateRequest(item postman.Item, folderPath []string) Model {
 
 	*items = append(*items, duplicatedItem)
 
-	m.modifiedCollections[m.collection.Info.Name] = true
+	m.markCollectionModified(folderPath)
 
-	if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {
+	if err := m.saveOwningCollection(folderPath); err != nil {
 		m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
 		return m
 	}
@@ -2495,9 +2485,6 @@ func (m Model) duplicateRequest(item postman.Item, folderPath []string) Model {
 }
 
 func (m Model) deleteRequest(item postman.Item, folderPath []string) Model {
-	if m.isViewingMergedCollection() {
-		return m.blockMergedCollectionEdit()
-	}
 	if m.collection == nil || !item.IsRequest() {
 		m.statusMessage = "Error: Cannot delete request"
 		return m
@@ -2516,9 +2503,9 @@ func (m Model) deleteRequest(item postman.Item, folderPath []string) Model {
 		}
 	}
 
-	m.modifiedCollections[m.collection.Info.Name] = true
+	m.markCollectionModified(folderPath)
 
-	if err := m.parser.SaveCollection(m.collection.Info.Name); err != nil {
+	if err := m.saveOwningCollection(folderPath); err != nil {
 		m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
 		return m
 	}
@@ -2631,9 +2618,6 @@ func (m Model) restoreSession() Model {
 }
 
 func (m Model) enterScriptSelectionMode(item postman.Item, folderPath []string) Model {
-	if m.isViewingMergedCollection() {
-		return m.blockMergedCollectionEdit()
-	}
 	if !item.IsRequest() {
 		m.statusMessage = "Can only edit scripts for requests"
 		return m
@@ -2798,7 +2782,7 @@ func (m Model) saveScript() Model {
 		item.Events = append(item.Events, newEvent)
 	}
 
-	m.modifiedCollections[m.editCollectionName] = true
+	m.markCollectionModified(m.editItemPath)
 	itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editScriptItemName)
 	m.modifiedItems[itemID] = true
 
