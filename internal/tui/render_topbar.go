@@ -10,110 +10,110 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const (
+	topBarSectionRows  = 6 // rows under each section heading
+	topBarNameMax      = 25
+	topBarSeparator    = " │ "
+	topBarShortcutsGap = 3
+	envActiveMarker    = "● "
+	envInactiveMarker  = "○ "
+)
+
+var (
+	topBarHeadingStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Bold(true)
+	topBarSeparatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+)
+
+// renderTopBar lays the context, the loaded environments and the shortcuts
+// out as headed sections divided by vertical rules.
 func (m Model) renderTopBar() string {
 	titleOrangeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
 
-	titleLine := titleOrangeStyle.Render("PostOffice")
-
-	contextLines := m.buildContextInfo()
-	shortcutCol1, shortcutCol2, col1Width := m.buildShortcutsDisplay(len(contextLines))
-
-	var topSection []string
-	topSection = append(topSection, titleLine)
-	topSection = append(topSection, "")
-
-	maxLines := len(contextLines)
-	if len(shortcutCol1) > maxLines {
-		maxLines = len(shortcutCol1)
+	sections := [][]string{
+		topBarSection("CONTEXT", m.buildContextInfo()),
+		topBarSection("ENVIRONMENTS", m.buildEnvironmentsSection()),
 	}
-
-	const contextColWidth = 58
-	const colMargin = 4
-
-	for i := 0; i < maxLines; i++ {
-		var contextCol, sc1, sc2 string
-
-		if i < len(contextLines) {
-			contextCol = contextLines[i]
-		}
-
-		if i < len(shortcutCol1) {
-			sc1 = shortcutCol1[i]
-		}
-
-		if i < len(shortcutCol2) {
-			sc2 = shortcutCol2[i]
-		}
-
-		contextVisible := lipgloss.Width(contextCol)
-		padding1 := contextColWidth - contextVisible
-		if padding1 < 0 {
-			padding1 = 1
-		}
-
-		line := contextCol + strings.Repeat(" ", padding1) + sc1
-
-		if sc2 != "" {
-			sc1Visible := lipgloss.Width(sc1)
-			padding2 := col1Width - sc1Visible + colMargin
-			if padding2 < colMargin {
-				padding2 = colMargin
-			}
-			line += strings.Repeat(" ", padding2) + sc2
-		}
-
-		topSection = append(topSection, line)
+	used := 0
+	for _, section := range sections {
+		used += columnWidth(section) + lipgloss.Width(topBarSeparator)
 	}
+	sections = append(sections, topBarSection("SHORTCUTS", m.buildShortcutsDisplay(m.width-used)))
 
-	content := strings.Join(topSection, "\n")
+	content := titleOrangeStyle.Render("PostOffice") + "\n\n" + joinTopBarSections(sections)
 	return titleStyle.Width(m.width).Render(content)
+}
+
+func topBarSection(heading string, lines []string) []string {
+	return append([]string{topBarHeadingStyle.Render(heading)}, lines...)
+}
+
+func columnWidth(lines []string) int {
+	widest := 0
+	for _, line := range lines {
+		widest = max(widest, lipgloss.Width(line))
+	}
+	return widest
+}
+
+// joinTopBarSections pads every section to its widest line and puts a
+// vertical rule between them on every row.
+func joinTopBarSections(sections [][]string) string {
+	rows := 0
+	for _, section := range sections {
+		rows = max(rows, len(section))
+	}
+
+	separator := topBarSeparatorStyle.Render(topBarSeparator)
+	lines := make([]string, rows)
+	for i := range lines {
+		var cells []string
+		for s, section := range sections {
+			cell := ""
+			if i < len(section) {
+				cell = section[i]
+			}
+			if s < len(sections)-1 {
+				cell += strings.Repeat(" ", columnWidth(section)-lipgloss.Width(cell))
+			}
+			cells = append(cells, cell)
+		}
+		lines[i] = strings.TrimRight(strings.Join(cells, separator), " ")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func truncateName(name string) string {
+	if len(name) > topBarNameMax {
+		return name[:topBarNameMax-3] + "..."
+	}
+	return name
 }
 
 func (m Model) buildContextInfo() []string {
 	titleOrangeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	valueWhiteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	var lines []string
 
 	collectionName := "none"
-	collectionEmoji := "📦"
 	if m.collection != nil {
-		collectionName = m.collection.Info.Name
-		if len(collectionName) > 25 {
-			collectionName = collectionName[:22] + "..."
-		}
+		collectionName = truncateName(m.collection.Info.Name)
 	}
 	lines = append(lines,
-		collectionEmoji+" "+
-			titleOrangeStyle.Render("Collection: ")+
-			valueWhiteStyle.Render(collectionName))
-
-	totalRequests := m.countTotalRequests()
-	loadedEmoji := "📚"
-	lines = append(lines,
-		loadedEmoji+" "+
-			titleOrangeStyle.Render("Loaded: ")+
-			valueWhiteStyle.Render(fmt.Sprintf("%d", totalRequests)))
-
-	envName := "none"
-	envEmoji := "🌍"
-	totalEnvs := len(m.parser.ListEnvironments())
-	envStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")) // red = no env
-	if m.environment != nil {
-		envName = m.environment.Name
-		if len(envName) > 25 {
-			envName = envName[:22] + "..."
-		}
-		envStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true) // green = active
-	}
-	lines = append(lines,
-		envEmoji+" "+
-			titleOrangeStyle.Render("Env: ")+
-			envStyle.Render(fmt.Sprintf("%s", envName))+
-			lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(fmt.Sprintf(" <%d loaded>", totalEnvs)))
+		"📦 "+titleOrangeStyle.Render("Collection: ")+
+			valueWhiteStyle.Render(collectionName)+
+			dimStyle.Render(fmt.Sprintf(" <%d requests>", m.countTotalRequests())))
 
 	lines = append(lines, m.buildLoadedNamesLine("📁", "Collections", m.parser.ListCollections(), m.parser.IsCollectionActive))
-	lines = append(lines, m.buildLoadedNamesLine("🗂️", "Envs", m.parser.ListEnvironments(), m.parser.IsEnvironmentActive))
+
+	envName := "none"
+	envStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")) // red = no env
+	if m.environment != nil {
+		envName = truncateName(m.environment.Name)
+		envStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true) // green = active
+	}
+	lines = append(lines, "🌍 "+titleOrangeStyle.Render("Env: ")+envStyle.Render(envName))
 
 	unsavedCount := len(m.modifiedCollections) + len(m.modifiedEnvironments)
 	unsavedEmoji := "💾"
@@ -125,12 +125,10 @@ func (m Model) buildContextInfo() []string {
 			titleOrangeStyle.Render("Unsaved: ")+
 			valueWhiteStyle.Render(fmt.Sprintf("%d", unsavedCount)))
 
-	modeEmoji := "📍"
 	lines = append(lines,
-		modeEmoji+" "+
+		"📍 "+
 			titleOrangeStyle.Render("Mode: ")+
 			valueWhiteStyle.Render(m.getModeString()))
-
 	response, execution := m.topBarResponse()
 	responseEmoji := "📬"
 	responseValue := "none"
@@ -161,6 +159,36 @@ func (m Model) buildContextInfo() []string {
 			titleOrangeStyle.Render("Response: ")+
 			valueWhiteStyle.Render(responseValue))
 
+	return lines
+}
+
+// buildEnvironmentsSection lists every loaded environment on its own row,
+// marking the active ones, with a "+N more" row when they don't all fit.
+func (m Model) buildEnvironmentsSection() []string {
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	activeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+	inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+
+	names := m.parser.ListEnvironments()
+	if len(names) == 0 {
+		return []string{dimStyle.Render("none loaded")}
+	}
+
+	shown := names
+	if len(names) > topBarSectionRows {
+		shown = names[:topBarSectionRows-1]
+	}
+	var lines []string
+	for _, name := range shown {
+		if m.parser.IsEnvironmentActive(name) {
+			lines = append(lines, activeStyle.Render(envActiveMarker+truncateName(name)))
+		} else {
+			lines = append(lines, inactiveStyle.Render(envInactiveMarker+truncateName(name)))
+		}
+	}
+	if len(shown) < len(names) {
+		lines = append(lines, dimStyle.Render(fmt.Sprintf("+%d more", len(names)-len(shown))))
+	}
 	return lines
 }
 
@@ -279,44 +307,46 @@ func (m Model) getPathString() string {
 	return path
 }
 
-func (m Model) buildShortcutsDisplay(contextHeight int) ([]string, []string, int) {
+// buildShortcutsDisplay flows the view's shortcuts into as many columns of
+// topBarSectionRows as fit in width, dropping the ones that don't fit.
+func (m Model) buildShortcutsDisplay(width int) []string {
 	shortcutBlueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Bold(true)
 	descGrayStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
 
-	shortcuts := m.commandRegistry.GetContextualShortcuts(m.mode)
-
-	var formattedShortcuts []string
-	maxWidth := 0
-
-	for _, shortcut := range shortcuts {
+	var formatted []string
+	for _, shortcut := range m.commandRegistry.GetContextualShortcuts(m.mode) {
 		parts := strings.SplitN(shortcut, ">", 2)
 		if len(parts) != 2 {
 			continue
 		}
-
 		key := strings.TrimPrefix(parts[0], "<")
-		desc := strings.TrimSpace(parts[1])
+		formatted = append(formatted, shortcutBlueStyle.Render("<"+key+">")+" "+descGrayStyle.Render(strings.TrimSpace(parts[1])))
+	}
 
-		formatted := shortcutBlueStyle.Render("<"+key+">") + " " + descGrayStyle.Render(desc)
-		formattedShortcuts = append(formattedShortcuts, formatted)
-
-		width := lipgloss.Width(formatted)
-		if width > maxWidth {
-			maxWidth = width
+	rows := make([]string, min(len(formatted), topBarSectionRows))
+	used := 0
+	for start := 0; start < len(formatted); start += topBarSectionRows {
+		column := formatted[start:min(start+topBarSectionRows, len(formatted))]
+		columnW := columnWidth(column)
+		gap := 0
+		if start > 0 {
+			gap = topBarShortcutsGap
 		}
+		if start > 0 && used+gap+columnW > width {
+			break
+		}
+		for i := range rows {
+			if i >= len(column) {
+				continue
+			}
+			if start > 0 {
+				rows[i] += strings.Repeat(" ", used+gap-lipgloss.Width(rows[i]))
+			}
+			rows[i] += column[i]
+		}
+		used += gap + columnW
 	}
-
-	var col1, col2 []string
-
-	if len(formattedShortcuts) <= contextHeight {
-		col1 = formattedShortcuts
-	} else {
-		splitPoint := contextHeight
-		col1 = formattedShortcuts[:splitPoint]
-		col2 = formattedShortcuts[splitPoint:]
-	}
-
-	return col1, col2, maxWidth
+	return rows
 }
 
 func (m Model) countTotalRequests() int {

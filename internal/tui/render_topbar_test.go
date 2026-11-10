@@ -65,3 +65,56 @@ func TestTopBar_ShowsAllLoadedCollectionsAndEnvironments(t *testing.T) {
 		t.Errorf("expected topbar to list loaded environments:\n%s", topBar)
 	}
 }
+
+func TestTopBar_SeparatesContextEnvironmentsAndShortcuts(t *testing.T) {
+	parser := createMockParser()
+	parser.LoadEnvironment(writeTempEnvironmentFile(t, "Dev"))
+	parser.LoadEnvironment(writeTempEnvironmentFile(t, "Staging"))
+	parser.ToggleActiveEnvironment("Dev")
+
+	m := NewModel(parser)
+	m.width = 200
+	m.height = 40
+	m.mode = ModeRequests
+
+	topBar := m.renderTopBar()
+
+	for _, heading := range []string{"CONTEXT", "ENVIRONMENTS", "SHORTCUTS"} {
+		if !strings.Contains(topBar, heading) {
+			t.Errorf("expected a %s section:\n%s", heading, topBar)
+		}
+	}
+	if !strings.Contains(topBar, strings.TrimSpace(topBarSeparator)) {
+		t.Errorf("expected vertical rules between sections:\n%s", topBar)
+	}
+	if !strings.Contains(topBar, envActiveMarker+"Dev") || !strings.Contains(topBar, envInactiveMarker+"Staging") {
+		t.Errorf("expected each loaded environment on its own row, active marked:\n%s", topBar)
+	}
+	t.Log("\n" + topBar)
+}
+
+func TestBuildEnvironmentsSection_OverflowShowsCount(t *testing.T) {
+	parser := createMockParser()
+	for _, name := range []string{"A", "B", "C", "D", "E", "F", "G"} {
+		parser.LoadEnvironment(writeTempEnvironmentFile(t, name))
+	}
+	m := NewModel(parser)
+
+	lines := m.buildEnvironmentsSection()
+
+	if len(lines) != topBarSectionRows || !strings.Contains(lines[len(lines)-1], "+2 more") {
+		t.Errorf("expected %d rows ending in '+2 more', got %q", topBarSectionRows, lines)
+	}
+}
+
+func TestBuildShortcutsDisplay_DropsColumnsThatDoNotFit(t *testing.T) {
+	m := NewModel(createMockParser())
+	m.mode = ModeRequests
+
+	narrow := m.buildShortcutsDisplay(1)
+	wide := m.buildShortcutsDisplay(1000)
+
+	if columnWidth(narrow) >= columnWidth(wide) {
+		t.Errorf("expected fewer shortcut columns when narrow, got %d vs %d", columnWidth(narrow), columnWidth(wide))
+	}
+}
