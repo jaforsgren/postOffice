@@ -103,11 +103,38 @@ func TestGroupLogsByStep_UnlistedStepLogsGoToWorkflowLogs(t *testing.T) {
 
 	stepLogs, workflowLogs := groupLogsByStep(state)
 
-	if !slices.Equal(stepLogs[loginStepID], []string{loginPassLog}) {
-		t.Errorf("login logs = %v", stepLogs[loginStepID])
+	if !slices.Equal(stepLogs[stepRunKey{stepID: loginStepID}], []string{loginPassLog}) {
+		t.Errorf("login logs = %v", stepLogs[stepRunKey{stepID: loginStepID}])
 	}
 	if !slices.Equal(workflowLogs, []string{workflowScriptLog, "orphan"}) {
 		t.Errorf("workflow logs = %v", workflowLogs)
+	}
+}
+
+func TestGroupLogsByStep_KeepsIterationsApart(t *testing.T) {
+	first := &workflow.StepState{ID: loginStepID, Status: workflow.StatusSuccess, Iteration: 1}
+	second := &workflow.StepState{ID: loginStepID, Status: workflow.StatusFailed, Iteration: 2}
+	state := workflow.ExecutionState{
+		Iteration:  2,
+		Iterations: 2,
+		Steps:      []*workflow.StepState{first, second},
+		StepIndex:  map[string]*workflow.StepState{loginStepID: second},
+		Logs: []workflow.LogEntry{
+			{StepID: loginStepID, Iteration: 1, Message: loginPassLog},
+			{StepID: loginStepID, Iteration: 2, Message: listFailLog},
+		},
+	}
+
+	stepLogs, _ := groupLogsByStep(state)
+
+	if !slices.Equal(stepLogs[stepRunKeyOf(first)], []string{loginPassLog}) || !slices.Equal(stepLogs[stepRunKeyOf(second)], []string{listFailLog}) {
+		t.Errorf("expected each iteration's logs under its own step run, got %v", stepLogs)
+	}
+
+	report := strings.Join(runReportLines(state, plainRunStyler), "\n")
+	firstAt, secondAt := strings.Index(report, "#1 "+loginStepID), strings.Index(report, "#2 "+loginStepID)
+	if firstAt < 0 || secondAt < firstAt || !strings.Contains(report[firstAt:secondAt], loginPassLog) || !strings.Contains(report[secondAt:], listFailLog) {
+		t.Errorf("expected each iteration's logs folded under its step line:\n%s", report)
 	}
 }
 

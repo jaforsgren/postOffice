@@ -215,6 +215,8 @@ type Model struct {
 	// pendingFolderRun holds the folder awaiting a y/n answer to "run as workflow?";
 	// while set, the next key press answers the prompt instead of reaching normal mode.
 	pendingFolderRun *pendingFolderRun
+	// runSettings are the :runopts options applied to every workflow/folder run.
+	runSettings runSettings
 	// savedWorkflowIDs is the set of workflow IDs on disk for savedWorkflowIDsCollection,
 	// cached so the requests list can mark folders that have a saved workflow.
 	savedWorkflowIDs           map[string]bool

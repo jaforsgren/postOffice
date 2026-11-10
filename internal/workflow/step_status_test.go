@@ -86,7 +86,7 @@ func runSteps(t *testing.T, workflowScript string, items ...postman.Item) (Execu
 	}
 	wf.Script = "export default async function (wf, pm) {\n" + workflowScript + "\n}"
 
-	state := NewRunner(collection, nil, internalhttp.NewExecutor()).Run(wf, nil)
+	state := NewRunner(collection, nil, internalhttp.NewExecutor()).Run(wf, ExecutionOptions{}, nil)
 	return state, collection
 }
 

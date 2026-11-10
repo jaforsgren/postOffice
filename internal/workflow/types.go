@@ -2,6 +2,8 @@ package workflow
 
 import (
 	"encoding/json"
+	"fmt"
+
 	internalhttp "postOffice/internal/http"
 )
 
@@ -74,7 +76,25 @@ type StepState struct {
 	Status       string
 	Progress     int                    // current repeat iteration (1-based)
 	Total        int                    // planned repeat count
+	Iteration    int                    // run iteration this step belongs to (1-based)
 	LastResponse *internalhttp.Response `json:"-"`
+}
+
+// RunSummary counts a run's outcomes, like the totals at the end of a
+// Postman Collection Runner run.
+type RunSummary struct {
+	StepsPassed  int
+	StepsFailed  int
+	StepsSkipped int
+	TestsPassed  int
+	TestsFailed  int
+}
+
+// String renders the summary as one line, e.g.
+// "steps: 3 passed, 1 failed, 0 skipped · tests: 7 passed, 2 failed".
+func (s RunSummary) String() string {
+	return fmt.Sprintf("steps: %d passed, %d failed, %d skipped · tests: %d passed, %d failed",
+		s.StepsPassed, s.StepsFailed, s.StepsSkipped, s.TestsPassed, s.TestsFailed)
 }
 
 // ExecutionState is the full runtime state of a workflow execution.
@@ -82,10 +102,20 @@ type ExecutionState struct {
 	WorkflowID   string
 	WorkflowName string
 	Status       string
-	Steps        []*StepState          // ordered for display
-	StepIndex    map[string]*StepState // keyed by step ID
+	Steps        []*StepState          // ordered for display, every iteration's steps in turn
+	StepIndex    map[string]*StepState // keyed by step ID; the latest iteration's state
 	Logs         []LogEntry
 	Error        string
+	// Iteration is the 1-based iteration in progress (or last run); Iterations the planned count.
+	Iteration  int
+	Iterations int
+	// Summary is filled in when the run finishes.
+	Summary RunSummary
+}
+
+// IsMultiIteration reports whether steps need their iteration shown to be told apart.
+func (s ExecutionState) IsMultiIteration() bool {
+	return s.Iterations > defaultIterationCount
 }
 
 // Log message markers, shared with the run report so it can highlight them.
@@ -96,8 +126,10 @@ const (
 )
 
 // LogEntry is one line of run output. StepID names the step that produced it,
-// or is empty for output of the workflow script itself.
+// or is empty for output of the workflow script itself. Iteration is the run
+// iteration it came from (1-based), so a step's logs stay apart per iteration.
 type LogEntry struct {
-	StepID  string
-	Message string
+	StepID    string
+	Iteration int
+	Message   string
 }

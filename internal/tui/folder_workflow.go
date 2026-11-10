@@ -29,9 +29,15 @@ type pendingFolderRun struct {
 	folderPath []string // full path including the folder's own name
 }
 
-func folderRunPrompt(folderPath []string) string {
-	return fmt.Sprintf("Run folder '%s' as workflow? (%s/%s)",
+// folderRunPrompt asks to run the folder, naming any non-default :runopts
+// so they are confirmed too.
+func folderRunPrompt(folderPath []string, settings runSettings) string {
+	prompt := fmt.Sprintf("Run folder '%s' as workflow? (%s/%s)",
 		workflow.FolderWorkflowName(folderPath), confirmFolderRunKey, cancelFolderRunKey)
+	if !settings.isDefault() {
+		prompt += "  [" + settings.describe() + "]"
+	}
+	return prompt
 }
 
 // requestFolderRun asks for confirmation before running the folder at the cursor as a workflow.
@@ -44,7 +50,7 @@ func (m Model) requestFolderRun(folder postman.Item, parentPath []string) Model 
 		folder:     folder,
 		folderPath: append(slices.Clone(parentPath), folder.Name),
 	}
-	m.statusMessage = folderRunPrompt(m.pendingFolderRun.folderPath)
+	m.statusMessage = folderRunPrompt(m.pendingFolderRun.folderPath, m.runSettings)
 	return m
 }
 
