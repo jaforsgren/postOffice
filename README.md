@@ -379,6 +379,8 @@ Escape literal slashes in names with `\/` and quote the path.
 
 Headless collection runs support `pm.execution.setNextRequest()` for jumps and early termination.
 
+The text report streams each step as it finishes, with ✓ passed in green, ✗ failed in red and − skipped in yellow. Colors are only used on a terminal (and never with `NO_COLOR`).
+
 ### CI and reports
 
 ```

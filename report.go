@@ -19,7 +19,7 @@ const (
 	outputJUnit outputFormat = "junit"
 )
 
-// machineWriters render the machine-readable formats; text is written by writeTextReport.
+// machineWriters render the machine-readable formats; text is streamed by stepStream.
 var machineWriters = map[outputFormat]func(io.Writer, runReport) error{
 	outputJSON:  writeJSONReport,
 	outputJUnit: writeJUnitReport,
@@ -79,6 +79,28 @@ type testReport struct {
 	Error  string `json:"error,omitempty"`
 }
 
+// stepRun identifies one run of a step: a step runs once per iteration.
+type stepRun struct {
+	stepID    string
+	iteration int
+}
+
+// splitLogs separates the workflow script's own log lines from each step
+// run's engine log lines.
+func splitLogs(logs []workflow.LogEntry) ([]string, map[stepRun][]string) {
+	var workflowLogs []string
+	stepLogs := map[stepRun][]string{}
+	for _, entry := range logs {
+		if entry.StepID == "" {
+			workflowLogs = append(workflowLogs, entry.Message)
+		} else {
+			key := stepRun{entry.StepID, entry.Iteration}
+			stepLogs[key] = append(stepLogs[key], entry.Message)
+		}
+	}
+	return workflowLogs, stepLogs
+}
+
 // newRunReport summarises a finished run. Steps the run never reached are
 // reported as skipped, as the workflow engine marks them. Logs holds the
 // workflow script's own output; each request carries its console output.
@@ -97,49 +119,42 @@ func newRunReport(state workflow.ExecutionState, collectionName, environmentName
 		report.Iterations = state.Iterations
 	}
 
-	type stepRun struct {
-		stepID    string
-		iteration int
-	}
-	stepLogs := map[stepRun][]string{}
-	for _, entry := range state.Logs {
-		if entry.StepID == "" {
-			report.Logs = append(report.Logs, entry.Message)
-		} else {
-			key := stepRun{entry.StepID, entry.Iteration}
-			stepLogs[key] = append(stepLogs[key], entry.Message)
-		}
-	}
-
+	var stepLogs map[stepRun][]string
+	report.Logs, stepLogs = splitLogs(state.Logs)
 	for _, step := range state.Steps {
-		request := requestReport{Step: step.ID, Request: step.Request, Status: step.Status, Tests: []testReport{}}
-		if multiIteration {
-			request.Iteration = step.Iteration
-		}
-		if resp := step.LastResponse; resp != nil {
-			request.HTTPStatus = resp.Status
-			request.DurationMs = resp.Duration.Milliseconds()
-			if resp.Error != nil {
-				request.Errors = append(request.Errors, resp.Error.Error())
-			}
-		}
-		if result := step.LastResult; result != nil {
-			for _, test := range result.Tests {
-				request.Tests = append(request.Tests, testReport{Name: test.Name, Passed: test.Passed, Error: test.Error})
-			}
-			request.Errors = append(request.Errors, result.Errors...)
-			request.Logs = result.ConsoleLogs
-		} else if step.Status == workflow.StatusFailed {
-			// The step failed before its request ran (unresolvable path, failing
-			// step script), so the engine's log is the only explanation.
-			request.Errors = append(request.Errors, stepLogs[stepRun{step.ID, step.Iteration}]...)
-		}
+		request := newRequestReport(step, multiIteration, stepLogs)
 		report.Requests = append(report.Requests, request)
 		report.Summary.add(request)
 	}
 
 	report.Passed = report.Summary.Failed == 0 && state.Status != workflow.StatusFailed
 	return report
+}
+
+func newRequestReport(step *workflow.StepState, multiIteration bool, stepLogs map[stepRun][]string) requestReport {
+	request := requestReport{Step: step.ID, Request: step.Request, Status: step.Status, Tests: []testReport{}}
+	if multiIteration {
+		request.Iteration = step.Iteration
+	}
+	if resp := step.LastResponse; resp != nil {
+		request.HTTPStatus = resp.Status
+		request.DurationMs = resp.Duration.Milliseconds()
+		if resp.Error != nil {
+			request.Errors = append(request.Errors, resp.Error.Error())
+		}
+	}
+	if result := step.LastResult; result != nil {
+		for _, test := range result.Tests {
+			request.Tests = append(request.Tests, testReport{Name: test.Name, Passed: test.Passed, Error: test.Error})
+		}
+		request.Errors = append(request.Errors, result.Errors...)
+		request.Logs = result.ConsoleLogs
+	} else if step.Status == workflow.StatusFailed {
+		// The step failed before its request ran (unresolvable path, failing
+		// step script), so the engine's log is the only explanation.
+		request.Errors = append(request.Errors, stepLogs[stepRun{step.ID, step.Iteration}]...)
+	}
+	return request
 }
 
 func (s *reportSummary) add(request requestReport) {
@@ -171,36 +186,38 @@ func (r requestReport) label() string {
 	return fmt.Sprintf("%s%d %s", iterationLabelPrefix, r.Iteration, r.Request)
 }
 
-func writeTextReport(out io.Writer, report runReport) {
-	fmt.Fprintf(out, "Run %q (collection %s", report.Name, report.Collection)
-	if report.Environment != "" {
-		fmt.Fprintf(out, ", environment %s", report.Environment)
+func writeTextHeader(out io.Writer, name, collection, environment string) {
+	fmt.Fprintf(out, "Run %q (collection %s", name, collection)
+	if environment != "" {
+		fmt.Fprintf(out, ", environment %s", environment)
 	}
 	fmt.Fprint(out, ")\n\n")
+}
 
-	for _, request := range report.Requests {
-		fmt.Fprintf(out, "%s %s", workflow.StatusIcon(request.Status), request.label())
-		if request.HTTPStatus != "" {
-			fmt.Fprintf(out, "  %s  %dms", request.HTTPStatus, request.DurationMs)
+func writeRequestText(out io.Writer, styles textStyles, request requestReport) {
+	fmt.Fprintf(out, "%s %s", styles.icon(request.Status), request.label())
+	if request.HTTPStatus != "" {
+		fmt.Fprintf(out, "  %s  %dms", request.HTTPStatus, request.DurationMs)
+	} else {
+		fmt.Fprintf(out, "  %s", request.Status)
+	}
+	fmt.Fprintln(out)
+	for _, test := range request.Tests {
+		if test.Passed {
+			fmt.Fprintf(out, "%s%s %s\n", testIndent, styles.icon(workflow.StatusSuccess), test.Name)
 		} else {
-			fmt.Fprintf(out, "  %s", request.Status)
-		}
-		fmt.Fprintln(out)
-		for _, test := range request.Tests {
-			if test.Passed {
-				fmt.Fprintf(out, "%s%s %s\n", testIndent, workflow.StatusIcon(workflow.StatusSuccess), test.Name)
-			} else {
-				fmt.Fprintf(out, "%s%s %s: %s\n", testIndent, workflow.StatusIcon(workflow.StatusFailed), test.Name, test.Error)
-			}
-		}
-		for _, requestErr := range request.Errors {
-			fmt.Fprintf(out, "%serror: %s\n", testIndent, requestErr)
-		}
-		for _, log := range request.Logs {
-			fmt.Fprintf(out, "%s%s\n", testIndent, log)
+			fmt.Fprintf(out, "%s%s %s: %s\n", testIndent, styles.icon(workflow.StatusFailed), test.Name, styles.failed.Render(test.Error))
 		}
 	}
+	for _, requestErr := range request.Errors {
+		fmt.Fprintf(out, "%s%s\n", testIndent, styles.failed.Render("error: "+requestErr))
+	}
+	for _, log := range request.Logs {
+		fmt.Fprintf(out, "%s%s\n", testIndent, log)
+	}
+}
 
+func writeTextSummary(out io.Writer, styles textStyles, report runReport) {
 	s := report.Summary
 	fmt.Fprintln(out)
 	if report.Iterations > 0 {
@@ -209,9 +226,9 @@ func writeTextReport(out io.Writer, report runReport) {
 	fmt.Fprintf(out, "%d requests: %d passed, %d failed, %d skipped\n", s.Requests, s.Passed, s.Failed, s.Skipped)
 	fmt.Fprintf(out, "%d tests: %d passed, %d failed\n", s.Tests, s.TestsPassed, s.TestsFailed)
 	if report.Passed {
-		fmt.Fprintln(out, "PASSED")
+		fmt.Fprintln(out, styles.passed.Render("PASSED"))
 	} else {
-		fmt.Fprintf(out, "FAILED: %s\n", report.Error)
+		fmt.Fprintln(out, styles.failed.Render("FAILED: "+report.Error))
 	}
 }
 

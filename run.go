@@ -220,9 +220,16 @@ func executeRun(out io.Writer, collectionRef string, opts executionOptions, buil
 		return err
 	}
 
-	state := workflow.NewRunner(collection, environment, internalhttp.NewExecutor()).Run(wf, runnerOptions, nil)
+	styles := newTextStyles(out)
+	var onChange func(workflow.ExecutionState)
+	if opts.writesText() {
+		writeTextHeader(out, wf.Name, collection.Info.Name, environmentName(environment))
+		onChange = newStepStream(out, styles).onChange
+	}
+
+	state := workflow.NewRunner(collection, environment, internalhttp.NewExecutor()).Run(wf, runnerOptions, onChange)
 	report := newRunReport(state, collection.Info.Name, environmentName(environment))
-	if err := writeRunOutput(out, report, opts); err != nil {
+	if err := writeRunOutput(out, styles, report, opts); err != nil {
 		return err
 	}
 
@@ -260,12 +267,21 @@ func requirePostmanCollection(path string) error {
 	return nil
 }
 
-// writeRunOutput prints the report in the chosen format. With --report the
-// machine-readable report goes to that file and the text report to out.
-func writeRunOutput(out io.Writer, report runReport, opts executionOptions) error {
+// writesText reports whether the text report goes to out: with text output,
+// or next to a --report file.
+func (opts executionOptions) writesText() bool {
+	_, isMachine := machineWriters[opts.output]
+	return !isMachine || opts.reportPath != ""
+}
+
+// writeRunOutput finishes the report in the chosen format. The text report's
+// steps were already streamed while the run went, so only its summary is
+// left. With --report the machine-readable report goes to that file and the
+// text report to out.
+func writeRunOutput(out io.Writer, styles textStyles, report runReport, opts executionOptions) error {
 	writeMachine, isMachine := machineWriters[opts.output]
 	if !isMachine {
-		writeTextReport(out, report)
+		writeTextSummary(out, styles, report)
 		return nil
 	}
 	if opts.reportPath == "" {
@@ -283,7 +299,7 @@ func writeRunOutput(out io.Writer, report runReport, opts executionOptions) erro
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("failed to write report file: %w", err)
 	}
-	writeTextReport(out, report)
+	writeTextSummary(out, styles, report)
 	return nil
 }
 
