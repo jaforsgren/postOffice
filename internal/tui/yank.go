@@ -104,7 +104,7 @@ func (m Model) requestsViewFolderPath() []string {
 }
 
 func (m Model) requestsViewItemID(item postman.Item) string {
-	return m.getRequestIdentifierByPath(m.collection.Info.Name, m.requestsViewFolderPath(), item.Name)
+	return m.requestItemID(m.requestsViewFolderPath(), item.Name)
 }
 
 // sentRequestItem rebuilds the request a response records as having been sent.

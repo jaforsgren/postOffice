@@ -168,7 +168,6 @@ type Model struct {
 	modifiedEnvironments map[string]bool
 	modifiedRequests     map[string]*postman.Request
 	editItemPath         []string
-	editCollectionName   string
 	editEnvironmentName  string
 
 	pathParams        map[string]string
@@ -260,7 +259,7 @@ type Model struct {
 	historyDiffViewport  viewport.Model
 
 	// favorites maps a request's "collection/folder/.../name" identifier
-	// (see getRequestIdentifierByPath) to true when it's been favorited.
+	// (see requestItemID) to true when it's been favorited.
 	favorites             map[string]bool
 	viewingFavorites      bool
 	favoritesReturnCursor int

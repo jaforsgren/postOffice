@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"postOffice/internal/history"
 	"postOffice/internal/postman"
 )
@@ -141,5 +142,81 @@ func TestCombinedView_ScriptSetCollectionVariablePersistsToTheOwningCollection(t
 	}
 	if !slices.ContainsFunc(m.collection.Variables, func(v postman.Variable) bool { return v.Key == combinedSetVarName }) {
 		t.Error("expected the combined view to show the new variable")
+	}
+}
+
+func TestCombinedView_RunStateIsKeyedByTheOwningCollection(t *testing.T) {
+	server, _ := requestPathServer(t)
+	m, _, _ := combinedRunModel(t, server.URL)
+	m, msg := runCombinedOrders(t, m)
+
+	updated, _ := m.Update(msg)
+	m = updated.(Model)
+
+	ownID := combinedB + "/" + ordersFolder + "/" + ordersRequest
+	if msg.ItemID != ownID {
+		t.Errorf("expected the execution keyed %q, got %q", ownID, msg.ItemID)
+	}
+	if _, exists := m.requestExecutions[ownID]; !exists {
+		t.Errorf("expected the execution recorded under %q, got %v", ownID, m.requestExecutions)
+	}
+	if entries := m.requestHistory.Entries(); len(entries) != 1 || entries[0].ItemID != ownID {
+		t.Errorf("expected the history entry keyed %q, got %+v", ownID, entries)
+	}
+
+	collectionB, _ := m.parser.GetCollection(combinedB)
+	m.collection = collectionB
+	m.mergedCollectionActive = false
+	if got := m.requestItemID([]string{ordersFolder}, ordersRequest); got != ownID {
+		t.Errorf("expected B's own view to use %q, got %q", ownID, got)
+	}
+}
+
+func TestCombinedView_UnsavedEditIsKeyedByTheOwningCollection(t *testing.T) {
+	m, _, _ := combinedModel(t)
+	m = cursorOn(t, openFolder(t, m, combinedA), usersRequest)
+	m = m.enterEditMode(m.currentItems[m.cursor], m.folderPathForCursor())
+	m.editRequest.Method = "PUT"
+
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+
+	if ownID := combinedA + "/" + usersRequest; !m.modifiedItems[ownID] {
+		t.Errorf("expected the unsaved marker under %q, got %v", ownID, m.modifiedItems)
+	}
+}
+
+func TestCombinedView_ChangedRequestOpensInItsGroupFolder(t *testing.T) {
+	m, _, _ := combinedModel(t)
+
+	m = m.navigateToChangedRequest(combinedB + "/" + ordersFolder + "/" + ordersRequest)
+
+	if !m.isViewingMergedCollection() {
+		t.Fatal("expected to stay in the combined view")
+	}
+	if want := []string{combinedB, ordersFolder}; !slices.Equal(m.breadcrumb, want) {
+		t.Errorf("expected breadcrumb %v, got %v", want, m.breadcrumb)
+	}
+	if m.currentItems[m.cursor].Name != ordersRequest {
+		t.Errorf("expected the cursor on %s, got %s", ordersRequest, m.currentItems[m.cursor].Name)
+	}
+}
+
+func TestCombinedView_DiscardAllRestoresTheFileContents(t *testing.T) {
+	m, pathA, _ := combinedModel(t)
+	m = cursorOn(t, openFolder(t, m, combinedA), usersRequest)
+	m = m.enterEditMode(m.currentItems[m.cursor], m.folderPathForCursor())
+	m.editRequest.Method = "PUT"
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m.previousMode = ModeRequests
+	m.mode = ModeChanges
+
+	m, _ = handleDiscardAllKey(m)
+
+	collectionA, _ := m.parser.GetCollection(combinedA)
+	if method := collectionA.Items[0].Request.Method; method != "GET" {
+		t.Errorf("expected the discarded edit gone from Collection A, got %s", method)
+	}
+	if fileContains(t, pathA, `"PUT"`) {
+		t.Error("expected Collection A's file untouched")
 	}
 }

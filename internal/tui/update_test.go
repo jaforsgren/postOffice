@@ -727,7 +727,7 @@ func TestGetRequestIdentifier(t *testing.T) {
 	m.breadcrumb = []string{"Folder1", "Folder2"}
 	item := postman.Item{Name: "Test Request"}
 
-	id := m.getRequestIdentifier(item)
+	id := m.requestItemID(m.breadcrumb, item.Name)
 
 	expected := "Test Collection/Folder1/Folder2/Test Request"
 	if id != expected {
@@ -740,7 +740,7 @@ func TestGetRequestIdentifier_NoBreadcrumb(t *testing.T) {
 	m.breadcrumb = []string{}
 	item := postman.Item{Name: "Test Request"}
 
-	id := m.getRequestIdentifier(item)
+	id := m.requestItemID(m.breadcrumb, item.Name)
 
 	expected := "Test Collection/Test Request"
 	if id != expected {
@@ -753,7 +753,7 @@ func TestGetRequestIdentifier_NoCollection(t *testing.T) {
 	m.collection = nil
 	item := postman.Item{Name: "Test Request"}
 
-	id := m.getRequestIdentifier(item)
+	id := m.requestItemID(m.breadcrumb, item.Name)
 
 	if id != "" {
 		t.Errorf("Expected empty identifier when no collection, got '%s'", id)

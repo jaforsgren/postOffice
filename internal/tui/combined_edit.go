@@ -1,6 +1,10 @@
 package tui
 
-import "postOffice/internal/postman"
+import (
+	"slices"
+
+	"postOffice/internal/postman"
+)
 
 const combinedRootEditMessage = "Open a collection first: the combined view's top level holds one folder per collection"
 
@@ -58,9 +62,13 @@ func (m Model) collectionScope(folderPath []string) (*postman.Collection, []stri
 	return m.collection, folderPath
 }
 
-// favoriteID identifies a request for favorites by its own collection, so a
-// favorite shows both in that collection's view and in the combined view.
-func (m Model) favoriteID(folderPath []string, name string) string {
+// requestItemID identifies a request by its own collection, so its run state,
+// unsaved edits, saved responses, history and favorite are shared between
+// that collection's view and the combined view.
+func (m Model) requestItemID(folderPath []string, name string) string {
+	if m.collection == nil {
+		return ""
+	}
 	collection, path := m.collectionScope(folderPath)
 	return m.getRequestIdentifierByPath(collection.Info.Name, path, name)
 }
@@ -71,4 +79,33 @@ func (m Model) favoriteID(folderPath []string, name string) string {
 func (m Model) variablesAt(folderPath []string) []postman.VariableSource {
 	collection, path := m.collectionScope(folderPath)
 	return postman.GetAllVariables(collection, path, m.environment)
+}
+
+// showCollectionFolder opens the requests view at folderPath inside
+// collectionName: under its group folder when the combined view shows that
+// collection, otherwise in that collection's own view. found is false when
+// the collection isn't loaded.
+func (m Model) showCollectionFolder(collectionName string, folderPath []string) (Model, bool) {
+	viewPath := slices.Clone(folderPath)
+	if m.isViewingMergedCollection() && m.parser.IsCollectionActive(collectionName) {
+		viewPath = append([]string{collectionName}, folderPath...)
+	} else {
+		collection, exists := m.parser.GetCollection(collectionName)
+		if !exists {
+			return m, false
+		}
+		m.collection = collection
+		m.mergedCollectionActive = false
+	}
+
+	m.mode = ModeRequests
+	m = m.loadRequestsList()
+	if len(viewPath) == 0 {
+		return m, true
+	}
+	if folderItems := traverseToDepth(m.collection.Items, viewPath); folderItems != nil {
+		m.breadcrumb = viewPath
+		m = m.applyTreeItems(folderItems, viewPath)
+	}
+	return m, true
 }

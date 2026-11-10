@@ -1496,6 +1496,7 @@ func handleDiscardSelectedKey(m Model) (Model, tea.Cmd) {
 				}
 			}
 
+			m = m.reloadMergedCollection()
 			m.items = append(m.items[:m.cursor], m.items[m.cursor+1:]...)
 
 			if len(m.items) == 0 {
@@ -1536,6 +1537,7 @@ func handleDiscardAllKey(m Model) (Model, tea.Cmd) {
 				m.collection = newCollection
 			}
 		}
+		m = m.reloadMergedCollection()
 
 		m.mode = m.previousMode
 		m = m.refreshCurrentView()
@@ -1772,7 +1774,7 @@ func handleSavedResponsesKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Select a request to view saved responses"
 		return m, nil
 	}
-	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForCursor(), item.Name)
+	itemID := m.requestItemID(m.folderPathForCursor(), item.Name)
 	responses, err := m.parser.GetSavedResponses(itemID)
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Failed to load saved responses: %v", err)

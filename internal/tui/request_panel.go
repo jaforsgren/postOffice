@@ -15,7 +15,7 @@ const (
 // one view. It is the Response view, so resend, save, copy and open in
 // editor all work there.
 func (m Model) openRequestPanel(item postman.Item) Model {
-	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForCursor(), item.Name)
+	itemID := m.requestItemID(m.folderPathForCursor(), item.Name)
 	m.lastResponse, m.lastTestResult = nil, nil
 	if execution, exists := m.requestExecutions[itemID]; exists {
 		m.lastResponse = execution.Response

@@ -126,7 +126,7 @@ func (m Model) openVimForItem(item postman.Item, folderPath []string) (Model, te
 		payload.Body = encodeVimBody(item.Request.Body.Raw)
 	}
 
-	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, folderPath, item.Name)
+	itemID := m.requestItemID(folderPath, item.Name)
 	return m, openVimEditorForRequest(payload, itemID, append([]string{}, folderPath...), item.Name, false)
 }
 
@@ -151,7 +151,7 @@ func (m Model) openVimForEditState() (Model, tea.Cmd) {
 		payload.Body = encodeVimBody(m.editRequest.Body.Raw)
 	}
 
-	itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
+	itemID := m.requestItemID(m.editItemPath, m.editOriginalName)
 	folderPath := append([]string{}, m.editItemPath...)
 	return m, openVimEditorForRequest(payload, itemID, folderPath, m.editOriginalName, true)
 }

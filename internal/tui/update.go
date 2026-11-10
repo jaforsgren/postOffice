@@ -119,7 +119,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				for _, ss := range msg.State.Steps {
 					if ss.LastResponse != nil {
 						names := postman.SplitItemPath(ss.Request)
-						itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, names[:len(names)-1], names[len(names)-1])
+						itemID := m.requestItemID(names[:len(names)-1], names[len(names)-1])
 						m.requestExecutions[itemID] = &RequestExecution{
 							Status:    ss.LastResponse.Status,
 							Timestamp: time.Now(),
@@ -838,7 +838,7 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 		return m.executeAMQPRequest(item, folderPath)
 	}
 
-	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, folderPath, item.Name)
+	itemID := m.requestItemID(folderPath, item.Name)
 	requestToExecute := item.Request
 	isModified := m.isItemModified(itemID)
 
@@ -927,7 +927,7 @@ func (m Model) executeProtocolItem(
 	statusPrefix string,
 	send requestSender,
 ) (Model, tea.Cmd) {
-	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, folderPath, item.Name)
+	itemID := m.requestItemID(folderPath, item.Name)
 	m.statusMessage = fmt.Sprintf("%s: %s", statusPrefix, item.Name)
 	m.requestExecutions[itemID] = &RequestExecution{
 		Status:    statusSending,
@@ -1056,7 +1056,7 @@ func (m Model) collectFavoriteItems() ([]postman.Item, [][]string) {
 	walk = func(nodes []postman.Item, parentPath []string) {
 		for _, item := range nodes {
 			if item.IsRequest() {
-				if m.favorites[m.favoriteID(parentPath, item.Name)] {
+				if m.favorites[m.requestItemID(parentPath, item.Name)] {
 					items = append(items, item)
 					paths = append(paths, slices.Clone(parentPath))
 				}
@@ -1154,7 +1154,7 @@ func (m Model) toggleFavoriteAtCursor() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	itemID := m.favoriteID(m.folderPathForCursor(), item.Name)
+	itemID := m.requestItemID(m.folderPathForCursor(), item.Name)
 	if m.favorites == nil {
 		m.favorites = make(map[string]bool)
 	}
@@ -1334,14 +1334,13 @@ func (m Model) enterEditMode(item postman.Item, folderPath []string) Model {
 	m.editOriginalName = item.Name
 	m.editFieldCursor = 0
 	m.editFieldMode = false
-	m.editCollectionName = m.collection.Info.Name
 	m.editItemPath = append([]string{}, folderPath...)
 	m.previousMode = m.mode
 	m.mode = ModeEdit
 	m.scrollOffset = 0
 
 	// Load stored path params for this item, or initialize empty
-	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, folderPath, item.Name)
+	itemID := m.requestItemID(folderPath, item.Name)
 	m.pathParams = make(map[string]string)
 	if stored, ok := m.requestPathParams[itemID]; ok {
 		for k, v := range stored {
@@ -1406,7 +1405,7 @@ func (m Model) saveEdit() (Model, error) {
 			return m, err
 		}
 
-		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
+		itemID := m.requestItemID(m.editItemPath, m.editOriginalName)
 		m.modifiedRequests[itemID] = m.editRequest
 		m.modifiedItems[itemID] = true
 		m.markCollectionModified(m.editItemPath)
@@ -1428,7 +1427,7 @@ func (m Model) saveEdit() (Model, error) {
 			m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
 			return m, err
 		}
-		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editScriptItemName)
+		itemID := m.requestItemID(m.editItemPath, m.editScriptItemName)
 		delete(m.modifiedItems, itemID)
 		if len(m.modifiedItems) == 0 {
 			delete(m.modifiedCollections, m.owningCollectionName(m.editItemPath))
@@ -1515,7 +1514,7 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
+		itemID := m.requestItemID(m.editItemPath, m.editOriginalName)
 		m.modifiedRequests[itemID] = m.editRequest
 		m.modifiedItems[itemID] = true
 		m.markCollectionModified(m.editItemPath)
@@ -1778,7 +1777,6 @@ func (m Model) enterNewItemEditMode(requestType string) Model {
 	m.editOriginalName = ""
 	m.editFieldCursor = 0
 	m.editFieldMode = false
-	m.editCollectionName = m.collection.Info.Name
 	m.editItemPath = append([]string{}, m.breadcrumb...)
 	m.editType = editType
 	m.editIsNewItem = true
@@ -2129,17 +2127,6 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m Model) getRequestIdentifier(item postman.Item) string {
-	if m.collection == nil {
-		return ""
-	}
-	path := strings.Join(m.breadcrumb, "/")
-	if path != "" {
-		return m.collection.Info.Name + "/" + path + "/" + item.Name
-	}
-	return m.collection.Info.Name + "/" + item.Name
-}
-
 func (m Model) getRequestIdentifierByPath(collectionName string, breadcrumb []string, requestName string) string {
 	path := strings.Join(breadcrumb, "/")
 	if path != "" {
@@ -2210,18 +2197,11 @@ func (m Model) navigateToChangedRequest(itemID string) Model {
 	requestName := parts[len(parts)-1]
 	folderPath := parts[1 : len(parts)-1]
 
-	if m.collection == nil || m.collection.Info.Name != collectionName {
-		if collection, exists := m.parser.GetCollection(collectionName); exists {
-			m.collection = collection
-		} else {
-			m.statusMessage = fmt.Sprintf("Collection not found: %s", collectionName)
-			return m
-		}
+	m, found := m.showCollectionFolder(collectionName, folderPath)
+	if !found {
+		m.statusMessage = fmt.Sprintf("Collection not found: %s", collectionName)
+		return m
 	}
-
-	m.mode = ModeRequests
-	m.breadcrumb = folderPath
-	m = m.loadRequestsList()
 
 	for i, item := range m.currentItems {
 		if item.Name == requestName {
@@ -2252,16 +2232,13 @@ func (m Model) showChangeDiff(itemID string) Model {
 	requestName := parts[len(parts)-1]
 	folderPath := parts[1 : len(parts)-1]
 
-	if m.collection == nil || m.collection.Info.Name != collectionName {
-		if collection, exists := m.parser.GetCollection(collectionName); exists {
-			m.collection = collection
-		} else {
-			m.statusMessage = "Collection not found"
-			return m
-		}
+	collection, exists := m.parser.GetCollection(collectionName)
+	if !exists {
+		m.statusMessage = "Collection not found"
+		return m
 	}
 
-	originalReq := m.findOriginalRequest(m.collection.Items, folderPath, requestName)
+	originalReq := m.findOriginalRequest(collection.Items, folderPath, requestName)
 	if originalReq == nil {
 		m.statusMessage = "Original request not found"
 		return m
@@ -2634,7 +2611,6 @@ func (m Model) enterScriptSelectionMode(item postman.Item, folderPath []string) 
 	m.scriptSelectionMode = true
 	m.editScriptItemName = item.Name
 	m.editItemPath = append([]string{}, folderPath...)
-	m.editCollectionName = m.collection.Info.Name
 	m.previousMode = m.mode
 	m.mode = ModeEdit
 	m.cursor = 0
@@ -2781,7 +2757,7 @@ func (m Model) saveScript() Model {
 	}
 
 	m.markCollectionModified(m.editItemPath)
-	itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editScriptItemName)
+	itemID := m.requestItemID(m.editItemPath, m.editScriptItemName)
 	m.modifiedItems[itemID] = true
 
 	scriptTypeName := "pre-request"
@@ -3143,7 +3119,7 @@ func (m Model) saveCurrentPathParams() Model {
 	if len(m.pathParams) == 0 {
 		return m
 	}
-	itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
+	itemID := m.requestItemID(m.editItemPath, m.editOriginalName)
 	if m.requestPathParams == nil {
 		m.requestPathParams = make(map[string]map[string]string)
 	}

@@ -344,7 +344,7 @@ func (m Model) buildURLSection(req *postman.Request, variables []postman.Variabl
 	// Apply stored path params for this item
 	var storedParams map[string]string
 	if m.currentInfoItem != nil && m.collection != nil {
-		itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.breadcrumb, m.currentInfoItem.Name)
+		itemID := m.requestItemID(m.breadcrumb, m.currentInfoItem.Name)
 		storedParams = m.requestPathParams[itemID]
 		for name, val := range storedParams {
 			if val != "" {

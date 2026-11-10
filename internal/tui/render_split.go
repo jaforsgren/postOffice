@@ -79,7 +79,7 @@ func (m Model) splitResponseContent() (string, lipgloss.Color) {
 		return splitFolderResponseMessage, popupBorderColor
 	}
 
-	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForCursor(), item.Name)
+	itemID := m.requestItemID(m.folderPathForCursor(), item.Name)
 	exec, exists := m.requestExecutions[itemID]
 	if !exists {
 		return splitNotExecutedMessage, popupBorderColor
