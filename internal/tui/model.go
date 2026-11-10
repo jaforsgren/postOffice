@@ -192,6 +192,7 @@ type Model struct {
 	requestVarsFolderPath    []string
 	requestVarsCursor        int
 	requestVarEditing        bool
+	requestVarsReturnMode    ViewMode
 	requestTypeSelectionMode bool
 
 	responseViewport viewport.Model

@@ -14,7 +14,11 @@ const (
 	undefinedVariableSource  = "undefined: saving adds it to the collection"
 	requestVariablesShortcut = "<Enter/e> Edit value  <j/k> Navigate  <Esc/q> Back"
 	requestVariableEditHint  = "<Enter> Save to file  <Esc> Cancel"
+
+	unresolvedVariablesFormat = "⚠ Unresolved: %s (press %s to set them; new ones are saved as collection variables)"
 )
+
+var unresolvedVariablesStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 
 // requestVariableRow is one {{variable}} a request uses, with the value and
 // source it currently resolves to.
@@ -25,11 +29,12 @@ type requestVariableRow struct {
 	Defined bool
 }
 
-// handleRequestVariablesKey lists the variables the selected request uses, so
-// just those can be edited in place in whichever environment, collection or
-// folder defines them.
+// handleRequestVariablesKey lists the variables a request uses, so just
+// those can be edited in place in whichever environment, collection or
+// folder defines them. It works on the selected request, the request info
+// panel's request, or the request being edited.
 func handleRequestVariablesKey(m Model) (Model, tea.Cmd) {
-	item, ok := m.selectedItem()
+	item, folderPath, ok := m.requestVariablesTarget()
 	if !ok || !item.IsRequest() {
 		m.statusMessage = "Select a request to edit its variables"
 		return m, nil
@@ -40,24 +45,84 @@ func handleRequestVariablesKey(m Model) (Model, tea.Cmd) {
 	}
 
 	m.requestVarsItem = item
-	m.requestVarsFolderPath = m.folderPathForCursor()
-	m.requestVarsCursor = 0
+	m.requestVarsFolderPath = folderPath
+	m.requestVarsCursor = firstUndefinedRow(m.variableRows(item.Request, folderPath))
 	m.requestVarEditing = false
-	m.previousMode = m.mode
+	m.requestVarsReturnMode = m.mode
 	m.mode = ModeRequestVariables
 	m.statusMessage = fmt.Sprintf("Variables used by %s", item.Name)
 	return m, nil
 }
 
+func (m Model) requestVariablesTarget() (postman.Item, []string, bool) {
+	switch {
+	case m.mode == ModeEdit && m.editRequest != nil:
+		return postman.Item{Name: m.editItemName, Request: m.editRequest}, m.editItemPath, true
+	case m.mode == ModeResponse && m.responsePanelItem != nil:
+		return *m.responsePanelItem, m.requestsViewFolderPath(), true
+	case m.mode == ModeRequests:
+		item, ok := m.selectedItem()
+		return item, m.folderPathForCursor(), ok
+	}
+	return postman.Item{}, nil, false
+}
+
+// firstUndefinedRow puts the cursor where a value is missing, or on the first row.
+func firstUndefinedRow(rows []requestVariableRow) int {
+	for i, row := range rows {
+		if !row.Defined {
+			return i
+		}
+	}
+	return 0
+}
+
+// closeRequestVariables returns to the view the variables were opened from,
+// refreshing the request info panel so it shows the new values.
+func (m Model) closeRequestVariables() Model {
+	m.mode = m.requestVarsReturnMode
+	m.statusMessage = ""
+	if m.mode == ModeResponse && m.responsePanelItem != nil {
+		m.configureViewport(&m.responseViewport, strings.Join(m.responseViewLines(), "\n"))
+	}
+	return m
+}
+
 func (m Model) requestVariableRows() []requestVariableRow {
-	collection, folderPath := m.collectionScope(m.requestVarsFolderPath)
+	return m.variableRows(m.requestVarsItem.Request, m.requestVarsFolderPath)
+}
+
+// unresolvedVariables lists the {{variables}} req uses that nothing defines.
+func (m Model) unresolvedVariables(req *postman.Request, folderPath []string) []string {
+	var keys []string
+	for _, row := range m.variableRows(req, folderPath) {
+		if !row.Defined {
+			keys = append(keys, "{{"+row.Key+"}}")
+		}
+	}
+	return keys
+}
+
+// unresolvedVariablesLines is a warning naming the request's unresolved
+// variables and how to set them, or nothing when all of them resolve.
+func (m Model) unresolvedVariablesLines(req *postman.Request, folderPath []string) []string {
+	keys := m.unresolvedVariables(req, folderPath)
+	if len(keys) == 0 {
+		return nil
+	}
+	warning := fmt.Sprintf(unresolvedVariablesFormat, strings.Join(keys, ", "), requestVariablesKey)
+	return []string{unresolvedVariablesStyle.Render(warning)}
+}
+
+func (m Model) variableRows(req *postman.Request, requestFolderPath []string) []requestVariableRow {
+	collection, folderPath := m.collectionScope(requestFolderPath)
 	resolved := make(map[string]postman.VariableSource)
 	for _, variable := range postman.GetAllVariables(collection, folderPath, m.environment) {
 		resolved[variable.Key] = variable
 	}
 
 	var rows []requestVariableRow
-	for _, key := range postman.ReferencedVariables(m.requestVarsItem.Request) {
+	for _, key := range postman.ReferencedVariables(req) {
 		variable, defined := resolved[key]
 		row := requestVariableRow{Key: key, Value: variable.Value, Source: variable.Source, Defined: defined}
 		if !defined {
@@ -76,8 +141,7 @@ func (m Model) handleRequestVariablesKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	rows := m.requestVariableRows()
 	switch msg.String() {
 	case "esc", "q", "h", "backspace":
-		m.mode = m.previousMode
-		m.statusMessage = ""
+		m = m.closeRequestVariables()
 	case "j", "down":
 		if m.requestVarsCursor < len(rows)-1 {
 			m.requestVarsCursor++

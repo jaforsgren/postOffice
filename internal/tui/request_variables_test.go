@@ -98,7 +98,7 @@ func TestRequestVariables_ListsWhatTheRequestUses(t *testing.T) {
 
 func TestRequestVariables_EditSavesToTheEnvironmentFile(t *testing.T) {
 	m, _, envPath := requestVariablesModel(t)
-	m = pressKeys(t, m, runes(requestVariablesKey), runes("e"))
+	m = pressKeys(t, m, runes(requestVariablesKey), runes("k"), runes("k"), runes("e"))
 	m.editFieldInput.SetValue("p2")
 
 	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEnter})
@@ -114,7 +114,7 @@ func TestRequestVariables_EditSavesToTheEnvironmentFile(t *testing.T) {
 
 func TestRequestVariables_EditSavesToTheCollectionFile(t *testing.T) {
 	m, collectionPath, _ := requestVariablesModel(t)
-	m = pressKeys(t, m, runes(requestVariablesKey), runes("j"), tea.KeyMsg{Type: tea.KeyEnter})
+	m = pressKeys(t, m, runes(requestVariablesKey), runes("k"), tea.KeyMsg{Type: tea.KeyEnter})
 	m.editFieldInput.SetValue("c2")
 
 	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEnter})
@@ -130,7 +130,7 @@ func TestRequestVariables_EditSavesToTheCollectionFile(t *testing.T) {
 
 func TestRequestVariables_EscCancelsEditWithoutSaving(t *testing.T) {
 	m, _, envPath := requestVariablesModel(t)
-	m = pressKeys(t, m, runes(requestVariablesKey), runes("e"))
+	m = pressKeys(t, m, runes(requestVariablesKey), runes("k"), runes("k"), runes("e"))
 	m.editFieldInput.SetValue("p2")
 
 	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEsc})
@@ -160,7 +160,7 @@ func TestRequestVariables_MergedEnvironmentsSaveToTheDefiningFile(t *testing.T) 
 	m.environment = m.parser.MergedEnvironment()
 	m.mergedEnvironmentActive = true
 
-	m = pressKeys(t, m, runes(requestVariablesKey), runes("e"))
+	m = pressKeys(t, m, runes(requestVariablesKey), runes("k"), runes("k"), runes("e"))
 	m.editFieldInput.SetValue("p3")
 	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 
@@ -181,5 +181,76 @@ func TestRequestVariables_FolderIsRejected(t *testing.T) {
 
 	if m.mode == ModeRequestVariables {
 		t.Error("expected a folder not to open the variables view")
+	}
+}
+
+func TestRequestVariables_CursorStartsOnTheFirstUnresolved(t *testing.T) {
+	m, _, _ := requestVariablesModel(t)
+
+	m = pressKeys(t, m, runes(requestVariablesKey))
+
+	if row := m.requestVariableRows()[m.requestVarsCursor]; row.Key != "trace" || row.Defined {
+		t.Errorf("expected the cursor on the unresolved trace, got %+v", row)
+	}
+}
+
+func TestRequestVariables_UnresolvedSavedAsCollectionVariable(t *testing.T) {
+	m, collectionPath, _ := requestVariablesModel(t)
+	m = pressKeys(t, m, runes(requestVariablesKey), runes("e"))
+	m.editFieldInput.SetValue("abc")
+
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	saved, err := postman.NewParser().LoadCollection(collectionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last := saved.Variables[len(saved.Variables)-1]; last.Key != "trace" || last.Value != "abc" {
+		t.Errorf("expected trace saved as a collection variable, got %+v", saved.Variables)
+	}
+	if got := m.unresolvedVariables(m.requestVarsItem.Request, m.requestVarsFolderPath); len(got) != 0 {
+		t.Errorf("expected nothing left unresolved, got %v", got)
+	}
+}
+
+func TestRequestPanel_WarnsAboutUnresolvedAndOpensVariables(t *testing.T) {
+	m, _, _ := requestVariablesModel(t)
+	m = pressKeys(t, m, runes("i"))
+
+	if content := panelContent(m); !strings.Contains(content, "Unresolved: {{trace}}") {
+		t.Errorf("expected the panel to warn about {{trace}}, got:\n%s", content)
+	}
+
+	m = pressKeys(t, m, runes(requestVariablesKey), runes("e"))
+	m.editFieldInput.SetValue("abc")
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEnter}, tea.KeyMsg{Type: tea.KeyEsc})
+
+	if m.mode != ModeResponse {
+		t.Fatalf("expected esc to return to the request panel, got %v", m.mode)
+	}
+	if content := panelContent(m); strings.Contains(content, "Unresolved") {
+		t.Errorf("expected the warning gone once trace is set, got:\n%s", content)
+	}
+}
+
+func TestEditMode_WarnsAboutUnresolvedAndReturnsFromVariables(t *testing.T) {
+	m, _, _ := requestVariablesModel(t)
+	m = m.enterEditMode(m.currentItems[m.cursor], m.folderPathForCursor())
+
+	if lines := strings.Join(m.buildEditLines(), "\n"); !strings.Contains(lines, "Unresolved: {{trace}}") {
+		t.Errorf("expected the edit form to warn about {{trace}}, got:\n%s", lines)
+	}
+
+	m = pressKeys(t, m, runes(requestVariablesKey))
+	if m.mode != ModeRequestVariables {
+		t.Fatalf("expected V to open the variables from the edit form, got %v", m.mode)
+	}
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.mode != ModeEdit {
+		t.Fatalf("expected esc to return to the edit form, got %v", m.mode)
+	}
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.mode != ModeRequests {
+		t.Errorf("expected the edit form's esc to still return to the requests list, got %v", m.mode)
 	}
 }

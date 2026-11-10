@@ -583,7 +583,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Edit the variables this request uses",
 			ShortHelp:   requestVariablesKey,
 			Handler:     handleRequestVariablesKey,
-			AvailableIn: []ViewMode{ModeRequests},
+			AvailableIn: []ViewMode{ModeRequests, ModeResponse},
 		},
 		{
 			Keys:        []string{yankPrefixKey},

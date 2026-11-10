@@ -53,6 +53,9 @@ func (m Model) buildEditLines() []string {
 		return lines
 	}
 
+	if m.editRequest != nil {
+		lines = append(lines, m.unresolvedVariablesLines(m.editRequest, m.editItemPath)...)
+	}
 	if m.editType == EditTypeRequest && m.editRequest != nil {
 		lines = append(lines, m.buildEditFields()...)
 	} else if m.editType == EditTypeGRPCRequest && m.editRequest != nil {
@@ -67,7 +70,7 @@ func (m Model) buildEditLines() []string {
 }
 
 func (m Model) buildEditShortcuts() string {
-	base := "<Enter> Edit field  <j/k> Navigate  <Tab> {{var}} autocomplete  <Ctrl+G> Open in vim  <Esc> Cancel  <:w> Save  <:wq> Save & Exit"
+	base := "<Enter> Edit field  <j/k> Navigate  <Tab> {{var}} autocomplete  <V> Variables  <Ctrl+G> Open in vim  <Esc> Cancel  <:w> Save  <:wq> Save & Exit"
 	if m.editType == EditTypeGRPCRequest {
 		return base + "  <Ctrl+R> Reflect"
 	}

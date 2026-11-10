@@ -43,7 +43,8 @@ func (m Model) responseViewLines() []string {
 	infoModel := m
 	infoModel.currentInfoItem = m.responsePanelItem
 	infoModel.breadcrumb = m.requestsViewFolderPath()
-	lines := infoModel.buildItemDetailLines()
+	lines := infoModel.unresolvedVariablesLines(m.responsePanelItem.Request, infoModel.breadcrumb)
+	lines = append(lines, infoModel.buildItemDetailLines()...)
 	lines = append(lines, "")
 	if m.lastResponse == nil {
 		return append(lines, subtleStyle.Render(requestPanelNotSentMessage))

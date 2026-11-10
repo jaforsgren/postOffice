@@ -1547,6 +1547,9 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+g":
 		return m.openVimForEditState()
 
+	case requestVariablesKey:
+		return handleRequestVariablesKey(m)
+
 	case "ctrl+r":
 		if m.editType == EditTypeGRPCRequest {
 			return m.startGRPCReflection()
