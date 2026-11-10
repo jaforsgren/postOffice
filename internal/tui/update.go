@@ -157,6 +157,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.pendingFolderRun != nil {
+			return m.handleFolderRunConfirmKeys(msg)
+		}
 		if m.commandMode {
 			return m.handleCommandMode(msg)
 		}
@@ -469,6 +472,7 @@ func buildTreeView(items []postman.Item, parentPath []string, depth int, expande
 // requests view, flattening any folders under itemsFolderPath that are
 // expanded in m.expandedFolders.
 func (m Model) applyTreeItems(items []postman.Item, itemsFolderPath []string) Model {
+	m = m.ensureSavedWorkflowIDs()
 	display, flat, paths := buildTreeView(items, itemsFolderPath, 0, m.expandedFolders)
 	m.items = display
 	m.currentItems = flat
@@ -628,6 +632,9 @@ func (m Model) loadRequestsList() Model {
 	}
 
 	m.breadcrumb = []string{}
+	// Forces ensureSavedWorkflowIDs to re-read the workflows directory, picking up files
+	// created or removed outside the TUI since the collection was last opened.
+	m.savedWorkflowIDsCollection = ""
 
 	folderCount := 0
 	requestCount := 0

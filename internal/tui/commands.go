@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"postOffice/internal/http"
@@ -254,7 +255,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		},
 		{
 			Keys:        []string{"ctrl+e"},
-			Description: "Execute request",
+			Description: "Execute request/run folder",
 			ShortHelp:   "ctrl+e",
 			Handler:     handleExecuteKey,
 			AvailableIn: []ViewMode{ModeRequests},
@@ -969,6 +970,9 @@ func handleExecuteKey(m Model) (Model, tea.Cmd) {
 		if item.IsRequest() {
 			return m.executeRequest(item, m.folderPathForCursor())
 		}
+		if item.IsFolder() {
+			return m.requestFolderRun(item, m.folderPathForCursor()), nil
+		}
 	}
 	return m, nil
 }
@@ -1433,20 +1437,18 @@ func (m Model) loadWorkflows() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	collectionPath, exists := m.parser.GetCollectionPath(m.collection.Info.Name)
-	if !exists {
+	_, wfs, err := m.discoverCollectionWorkflows()
+	if errors.Is(err, errCollectionPathNotFound) {
 		m.statusMessage = "Collection path not found"
 		return m, nil
 	}
-
-	wfDir := workflow.WorkflowsDir(collectionPath)
-	wfs, err := workflow.DiscoverWorkflows(wfDir)
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Failed to discover workflows: %v", err)
 		return m, nil
 	}
 
 	m.workflows = wfs
+	m = m.cacheSavedWorkflowIDs(wfs)
 	m.workflowCursor = 0
 	m.previousMode = m.mode
 	m.mode = ModeWorkflows

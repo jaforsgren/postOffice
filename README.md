@@ -62,7 +62,7 @@ go build -o postOffice
 
 **Request execution:**
 - `enter` — execute selected request
-- `ctrl+e` — re-execute selected request
+- `ctrl+e` — re-execute selected request; on a folder, run it as a workflow (asks `y/n` first, see [Workflows](#workflows))
 - `ctrl+r` — view last response for selected request (without re-executing)
 - `y` — copy response body (in response view)
 - `Y` — copy full response (in response view)
@@ -195,6 +195,8 @@ script: |
     console.log("Found " + users.length + " users");
   }
 ```
+
+**Run a folder as a workflow:** in the requests view, put the cursor on a folder and press `ctrl+e`, then `y` to confirm (any other key cancels). Every request in the folder runs in collection order, depth-first through subfolders, in the workflow progress view. The first run saves the folder as `workflows/<slug>.yaml` (name `policies/TEST`, id `policies-test`), and the folder gets a ⚡ marker in the requests list. Later runs reuse the saved workflow. If the folder's requests changed, an unedited saved workflow is regenerated, while a hand-edited one is kept as-is. Postman runner flow control (`pm.execution.setNextRequest` / `skipRequest`) is not supported, so the requests always run strictly in order.
 
 **TUI commands:**
 - `:wf` — browse available workflows

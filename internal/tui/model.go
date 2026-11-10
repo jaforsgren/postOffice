@@ -191,6 +191,14 @@ type Model struct {
 	addingWorkflowStep     bool
 	editingWorkflowStepIdx int
 
+	// pendingFolderRun holds the folder awaiting a y/n answer to "run as workflow?";
+	// while set, the next key press answers the prompt instead of reaching normal mode.
+	pendingFolderRun *pendingFolderRun
+	// savedWorkflowIDs is the set of workflow IDs on disk for savedWorkflowIDsCollection,
+	// cached so the requests list can mark folders that have a saved workflow.
+	savedWorkflowIDs           map[string]bool
+	savedWorkflowIDsCollection string
+
 	savedResponses        []postman.SavedResponse
 	savedResponseCursor   int
 	savedResponseItemID   string

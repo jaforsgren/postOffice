@@ -6,6 +6,12 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+)
+
+const (
+	itemNameColumnWidth    = 60
+	itemNameTruncationTail = "..."
 )
 
 func (m Model) renderMainWindow() string {
@@ -79,6 +85,9 @@ func (m Model) formatItemLine(index int) string {
 
 	if m.mode == ModeRequests && index < len(m.currentItems) {
 		item := m.currentItems[index]
+		if item.IsFolder() && m.hasSavedFolderWorkflow(m.folderPathForIndex(index), item.Name) {
+			line += " " + folderWorkflowIndicator
+		}
 		if item.IsRequest() {
 			itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForIndex(index), item.Name)
 			if m.favorites[itemID] {
@@ -124,12 +133,10 @@ func (m Model) formatItemLine(index int) string {
 		cursor = "> "
 	}
 
-	nameWidth := 60
-	if len(line) > nameWidth {
-		line = line[:nameWidth-3] + "..."
-	} else {
-		line = line + strings.Repeat(" ", nameWidth-len(line))
-	}
+	// Measured in display cells, not bytes: names hold multi-byte runes (tree markers, "→", emoji
+	// such as folderWorkflowIndicator) that would otherwise shift the status column.
+	line = ansi.Truncate(line, itemNameColumnWidth, itemNameTruncationTail)
+	line += strings.Repeat(" ", itemNameColumnWidth-ansi.StringWidth(line))
 
 	fullLine := cursor + modifiedPrefix + line + executionInfo + locationInfo
 

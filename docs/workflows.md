@@ -351,6 +351,39 @@ ctrl+r
 
 In the workflow list view, runs the currently highlighted workflow.
 
+### Run a folder as a workflow
+
+```
+ctrl+e   (on a folder, in the requests view)
+```
+
+Asks `Run folder 'policies/TEST' as workflow? (y/n)` in the command bar. `y` confirms. Any other key cancels. On a request, `ctrl+e` still executes the request.
+
+On confirm, every request in the folder runs one after another in collection order, depth-first through subfolders, and the workflow run view shows progress. Each step goes through the normal executor, so request pre-request and test scripts run and variables carry over between steps, the same as in any other workflow.
+
+The first run saves the folder as a workflow in `workflows/` next to the collection:
+
+| Field | Value |
+|-------|-------|
+| `name` | Full folder path, e.g. `policies/TEST` or `a/b/c` |
+| `id` / file name | Slug of that path, e.g. `policies-test` → `workflows/policies-test.yaml` |
+| `steps` | One per request, `request` set to the request's full collection path; step ids are slugs of the request names (`-2`, `-3`, … on clashes) |
+| `script` | `await wf.run("<step>")` for every step, in order |
+
+It shows up in the `:wf` list like any other workflow. In the requests list, a folder with a saved workflow gets a `⚡` marker after its name. The marker shows up as soon as the workflow is saved, and on startup for workflows already on disk.
+
+Pressing `ctrl+e` on that folder again runs the saved workflow instead of creating a new one:
+
+- **Folder unchanged** (same requests in the same order): the saved workflow runs unchanged, including any edits you made to it.
+- **Folder changed, workflow never edited** (the script is still the generated sequence and no step has `pre_script`/`post_script`): the workflow is regenerated, saved over the old one and run.
+- **Folder changed, workflow hand-edited**: the saved workflow runs unchanged so your edits are not overwritten, and the status bar says so. Delete the file to regenerate it.
+
+Limitations:
+
+- A folder or request whose name contains `/` cannot be a step, because step paths are split on `/`. Such a folder is rejected with an error.
+- Collection-level and folder-level scripts do not run. Only each request's own scripts do. Postman runner flow control (`pm.execution.setNextRequest`, `pm.execution.skipRequest`) is not supported, so requests always run strictly in order. Steps that need flow control should be scripted in the workflow `script` with `wf.run`, `wf.skip` and `wf.stop`.
+- The whole workflow script shares the runtime's 30-second timeout, so long folders may time out.
+
 ---
 
 ## Workflow Discovery
