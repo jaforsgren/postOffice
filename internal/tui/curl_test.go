@@ -230,3 +230,31 @@ func TestInsertItemAtCursor_ParsedCurlItem(t *testing.T) {
 		t.Errorf("unexpected inserted item: %+v", inserted)
 	}
 }
+
+func TestBuildCurlCommand_FormDataBecomesFormArguments(t *testing.T) {
+	req := &postman.Request{
+		Method: "POST",
+		URL:    postman.URL{Raw: "{{base}}/attachments"},
+		Body: &postman.Body{Mode: postman.BodyModeFormData, FormData: []postman.FormParam{
+			{Key: "scope", Value: "{{scope}}", Type: "text"},
+			{Key: "hidden", Value: "x", Type: "text", Disabled: true},
+			{Key: "file", Type: postman.FormParamTypeFile, Src: []byte(`["/tmp/it's.png","/tmp/b.pdf"]`), ContentType: "image/png"},
+		}},
+	}
+	vars := []postman.VariableSource{{Key: "base", Value: "https://api.example.com"}, {Key: "scope", Value: "Customer"}}
+
+	cmd := buildCurlCommand(req, vars)
+
+	for _, want := range []string{
+		"-F 'scope=Customer'",
+		`-F 'file=@/tmp/it'\''s.png;type=image/png'`,
+		"-F 'file=@/tmp/b.pdf;type=image/png'",
+	} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("expected %q in:\n%s", want, cmd)
+		}
+	}
+	if strings.Contains(cmd, "hidden") || strings.Contains(cmd, "-d ") {
+		t.Errorf("expected no disabled field and no -d body:\n%s", cmd)
+	}
+}

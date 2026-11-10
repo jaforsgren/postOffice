@@ -229,12 +229,23 @@ func (m Model) applyVimEditToCollection(msg VimEditCompleteMsg, payload vimEditP
 		newName = msg.OriginalName
 	}
 
-	updatedReq := &postman.Request{
-		Method: payload.Method,
-		URL:    postman.URL{Raw: payload.URL},
-		Header: payload.Headers,
+	updatedReq := &postman.Request{}
+	if m.collection != nil {
+		if original := m.findOriginalRequest(m.collection.Items, msg.FolderPath, msg.OriginalName); original != nil {
+			// Starts from the original so what the editor does not show (auth, form fields, ...) survives.
+			updatedReq = original.Clone()
+		}
 	}
-	if bodyRaw := decodeVimBody(payload.Body); bodyRaw != "" {
+	updatedReq.Method = payload.Method
+	updatedReq.Header = payload.Headers
+	if updatedReq.URL.Raw != payload.URL {
+		updatedReq.URL = postman.URL{Raw: payload.URL}
+	}
+	bodyRaw := decodeVimBody(payload.Body)
+	switch {
+	case updatedReq.Body != nil:
+		updatedReq.Body.Raw = bodyRaw
+	case bodyRaw != "":
 		updatedReq.Body = &postman.Body{Mode: "raw", Raw: bodyRaw}
 	}
 

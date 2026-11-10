@@ -721,61 +721,6 @@ func TestSaveEdit_NoEditType(t *testing.T) {
 	}
 }
 
-func TestDeepCopyRequest(t *testing.T) {
-	m := createTestModel()
-	original := &postman.Request{
-		Method: "GET",
-		URL: postman.URL{
-			Raw:  "https://example.com",
-			Host: []string{"example", "com"},
-			Path: []string{"api", "test"},
-		},
-		Header: []postman.Header{
-			{Key: "Content-Type", Value: "application/json"},
-		},
-		Body: &postman.Body{
-			Mode: "raw",
-			Raw:  "test body",
-		},
-	}
-
-	copied := m.deepCopyRequest(original)
-
-	if copied == nil {
-		t.Fatal("Expected copied request to not be nil")
-	}
-	if copied == original {
-		t.Error("Expected different pointer for copied request")
-	}
-	if copied.Method != original.Method {
-		t.Error("Expected method to be copied")
-	}
-	if copied.URL.Raw != original.URL.Raw {
-		t.Error("Expected URL.Raw to be copied")
-	}
-	if len(copied.Header) != len(original.Header) {
-		t.Error("Expected headers to be copied")
-	}
-	if copied.Body == nil || copied.Body.Raw != original.Body.Raw {
-		t.Error("Expected body to be copied")
-	}
-
-	copied.Method = "POST"
-	if original.Method == "POST" {
-		t.Error("Expected original to remain unchanged")
-	}
-}
-
-func TestDeepCopyRequest_Nil(t *testing.T) {
-	m := createTestModel()
-
-	copied := m.deepCopyRequest(nil)
-
-	if copied != nil {
-		t.Error("Expected nil when copying nil request")
-	}
-}
-
 func TestGetRequestIdentifier(t *testing.T) {
 	m := createTestModel()
 	m.breadcrumb = []string{"Folder1", "Folder2"}

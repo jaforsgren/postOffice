@@ -193,10 +193,9 @@ func (e *Executor) buildRequest(req *postman.Request, variables []postman.Variab
 	}
 	url = postman.ResolveVariables(url, variables)
 
-	var body io.Reader
-	if req.Body != nil && req.Body.Raw != "" {
-		resolvedBody := postman.ResolveVariables(req.Body.Raw, variables)
-		body = bytes.NewBufferString(resolvedBody)
+	body, multipartContentType, err := buildBody(req.Body, variables)
+	if err != nil {
+		return nil, err
 	}
 
 	httpReq, err := http.NewRequest(req.Method, url, body)
@@ -209,6 +208,10 @@ func (e *Executor) buildRequest(req *postman.Request, variables []postman.Variab
 		httpReq.Header.Set(header.Key, resolvedValue)
 	}
 
+	if multipartContentType != "" {
+		// Overrides a hand-set multipart Content-Type: only this one carries the boundary.
+		httpReq.Header.Set("Content-Type", multipartContentType)
+	}
 	applyDefaultContentType(httpReq, body != nil)
 
 	return httpReq, nil

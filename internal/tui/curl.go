@@ -22,15 +22,47 @@ func buildCurlCommand(req *postman.Request, vars []postman.VariableSource) strin
 		parts = append(parts, fmt.Sprintf("-H '%s: %s'", h.Key, val))
 	}
 
-	if req.Body != nil && req.Body.Raw != "" {
-		body := postman.ResolveVariables(req.Body.Raw, vars)
-		body = strings.ReplaceAll(body, "'", `'\''`)
-		parts = append(parts, fmt.Sprintf("-d '%s'", body))
+	switch {
+	case req.Body != nil && req.Body.Mode == postman.BodyModeFormData:
+		parts = append(parts, curlFormArgs(req.Body.FormData, vars)...)
+	case req.Body != nil && req.Body.Raw != "":
+		parts = append(parts, "-d "+shellQuote(postman.ResolveVariables(req.Body.Raw, vars)))
 	}
 
 	parts = append(parts, fmt.Sprintf("'%s'", url))
 
 	return strings.Join(parts, " \\\n  ")
+}
+
+// curlFormArgs renders a formdata body as -F arguments: name=value for text
+// fields and name=@path for each file, skipping disabled fields.
+func curlFormArgs(params []postman.FormParam, vars []postman.VariableSource) []string {
+	var args []string
+	for _, param := range params {
+		if param.Disabled {
+			continue
+		}
+		name := postman.ResolveVariables(param.Key, vars)
+		typeSuffix := ""
+		if param.ContentType != "" {
+			typeSuffix = ";type=" + param.ContentType
+		}
+		if param.Type != postman.FormParamTypeFile {
+			args = append(args, "-F "+shellQuote(name+"="+postman.ResolveVariables(param.Value, vars)+typeSuffix))
+			continue
+		}
+		// An unparseable src exports no file; sending the request reports the error.
+		paths, _ := param.FilePaths()
+		for _, path := range paths {
+			args = append(args, "-F "+shellQuote(name+"=@"+postman.ResolveVariables(path, vars)+typeSuffix))
+		}
+	}
+	return args
+}
+
+// shellQuote wraps s in single quotes for a POSIX shell.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // buildGRPCCurlCommand generates a grpcurl command with variables resolved.
@@ -57,9 +89,7 @@ func buildGRPCCurlCommand(item postman.Item, vars []postman.VariableSource) stri
 	}
 
 	if req.Body != nil && req.Body.Raw != "" {
-		body := postman.ResolveVariables(req.Body.Raw, vars)
-		body = strings.ReplaceAll(body, "'", `'\''`)
-		parts = append(parts, fmt.Sprintf("-d '%s'", body))
+		parts = append(parts, "-d "+shellQuote(postman.ResolveVariables(req.Body.Raw, vars)))
 	}
 
 	parts = append(parts, endpoint)

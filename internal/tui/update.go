@@ -1288,7 +1288,7 @@ func (m Model) enterEditMode(item postman.Item, folderPath []string) Model {
 		return m
 	}
 
-	m.editRequest = m.deepCopyRequest(item.Request)
+	m.editRequest = item.Request.Clone()
 	m.editItemName = item.Name
 	m.editOriginalName = item.Name
 	m.editFieldCursor = 0
@@ -1712,7 +1712,7 @@ func (m Model) enterNewItemEditMode(requestType string) Model {
 		editType = EditTypeRequest
 	}
 
-	m.editRequest = m.deepCopyRequest(req)
+	m.editRequest = req.Clone()
 	m.editItemName = "New Request"
 	m.editOriginalName = ""
 	m.editFieldCursor = 0
@@ -2068,42 +2068,6 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m Model) deepCopyRequest(req *postman.Request) *postman.Request {
-	if req == nil {
-		return nil
-	}
-
-	copied := &postman.Request{
-		Method: req.Method,
-	}
-
-	copied.URL.Raw = req.URL.Raw
-	copied.URL.Port = req.URL.Port
-	copied.URL.Protocol = req.URL.Protocol
-	if req.URL.Host != nil {
-		copied.URL.Host = make([]string, len(req.URL.Host))
-		copy(copied.URL.Host, req.URL.Host)
-	}
-	if req.URL.Path != nil {
-		copied.URL.Path = make([]string, len(req.URL.Path))
-		copy(copied.URL.Path, req.URL.Path)
-	}
-
-	if req.Header != nil {
-		copied.Header = make([]postman.Header, len(req.Header))
-		copy(copied.Header, req.Header)
-	}
-
-	if req.Body != nil {
-		copied.Body = &postman.Body{
-			Mode: req.Body.Mode,
-			Raw:  req.Body.Raw,
-		}
-	}
-
-	return copied
-}
-
 func (m Model) getRequestIdentifier(item postman.Item) string {
 	if m.collection == nil {
 		return ""
@@ -2430,7 +2394,7 @@ func (m Model) duplicateRequest(item postman.Item, folderPath []string) Model {
 
 	duplicatedItem := postman.Item{
 		Name:        item.Name + " (copy)",
-		Request:     m.deepCopyRequest(item.Request),
+		Request:     item.Request.Clone(),
 		Description: item.Description,
 	}
 
@@ -3157,29 +3121,7 @@ func applyPathParamsToReq(req *postman.Request, params map[string]string) *postm
 	if req == nil || len(params) == 0 {
 		return req
 	}
-	modified := &postman.Request{
-		Method: req.Method,
-		URL: postman.URL{
-			Raw:      req.URL.Raw,
-			Port:     req.URL.Port,
-			Protocol: req.URL.Protocol,
-		},
-	}
-	if req.URL.Host != nil {
-		modified.URL.Host = make([]string, len(req.URL.Host))
-		copy(modified.URL.Host, req.URL.Host)
-	}
-	if req.URL.Path != nil {
-		modified.URL.Path = make([]string, len(req.URL.Path))
-		copy(modified.URL.Path, req.URL.Path)
-	}
-	if req.Header != nil {
-		modified.Header = make([]postman.Header, len(req.Header))
-		copy(modified.Header, req.Header)
-	}
-	if req.Body != nil {
-		modified.Body = &postman.Body{Mode: req.Body.Mode, Raw: req.Body.Raw}
-	}
+	modified := req.Clone()
 	for name, value := range params {
 		if value == "" {
 			continue
