@@ -57,3 +57,10 @@ func (m Model) collectionScope(folderPath []string) (*postman.Collection, []stri
 	}
 	return m.collection, folderPath
 }
+
+// favoriteID identifies a request for favorites by its own collection, so a
+// favorite shows both in that collection's view and in the combined view.
+func (m Model) favoriteID(folderPath []string, name string) string {
+	collection, path := m.collectionScope(folderPath)
+	return m.getRequestIdentifierByPath(collection.Info.Name, path, name)
+}

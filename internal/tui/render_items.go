@@ -100,7 +100,7 @@ func (m Model) formatItemLine(index int, nameWidth int) string {
 		}
 		if item.IsRequest() {
 			itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForIndex(index), item.Name)
-			if m.favorites[itemID] {
+			if m.favorites[m.favoriteID(m.folderPathForIndex(index), item.Name)] {
 				modifiedPrefix = "★ "
 			}
 			if m.isItemModified(itemID) {

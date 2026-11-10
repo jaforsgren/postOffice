@@ -222,3 +222,33 @@ func TestCombinedView_EditorEditMarksTheOwningCollection(t *testing.T) {
 		t.Errorf("expected the loaded Collection B to hold the edit, got %+v", b.Items[0].Items[0].Request)
 	}
 }
+
+func TestCombinedView_FavoriteIsKeyedByItsOwnCollection(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m, _, _ := combinedModel(t)
+	m = cursorOn(t, openFolder(t, m, combinedA), usersRequest)
+
+	m, _ = m.toggleFavoriteAtCursor()
+
+	if want := combinedA + "/" + usersRequest; !m.favorites[want] || len(m.favorites) != 1 {
+		t.Errorf("expected the favorite stored as %q, got %v", want, m.favorites)
+	}
+}
+
+func TestCombinedView_FavoritesListsEachCollectionsFavorites(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m, _, _ := combinedModel(t)
+	m.favorites[combinedB+"/"+ordersFolder+"/"+ordersRequest] = true
+
+	m, _ = m.enterFavoritesView()
+
+	if !m.viewingFavorites || len(m.currentItems) != 1 || m.currentItems[0].Name != ordersRequest {
+		t.Fatalf("expected the favorites view with %s, got %v (%s)", ordersRequest, m.items, m.statusMessage)
+	}
+	if !strings.Contains(m.items[0], combinedB+" / "+ordersFolder+" / "+ordersRequest) {
+		t.Errorf("expected the row to show its collection and folder, got %q", m.items[0])
+	}
+	if got := m.folderPathForCursor(); len(got) != 2 || got[0] != combinedB {
+		t.Errorf("expected the row's real combined-view path, got %v", got)
+	}
+}

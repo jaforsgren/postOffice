@@ -1055,8 +1055,7 @@ func (m Model) collectFavoriteItems() ([]postman.Item, [][]string) {
 	walk = func(nodes []postman.Item, parentPath []string) {
 		for _, item := range nodes {
 			if item.IsRequest() {
-				itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, parentPath, item.Name)
-				if m.favorites[itemID] {
+				if m.favorites[m.favoriteID(parentPath, item.Name)] {
 					items = append(items, item)
 					paths = append(paths, slices.Clone(parentPath))
 				}
@@ -1111,11 +1110,6 @@ func (m Model) enterFavoritesView() (Model, tea.Cmd) {
 		m.statusMessage = "No collection loaded"
 		return m, nil
 	}
-	if m.isViewingMergedCollection() {
-		m.statusMessage = "Favorites unavailable in combined collection view"
-		return m, nil
-	}
-
 	items, _ := m.collectFavoriteItems()
 	if len(items) == 0 {
 		m.statusMessage = "No favorited requests — press f on a request to favorite it"
@@ -1159,7 +1153,7 @@ func (m Model) toggleFavoriteAtCursor() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForCursor(), item.Name)
+	itemID := m.favoriteID(m.folderPathForCursor(), item.Name)
 	if m.favorites == nil {
 		m.favorites = make(map[string]bool)
 	}
