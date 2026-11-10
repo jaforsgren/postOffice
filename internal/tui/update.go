@@ -148,6 +148,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.applyVimScriptEdit(msg)
 		return m, nil
 
+	case VimRequestReportCompleteMsg:
+		m = m.applyVimRequestReport(msg)
+		return m, nil
+
 	case VimRunViewCompleteMsg:
 		m = m.applyVimRunView(msg)
 		return m, nil
@@ -178,6 +182,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.searchMode {
 			return m.handleSearchMode(msg)
 		}
+		if m.pendingYank {
+			return m.handleYankKey(msg)
+		}
 		if m.mode == ModeGRPCReflect {
 			return m.handleGRPCReflectKeys(msg)
 		}
@@ -194,6 +201,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleNormalMode(msg)
 			}
 			if key == resendStepKey && m.mode == ModeResponse && m.previousMode == ModeWorkflowDetail {
+				return m.handleNormalMode(msg)
+			}
+			if (m.mode == ModeResponse || m.mode == ModeInfo) && (key == yankPrefixKey || key == openRequestReportKey) {
 				return m.handleNormalMode(msg)
 			}
 

@@ -65,8 +65,11 @@ go build -o postOffice
 - `enter` — execute selected request
 - `ctrl+e` — re-execute selected request; on a folder, run it as a workflow (asks `y/n` first, see [Workflows](#workflows))
 - `ctrl+r` — view last response for selected request (without re-executing)
-- `y` — copy response body (in response view)
-- `Y` — copy full response (in response view)
+- `ya` — copy request and response (requests, response and info views)
+- `yb` — copy response body
+- `yr` — copy as curl (or grpcurl for gRPC requests)
+- `yy` — copy the resolved URL
+- `ctrl+g` — open request info, response, test results and console logs in your editor (response and info views)
 - `s` — save response (in response view)
 
 **Workflow detail view:**

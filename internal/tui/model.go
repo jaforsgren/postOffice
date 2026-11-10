@@ -175,6 +175,7 @@ type Model struct {
 	editScriptItemName       string
 	scriptSelectionMode      bool
 	editIsNewItem            bool
+	pendingYank              bool
 	requestTypeSelectionMode bool
 
 	responseViewport viewport.Model
