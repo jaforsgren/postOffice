@@ -46,7 +46,7 @@ type cliCommand struct {
 var cliCommands []*cliCommand
 
 func init() {
-	cliCommands = []*cliCommand{runCommand, workflowCommand, lsCommand, mergeCommand, aliasCommand, helpCommand}
+	cliCommands = []*cliCommand{runCommand, workflowCommand, lsCommand, useCommand, mergeCommand, aliasCommand, helpCommand}
 }
 
 func lookupCommand(name string) (*cliCommand, bool) {
@@ -61,7 +61,7 @@ func lookupCommand(name string) (*cliCommand, bool) {
 // isTUIInvocation reports whether args start the interactive TUI: no
 // arguments, or only the TUI's own flags such as --log.
 func isTUIInvocation(args []string) bool {
-	return len(args) == 0 || strings.HasPrefix(args[0], "-") && !slices.Contains(helpFlags, args[0]) && !isCommandName(args[0])
+	return len(args) == 0 || strings.HasPrefix(args[0], "-") && !slices.Contains(helpFlags, args[0]) && !isCommandName(args[0]) && !isSelectionInvocation(args)
 }
 
 func isCommandName(name string) bool {
@@ -78,6 +78,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	if slices.Contains(helpFlags, args[0]) {
 		writeUsage(stdout)
 		return exitSuccess
+	}
+	if isSelectionInvocation(args) {
+		args = append([]string{useCommand.name}, args...)
 	}
 
 	cmd, ok := lookupCommand(args[0])
@@ -152,7 +155,7 @@ Shows the overall usage, or the usage of one command.
 }
 
 func writeUsage(out io.Writer) {
-	fmt.Fprintf(out, "Usage:\n  %s [--log <file>]          start the interactive TUI\n  %s <command> [arguments]   run a headless command\n\nCommands:\n", programName, programName)
+	fmt.Fprintf(out, "Usage:\n  %s [--log <file>]          start the interactive TUI\n  %s <command> [arguments]   run a headless command\n  %s -c|-e|-w <name>         select what commands default to (see \"use\")\n\nCommands:\n", programName, programName, programName)
 	for _, cmd := range cliCommands {
 		name := cmd.name
 		if len(cmd.aliases) > 0 {

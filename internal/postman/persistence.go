@@ -49,6 +49,17 @@ type Session struct {
 	Mode         int      `json:"mode"`
 	Breadcrumb   []string `json:"breadcrumb"`
 	Cursor       int      `json:"cursor"`
+	// CLI is the headless commands' own selection, kept apart from the TUI's
+	// so neither overwrites the other.
+	CLI *CLISelection `json:"cli,omitempty"`
+}
+
+// CLISelection is the collection, environment and workflow headless commands
+// use when none is given, as file paths.
+type CLISelection struct {
+	CollectionPath  string `json:"collection_path,omitempty"`
+	EnvironmentPath string `json:"environment_path,omitempty"`
+	WorkflowPath    string `json:"workflow_path,omitempty"`
 }
 
 func (p *Parser) SaveState() error {
@@ -142,16 +153,46 @@ func (p *Parser) LoadState() error {
 	return nil
 }
 
+// SaveSession saves the TUI's session, keeping the stored CLI selection.
 func (p *Parser) SaveSession(session *Session) error {
+	var toSave Session
+	if session != nil {
+		toSave = *session
+	}
+	toSave.CLI = nil
+	if stored, err := p.LoadSession(); err == nil && stored != nil {
+		toSave.CLI = stored.CLI
+	}
+	return saveSessionFile(&toSave, "SaveSession")
+}
+
+// LoadCLISelection returns the stored CLI selection, empty when none is
+// stored or the session file can't be read.
+func (p *Parser) LoadCLISelection() *CLISelection {
+	session, err := p.LoadSession()
+	if err != nil || session == nil || session.CLI == nil {
+		return &CLISelection{}
+	}
+	return session.CLI
+}
+
+// SaveCLISelection saves the CLI selection, keeping the stored TUI session.
+func (p *Parser) SaveCLISelection(selection *CLISelection) error {
+	session, err := p.LoadSession()
+	if err != nil || session == nil {
+		session = &Session{}
+	}
+	session.CLI = selection
+	return saveSessionFile(session, "SaveCLISelection")
+}
+
+func saveSessionFile(session *Session, logLabel string) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		logger.LogError("SaveSession", "UserHomeDir", err)
+		logger.LogError(logLabel, "UserHomeDir", err)
 		return err
 	}
-
-	sessionPath := filepath.Join(homeDir, sessionFileName)
-
-	return saveToFile(session, sessionPath, "SaveSession")
+	return saveToFile(session, filepath.Join(homeDir, sessionFileName), logLabel)
 }
 
 func (p *Parser) LoadSession() (*Session, error) {

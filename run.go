@@ -93,12 +93,13 @@ func parseRunArgs(args []string) (runOptions, error) {
 
 	var opts runOptions
 	switch len(parsed.positional) {
+	case 0:
 	case 1:
 		opts.collectionPath = parsed.positional[0]
 	case 2:
 		opts.collectionPath, opts.requestPath = parsed.positional[0], parsed.positional[1]
 	default:
-		return runOptions{}, usageErrorf("run takes a collection file and optionally one request path, got %d arguments", len(parsed.positional))
+		return runOptions{}, usageErrorf("run takes a collection and optionally one request path, got %d arguments", len(parsed.positional))
 	}
 
 	if parsed.has(folderFlag) {
@@ -124,10 +125,13 @@ var runCommand = &cliCommand{
   postOffice run <collection> "<Folder/Sub/Request>" [options]
   postOffice run <collection> --folder "<Folder/Sub>" [options]
   postOffice run <collection> [options]
+  postOffice run ["<Folder/Sub/Request>"] [options]
 
 <collection> is a collection file, or the name of a loaded collection (see
 "postOffice ls"): its own name or its file name, e.g. SAPI for
-SAPI.postman_collection.json, ignoring case.
+SAPI.postman_collection.json, ignoring case. Without it, or when the only
+argument isn't a collection, the selected collection (see "postOffice use")
+runs, and the argument is a request path in it.
 
 Runs one request, every request in a folder, or every request in the
 collection, with collection → folder → request pre-request and test scripts.
@@ -138,7 +142,8 @@ name is written "\/" and a "\" as "\\", e.g. 'NEGATIVE/unknown policy 403\/404'.
 
 Options:
   -e, --environment <env>        environment file or loaded environment name
-                                 to resolve variables from
+                                 to resolve variables from (default: the
+                                 selected one)
   --folder <Folder/Sub>          run every request in this folder
   --output text|json|junit       report format (default text)
   --report <file>                write the json/junit report to a file and
@@ -156,6 +161,9 @@ Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input e
 		if err != nil {
 			return err
 		}
+		if opts, err = withSelectedCollection(opts); err != nil {
+			return err
+		}
 		return executeRun(out, opts.collectionPath, opts.execution, func(collection *postman.Collection) (*workflow.Workflow, error) {
 			switch {
 			case opts.requestPath != "":
@@ -170,9 +178,10 @@ Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input e
 }
 
 // executeRun loads the collection and environment (each a file path or a
-// loaded one's name), runs the workflow buildWorkflow makes from the
+// loaded one's name; the environment defaults to the selected one), runs the workflow buildWorkflow makes from the
 // collection, and reports the result.
 func executeRun(out io.Writer, collectionRef string, opts executionOptions, buildWorkflow func(*postman.Collection) (*workflow.Workflow, error)) error {
+	opts = withSelectedEnvironment(opts)
 	collectionPath, err := resolveCollectionRef(collectionRef)
 	if err != nil {
 		return err
@@ -286,4 +295,27 @@ func persistVariables(parser *postman.Parser, collection *postman.Collection, en
 		return nil
 	}
 	return parser.SaveEnvironment(environment.Name)
+}
+
+// withSelectedCollection runs the selected collection when no collection is
+// given, or when the only argument isn't one, taking it as a request path.
+func withSelectedCollection(opts runOptions) (runOptions, error) {
+	if opts.collectionPath != "" && opts.requestPath != "" {
+		return opts, nil
+	}
+	selected := postman.NewParser().LoadCLISelection().CollectionPath
+	if opts.collectionPath == "" {
+		if selected == "" {
+			return opts, usageErrorFor(errNothingSelected, "pass a collection or select one with \"postOffice -c <collection>\"")
+		}
+		opts.collectionPath = selected
+		return opts, nil
+	}
+
+	_, err := resolveCollectionRef(opts.collectionPath)
+	if !errors.Is(err, errUnknownReference) || selected == "" || len(opts.folderPath) > 0 {
+		return opts, nil
+	}
+	opts.collectionPath, opts.requestPath = selected, opts.collectionPath
+	return opts, nil
 }

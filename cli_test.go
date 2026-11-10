@@ -158,7 +158,6 @@ func TestParseRunArgs(t *testing.T) {
 	}
 
 	for _, args := range [][]string{
-		{},
 		{"c.json", "a", "b"},
 		{"c.json", "Users/Get User", "--folder", "Users"},
 		{"c.json", "--folder", ""},

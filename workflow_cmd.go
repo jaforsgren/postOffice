@@ -20,6 +20,7 @@ const (
 var (
 	errCollectionNotFound  = errors.New("no collection found for the workflow")
 	errAmbiguousCollection = errors.New("more than one collection could own the workflow")
+	errNoWorkflowSelected  = errors.New("no workflow given and none selected")
 )
 
 // workflowRunOptions is a parsed `workflow run` command line.
@@ -37,11 +38,14 @@ func parseWorkflowRunArgs(args []string) (workflowRunOptions, error) {
 	if err != nil {
 		return workflowRunOptions{}, err
 	}
-	if len(parsed.positional) != 1 {
-		return workflowRunOptions{}, usageErrorf("workflow run takes exactly one workflow file, got %d", len(parsed.positional))
+	if len(parsed.positional) > 1 {
+		return workflowRunOptions{}, usageErrorf("workflow run takes one workflow, got %d", len(parsed.positional))
 	}
 
-	opts := workflowRunOptions{workflowPath: parsed.positional[0], collectionPath: parsed.value(collectionFlag)}
+	opts := workflowRunOptions{collectionPath: parsed.value(collectionFlag)}
+	if len(parsed.positional) == 1 {
+		opts.workflowPath = parsed.positional[0]
+	}
 	opts.execution, err = parseExecutionOptions(parsed)
 	return opts, err
 }
@@ -52,13 +56,15 @@ var workflowCommand = &cliCommand{
 	summary:   "Run a workflow YAML file",
 	aliasable: true,
 	usage: `Usage:
-  postOffice workflow run <workflow> [-c <collection>] [options]
+  postOffice workflow run [<workflow>] [-c <collection>] [options]
 
 Runs a workflow against its collection. <workflow> is a workflow file, or the
 ID, name or file name of a workflow saved next to a loaded collection (next to
 -c's collection when given), ignoring case; a workflow found by name runs
 against the collection it is saved next to. Collections and environments can
-be given by file or by loaded name, as in "postOffice run".
+be given by file or by loaded name, as in "postOffice run". Without
+<workflow> the selected workflow runs, and without -e the selected
+environment is used (see "postOffice use").
 
 Without -c the collection of a workflow file is found from where the workflow
 lives: workflows are saved in a "workflows" directory next to their collection
@@ -86,6 +92,11 @@ Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input e
 		opts, err := parseWorkflowRunArgs(args)
 		if err != nil {
 			return err
+		}
+		if opts.workflowPath == "" {
+			if opts.workflowPath = postman.NewParser().LoadCLISelection().WorkflowPath; opts.workflowPath == "" {
+				return usageErrorFor(errNoWorkflowSelected, "pass a workflow or select one with \"postOffice -w <workflow>\"")
+			}
 		}
 		collectionPath := opts.collectionPath
 		if collectionPath != "" {

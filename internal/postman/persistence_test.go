@@ -682,3 +682,45 @@ func TestMultipleSaveState_MergesAcrossConcurrentSessions(t *testing.T) {
 		t.Error("Expected 'First Save' collection to still be present (not clobbered by the second session's save)")
 	}
 }
+
+func TestSaveSession_KeepsTheCLISelection(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	parser := NewParser()
+	selection := &CLISelection{CollectionPath: "/c.json", EnvironmentPath: "/e.json", WorkflowPath: "/w.yaml"}
+	if err := parser.SaveCLISelection(selection); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := parser.SaveSession(&Session{CollectionName: "TUI", Mode: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := parser.LoadCLISelection(); *got != *selection {
+		t.Errorf("expected the CLI selection kept, got %+v", got)
+	}
+}
+
+func TestSaveCLISelection_KeepsTheTUISession(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	parser := NewParser()
+	if err := parser.SaveSession(&Session{CollectionName: "TUI", Breadcrumb: []string{"Users"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := parser.SaveCLISelection(&CLISelection{EnvironmentPath: "/e.json"}); err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := parser.LoadSession()
+	if err != nil || session.CollectionName != "TUI" || len(session.Breadcrumb) != 1 || session.CLI.EnvironmentPath != "/e.json" {
+		t.Errorf("expected both kept, got %+v, %v", session, err)
+	}
+}
+
+func TestLoadCLISelection_EmptyWithoutASession(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	if got := NewParser().LoadCLISelection(); *got != (CLISelection{}) {
+		t.Errorf("expected an empty selection, got %+v", got)
+	}
+}

@@ -355,6 +355,24 @@ Collections, environments and workflows can also be given by name instead of fil
 ./postOffice workflow run health-check -e "Big tusks"
 ```
 
+### Selection
+
+Select a collection, environment and workflow once, and headless commands default to them:
+
+```
+./postOffice -c SAPI -e "Big tusks"     # same as: postOffice use -c SAPI -e "Big tusks"
+./postOffice run                        # runs SAPI with Big tusks
+./postOffice run "Users/Get User"       # one request in SAPI
+./postOffice -w health-check
+./postOffice workflow run               # runs health-check with Big tusks
+
+./postOffice use                        # show the selection
+./postOffice use -e ""                  # unselect the environment
+./postOffice use --clear                # unselect everything
+```
+
+An explicit `-e` or collection argument still wins. The selection is stored under `cli` in `~/.postoffice_session.json`, and `ls` marks it with `*`.
+
 Request paths use `/` between folders.
 
 Escape literal slashes in names with `\/` and quote the path.

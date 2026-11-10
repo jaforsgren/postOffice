@@ -24,6 +24,10 @@ const (
 	tabPadChar  = ' '
 
 	noneListed = "  (none)"
+
+	selectedPrefix   = "* "
+	unselectedPrefix = "  "
+	selectedLegend   = "\n* selected (see \"postOffice use\")"
 )
 
 var lsTopics = []lsTopic{
@@ -86,40 +90,53 @@ func listOverview(out io.Writer) error {
 		return err
 	}
 
+	selection := parser.LoadCLISelection()
 	table := newTable(out)
 	fmt.Fprintln(table, "Collections:")
-	writeNamedPaths(table, parser.ListCollections(), parser.GetCollectionPath)
+	writeNamedPaths(table, parser.ListCollections(), parser.GetCollectionPath, selection.CollectionPath)
 	fmt.Fprintln(table, "Environments:")
-	writeNamedPaths(table, parser.ListEnvironments(), parser.GetEnvironmentPath)
+	writeNamedPaths(table, parser.ListEnvironments(), parser.GetEnvironmentPath, selection.EnvironmentPath)
 
 	fmt.Fprintln(table, "Workflows:")
 	listed := 0
 	for _, name := range parser.ListCollections() {
 		path, _ := parser.GetCollectionPath(name)
-		workflows, err := workflow.DiscoverWorkflows(workflow.WorkflowsDir(path))
+		files, err := workflow.DiscoverWorkflowFiles(workflow.WorkflowsDir(path))
 		if err != nil {
 			return err
 		}
-		for _, wf := range workflows {
-			fmt.Fprintf(table, "  %s\t%s\t%s\n", wf.ID, wf.Name, name)
+		for _, file := range files {
+			fmt.Fprintf(table, "%s%s\t%s\t%s\n", selectionMarker(file.Path, selection.WorkflowPath), file.Workflow.ID, file.Workflow.Name, name)
 			listed++
 		}
 	}
 	if listed == 0 {
 		fmt.Fprintln(table, noneListed)
 	}
-	return table.Flush()
+	if err := table.Flush(); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, selectedLegend)
+	return nil
 }
 
-func writeNamedPaths(out io.Writer, names []string, pathOf func(string) (string, bool)) {
+func writeNamedPaths(out io.Writer, names []string, pathOf func(string) (string, bool), selectedPath string) {
 	if len(names) == 0 {
 		fmt.Fprintln(out, noneListed)
 		return
 	}
 	for _, name := range names {
 		path, _ := pathOf(name)
-		fmt.Fprintf(out, "  %s\t%s\n", name, path)
+		fmt.Fprintf(out, "%s%s\t%s\n", selectionMarker(path, selectedPath), name, path)
 	}
+}
+
+// selectionMarker prefixes a listed file, marking the selected one.
+func selectionMarker(path, selectedPath string) string {
+	if path != "" && path == selectedPath {
+		return selectedPrefix
+	}
+	return unselectedPrefix
 }
 
 // selectedCollections returns the collection given with -c, or every loaded one.
