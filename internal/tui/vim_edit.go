@@ -33,7 +33,46 @@ type vimEditPayload struct {
 	Method  string           `json:"method"`
 	URL     string           `json:"url"`
 	Headers []postman.Header `json:"headers"`
-	Body    string           `json:"body"`
+	Body    json.RawMessage  `json:"body"`
+}
+
+// encodeVimBody converts a Postman body.raw string into a value suitable for
+// embedding in the vim edit JSON file. If raw is itself valid JSON (the
+// common case for API bodies), it's decoded and re-indented so it appears in
+// the editor as a proper multi-line object instead of an escaped one-liner.
+// Non-JSON bodies (plain text, XML, etc.) are embedded as a normal JSON
+// string, same as before.
+func encodeVimBody(raw string) json.RawMessage {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed != "" {
+		var js any
+		if err := json.Unmarshal([]byte(trimmed), &js); err == nil {
+			if pretty, err := json.MarshalIndent(js, "", "  "); err == nil {
+				return json.RawMessage(pretty)
+			}
+		}
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return json.RawMessage(`""`)
+	}
+	return json.RawMessage(b)
+}
+
+// decodeVimBody reverses encodeVimBody: a plain JSON string means the body
+// was non-JSON text and is unwrapped verbatim; anything else (object, array,
+// number, bool) is JSON and is re-stringified for storage in body.raw,
+// preserving the formatting the user left it in.
+func decodeVimBody(raw json.RawMessage) string {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	return trimmed
 }
 
 // VimEditCompleteMsg is sent when the external editor exits after editing a request.
@@ -71,7 +110,7 @@ func (m Model) openVimForItem(item postman.Item, folderPath []string) (Model, te
 		Headers: headers,
 	}
 	if item.Request.Body != nil {
-		payload.Body = item.Request.Body.Raw
+		payload.Body = encodeVimBody(item.Request.Body.Raw)
 	}
 
 	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, folderPath, item.Name)
@@ -96,7 +135,7 @@ func (m Model) openVimForEditState() (Model, tea.Cmd) {
 		Headers: headers,
 	}
 	if m.editRequest.Body != nil {
-		payload.Body = m.editRequest.Body.Raw
+		payload.Body = encodeVimBody(m.editRequest.Body.Raw)
 	}
 
 	itemID := m.getRequestIdentifierByPath(m.editCollectionName, m.editItemPath, m.editOriginalName)
@@ -176,7 +215,7 @@ func (m Model) applyVimEditToEditState(payload vimEditPayload) Model {
 	if m.editRequest.Body == nil {
 		m.editRequest.Body = &postman.Body{Mode: "raw"}
 	}
-	m.editRequest.Body.Raw = payload.Body
+	m.editRequest.Body.Raw = decodeVimBody(payload.Body)
 
 	m.statusMessage = fmt.Sprintf("Updated from editor: %s (use :w to save to file)", payload.Name)
 	return m
@@ -193,8 +232,8 @@ func (m Model) applyVimEditToCollection(msg VimEditCompleteMsg, payload vimEditP
 		URL:    postman.URL{Raw: payload.URL},
 		Header: payload.Headers,
 	}
-	if payload.Body != "" {
-		updatedReq.Body = &postman.Body{Mode: "raw", Raw: payload.Body}
+	if bodyRaw := decodeVimBody(payload.Body); bodyRaw != "" {
+		updatedReq.Body = &postman.Body{Mode: "raw", Raw: bodyRaw}
 	}
 
 	if !m.updateRequestInCollection(msg.FolderPath, msg.OriginalName, newName, updatedReq) {
@@ -210,6 +249,57 @@ func (m Model) applyVimEditToCollection(msg VimEditCompleteMsg, payload vimEditP
 
 	m = m.refreshCurrentView()
 	m.statusMessage = fmt.Sprintf("Updated from editor: %s (use :w to save to file)", newName)
+	return m
+}
+
+// ── script editing via temp file ─────────────────────────────────────────────
+
+// VimScriptEditCompleteMsg is sent when the editor exits after editing a
+// pre-request/test/workflow-step script's content in an external editor.
+type VimScriptEditCompleteMsg struct {
+	TempFile string
+	Err      error
+}
+
+func (m Model) openVimForScript() (Model, tea.Cmd) {
+	content := m.editFieldTextArea.Value()
+
+	tmpFile, err := os.CreateTemp("", "postoffice-script-*.js")
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to create temp file: %v", err)
+		return m, nil
+	}
+	if _, err := tmpFile.WriteString(content); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		m.statusMessage = fmt.Sprintf("Failed to write temp file: %v", err)
+		return m, nil
+	}
+	tmpFile.Close()
+
+	tempFilePath := tmpFile.Name()
+	return m, tea.ExecProcess(exec.Command(editorBin(), tempFilePath), func(err error) tea.Msg {
+		return VimScriptEditCompleteMsg{TempFile: tempFilePath, Err: err}
+	})
+}
+
+func (m Model) applyVimScriptEdit(msg VimScriptEditCompleteMsg) Model {
+	defer os.Remove(msg.TempFile)
+
+	if msg.Err != nil {
+		m.statusMessage = fmt.Sprintf("Editor error: %v", msg.Err)
+		return m
+	}
+
+	data, err := os.ReadFile(msg.TempFile)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Failed to read edited file: %v", err)
+		return m
+	}
+
+	m.editFieldTextArea.SetValue(strings.TrimRight(string(data), "\n"))
+	m.editFieldTextArea.Focus()
+	m.statusMessage = "Updated from editor (:w to save, :wq to save & exit)"
 	return m
 }
 

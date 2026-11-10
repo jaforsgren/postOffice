@@ -12,6 +12,7 @@ import (
 	"postOffice/internal/servicebus"
 	"postOffice/internal/workflow"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -133,6 +134,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case VimEditCompleteMsg:
 		m = m.applyVimEdit(msg)
+		return m, nil
+
+	case VimScriptEditCompleteMsg:
+		m = m.applyVimScriptEdit(msg)
 		return m, nil
 
 	case VimEnvEditCompleteMsg:
@@ -920,8 +925,168 @@ func (m Model) refreshCurrentView() Model {
 		return m
 	}
 
+	if m.viewingFavorites {
+		return m.applyFavoritesView()
+	}
+
 	m = m.applyTreeItems(m.currentRequestsBase(), m.breadcrumb)
 	return m
+}
+
+// favoriteItemIDs returns the sorted list of favorited item IDs, suitable for
+// persisting — sorted so repeated saves produce a stable diff.
+func favoriteItemIDs(favorites map[string]bool) []string {
+	ids := make([]string, 0, len(favorites))
+	for id, on := range favorites {
+		if on {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// collectFavoriteItems walks the current collection depth-first and returns
+// every favorited request together with its real folder path (needed so
+// execute/edit/etc. work exactly as they would browsing that folder directly).
+func (m Model) collectFavoriteItems() ([]postman.Item, [][]string) {
+	if m.collection == nil {
+		return nil, nil
+	}
+
+	var items []postman.Item
+	var paths [][]string
+
+	var walk func(nodes []postman.Item, parentPath []string)
+	walk = func(nodes []postman.Item, parentPath []string) {
+		for _, item := range nodes {
+			if item.IsRequest() {
+				itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, parentPath, item.Name)
+				if m.favorites[itemID] {
+					items = append(items, item)
+					paths = append(paths, slices.Clone(parentPath))
+				}
+			}
+			if item.IsFolder() {
+				walk(item.Items, append(slices.Clone(parentPath), item.Name))
+			}
+		}
+	}
+	walk(m.collection.Items, nil)
+
+	return items, paths
+}
+
+// applyFavoritesView rebuilds m.items/currentItems/currentItemPaths as a flat
+// list of every favorited request in the current collection. Because
+// currentItemPaths already carries each row's real folder path independent of
+// m.breadcrumb (the same mechanism the tree-expand view relies on), every
+// existing ModeRequests interaction — execute, edit, script edit, duplicate,
+// delete — works against these rows unmodified.
+func (m Model) applyFavoritesView() Model {
+	items, paths := m.collectFavoriteItems()
+
+	display := make([]string, len(items))
+	for i, item := range items {
+		label := item.Name
+		if len(paths[i]) > 0 {
+			label = strings.Join(paths[i], " / ") + " / " + item.Name
+		}
+		display[i] = itemDisplayPrefix(item) + label
+	}
+
+	m.items = display
+	m.currentItems = items
+	m.currentItemPaths = paths
+
+	if m.cursor >= len(m.currentItems) {
+		if len(m.currentItems) > 0 {
+			m.cursor = len(m.currentItems) - 1
+		} else {
+			m.cursor = 0
+		}
+	}
+
+	return m
+}
+
+// enterFavoritesView switches ModeRequests into showing every favorited
+// request in the current collection as a flat list.
+func (m Model) enterFavoritesView() (Model, tea.Cmd) {
+	if m.collection == nil {
+		m.statusMessage = "No collection loaded"
+		return m, nil
+	}
+	if m.isViewingMergedCollection() {
+		m.statusMessage = "Favorites unavailable in combined collection view"
+		return m, nil
+	}
+
+	items, _ := m.collectFavoriteItems()
+	if len(items) == 0 {
+		m.statusMessage = "No favorited requests — press f on a request to favorite it"
+		return m, nil
+	}
+
+	m.favoritesReturnCursor = m.cursor
+	m.viewingFavorites = true
+	m.mode = ModeRequests
+	m.cursor = 0
+	m = m.applyFavoritesView()
+	m.statusMessage = fmt.Sprintf("Favorites (%d) — f to unfavorite, esc to close", len(items))
+	return m, nil
+}
+
+// exitFavoritesView leaves the favorites list and restores the real folder
+// the user was browsing before entering it (m.breadcrumb is never touched
+// while viewingFavorites is true, so it's still accurate).
+func (m Model) exitFavoritesView() Model {
+	m.viewingFavorites = false
+	m = m.applyTreeItems(m.currentRequestsBase(), m.breadcrumb)
+	if m.favoritesReturnCursor < len(m.currentItems) {
+		m.cursor = m.favoritesReturnCursor
+	} else {
+		m.cursor = 0
+	}
+	m.statusMessage = "Closed favorites view"
+	return m
+}
+
+// toggleFavoriteAtCursor favorites/unfavorites the request under the cursor
+// in ModeRequests (whether browsing normally or already inside the favorites
+// list) and persists the full favorites set to disk.
+func (m Model) toggleFavoriteAtCursor() (Model, tea.Cmd) {
+	if m.mode != ModeRequests || m.collection == nil || m.cursor >= len(m.currentItems) {
+		return m, nil
+	}
+	item := m.currentItems[m.cursor]
+	if !item.IsRequest() {
+		m.statusMessage = "Can only favorite requests, not folders"
+		return m, nil
+	}
+
+	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForCursor(), item.Name)
+	if m.favorites == nil {
+		m.favorites = make(map[string]bool)
+	}
+
+	if m.favorites[itemID] {
+		delete(m.favorites, itemID)
+		m.statusMessage = fmt.Sprintf("Unfavorited: %s", item.Name)
+	} else {
+		m.favorites[itemID] = true
+		m.statusMessage = fmt.Sprintf("Favorited: %s", item.Name)
+	}
+
+	if err := postman.SaveFavorites(favoriteItemIDs(m.favorites)); err != nil {
+		m.statusMessage = fmt.Sprintf("%s (failed to persist: %v)", m.statusMessage, err)
+	}
+
+	if m.viewingFavorites {
+		m = m.applyFavoritesView()
+	}
+
+	return m, nil
 }
 
 func (m Model) searchItemsRecursive(items []postman.Item, query string, parentPath string) ([]string, []postman.Item, []int) {
@@ -1581,7 +1746,7 @@ func (m Model) handleScriptSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m = m.selectWorkflowStepScriptType(scriptType)
-			return m, nil
+			return m.openVimForScript()
 		}
 
 		var scriptType ScriptType
@@ -1601,7 +1766,7 @@ func (m Model) handleScriptSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		m = m.selectScriptType(*item, scriptType)
-		return m, nil
+		return m.openVimForScript()
 	}
 
 	return m, nil
@@ -1630,6 +1795,10 @@ func (m Model) handleScriptEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.editFieldTextArea.Blur()
 			return m, m.commandInput.Focus()
 		}
+	}
+
+	if msg.String() == "ctrl+g" {
+		return m.openVimForScript()
 	}
 
 	m.editFieldTextArea, cmd = m.editFieldTextArea.Update(msg)

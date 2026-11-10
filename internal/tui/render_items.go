@@ -20,7 +20,10 @@ func (m Model) renderItemsList(availableHeight int) string {
 
 	var lines []string
 
-	if len(m.breadcrumb) > 0 {
+	if m.viewingFavorites {
+		lines = append(lines, folderStyle.Render("★ Favorites"))
+		lines = append(lines, "")
+	} else if len(m.breadcrumb) > 0 {
 		breadcrumbLine := "/ " + strings.Join(m.breadcrumb, " / ")
 		lines = append(lines, folderStyle.Render(breadcrumbLine))
 		lines = append(lines, "")
@@ -78,8 +81,11 @@ func (m Model) formatItemLine(index int) string {
 		item := m.currentItems[index]
 		if item.IsRequest() {
 			itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForIndex(index), item.Name)
+			if m.favorites[itemID] {
+				modifiedPrefix = "★ "
+			}
 			if m.isItemModified(itemID) {
-				modifiedPrefix = "* "
+				modifiedPrefix += "* "
 			}
 
 			if exec, exists := m.requestExecutions[itemID]; exists {

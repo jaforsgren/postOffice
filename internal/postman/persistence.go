@@ -9,6 +9,7 @@ import (
 
 const configFileName = ".postoffice_collections.json"
 const sessionFileName = ".postoffice_session.json"
+const favoritesFileName = ".postoffice_favorites.json"
 
 type PersistenceConfig struct {
 	CollectionPaths        []string `json:"collection_paths"`
@@ -176,4 +177,54 @@ func (p *Parser) LoadSession() (*Session, error) {
 	}
 
 	return &session, nil
+}
+
+// FavoritesConfig persists the set of favorited requests, identified by the
+// same "collection/folder/.../name" IDs used elsewhere in the TUI.
+type FavoritesConfig struct {
+	ItemIDs []string `json:"item_ids"`
+}
+
+// SaveFavorites writes the full set of favorited item IDs to disk, overwriting
+// whatever was there before — the TUI always calls this with its complete
+// in-memory set, so there's nothing to merge.
+func SaveFavorites(itemIDs []string) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		logger.LogError("SaveFavorites", "UserHomeDir", err)
+		return err
+	}
+
+	favoritesPath := filepath.Join(homeDir, favoritesFileName)
+	return saveToFile(FavoritesConfig{ItemIDs: itemIDs}, favoritesPath, "SaveFavorites")
+}
+
+// LoadFavorites reads the favorited item IDs from disk. A missing file is not
+// an error — it just means nothing has been favorited yet.
+func LoadFavorites() ([]string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		logger.LogError("LoadFavorites", "UserHomeDir", err)
+		return nil, err
+	}
+
+	favoritesPath := filepath.Join(homeDir, favoritesFileName)
+
+	logger.LogFileOpen(favoritesPath)
+	data, err := os.ReadFile(favoritesPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		logger.LogError("LoadFavorites", favoritesPath, err)
+		return nil, err
+	}
+
+	var config FavoritesConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		logger.LogError("LoadFavorites", favoritesPath, err)
+		return nil, err
+	}
+
+	return config.ItemIDs, nil
 }

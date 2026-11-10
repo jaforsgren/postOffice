@@ -199,6 +199,12 @@ type Model struct {
 
 	helpViewport viewport.Model
 	helpShowAll  bool
+
+	// favorites maps a request's "collection/folder/.../name" identifier
+	// (see getRequestIdentifierByPath) to true when it's been favorited.
+	favorites             map[string]bool
+	viewingFavorites      bool
+	favoritesReturnCursor int
 }
 
 // GRPCReflectMsg carries the result of an async gRPC server reflection call.
@@ -270,6 +276,12 @@ func NewModel(parser *postman.Parser) Model {
 		savedResponseViewport: viewport.New(0, 0),
 		helpViewport:          viewport.New(0, 0),
 		requestExecutions:     make(map[string]*RequestExecution),
+		favorites:             make(map[string]bool),
+	}
+	if ids, err := postman.LoadFavorites(); err == nil {
+		for _, id := range ids {
+			m.favorites[id] = true
+		}
 	}
 	m = m.restoreSession()
 	return m

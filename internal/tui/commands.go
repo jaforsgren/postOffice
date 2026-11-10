@@ -414,6 +414,20 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
+			Keys:        []string{"f"},
+			Description: "Toggle favorite",
+			ShortHelp:   "f",
+			Handler:     Model.toggleFavoriteAtCursor,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"F"},
+			Description: "Favorites",
+			ShortHelp:   "F",
+			Handler:     handleFavoritesKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Keys:        []string{"d"},
 			Description: "Discard selected",
 			ShortHelp:   "d",
@@ -1097,6 +1111,9 @@ func handleRestoreSessionKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleBackKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeRequests && m.viewingFavorites {
+		return m.exitFavoritesView(), nil
+	}
 	if m.mode == ModeResponse && m.viewingSavedResponse {
 		m.viewingSavedResponse = false
 		m.mode = ModeSavedResponses
@@ -1284,6 +1301,16 @@ func handleDuplicateKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "No request selected to duplicate"
 	}
 	return m, nil
+}
+
+func handleFavoritesKey(m Model) (Model, tea.Cmd) {
+	if m.mode != ModeRequests {
+		return m, nil
+	}
+	if m.viewingFavorites {
+		return m.exitFavoritesView(), nil
+	}
+	return m.enterFavoritesView()
 }
 
 func handleEditScriptKey(m Model) (Model, tea.Cmd) {
