@@ -185,6 +185,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pendingYank {
 			return m.handleYankKey(msg)
 		}
+		if m.mode == ModeRequests && m.splitViewActive && m.splitFocus != splitPaneNone {
+			focused, cmd, handled := m.handleSplitFocusKeys(msg)
+			if handled {
+				return focused, cmd
+			}
+			m = focused
+		}
 		if m.mode == ModeGRPCReflect {
 			return m.handleGRPCReflectKeys(msg)
 		}

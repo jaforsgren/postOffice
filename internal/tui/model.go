@@ -201,6 +201,9 @@ type Model struct {
 	lastExecutedItemID string
 
 	splitViewActive bool
+	// splitFocus is the split view pane j/k scroll instead of the list.
+	splitFocus      splitPane
+	splitPaneScroll [splitPaneCount]int
 
 	grpcEditEndpoint    string
 	grpcEditMethod      string

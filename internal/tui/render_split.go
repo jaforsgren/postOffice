@@ -28,6 +28,18 @@ func (m Model) renderRequestSplitView() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, m.renderSplitListPane(layout), rightColumn)
 }
 
+// maxPaneScroll stops scrolling once the last line is on screen, so a pane
+// never scrolls into blank space.
+func maxPaneScroll(lineCount, height int) int {
+	return max(lineCount-height, 0)
+}
+
+// scrolledContent is the part of lines a pane of height shows from scroll on.
+func scrolledContent(lines []string, scroll, height int) string {
+	scroll = min(scroll, maxPaneScroll(len(lines), height))
+	return strings.Join(lines[scroll:], "\n")
+}
+
 func (m Model) renderSplitListPane(layout requestSplitLayout) string {
 	content := m.emptyItemsMessage()
 	if len(m.items) > 0 {
@@ -39,17 +51,23 @@ func (m Model) renderSplitListPane(layout requestSplitLayout) string {
 }
 
 func (m Model) renderSplitInfoPane(layout requestSplitLayout) string {
-	content := noItemSelectedMessage
-	if item, ok := m.selectedItem(); ok {
-		content = strings.Join(m.withInfoItemAtCursor(item).buildItemDetailLines(), "\n")
-	}
-
-	return renderSplitPane(content, layout.rightWidth, layout.infoHeight, popupBorderColor)
+	content := scrolledContent(m.splitInfoLines(), m.splitPaneScroll[splitPaneInfo], paneInnerHeight(layout.infoHeight))
+	return renderSplitPane(content, layout.rightWidth, layout.infoHeight, m.splitPaneBorderColor(splitPaneInfo, popupBorderColor))
 }
 
 func (m Model) renderSplitResponsePane(layout requestSplitLayout) string {
 	content, borderColor := m.splitResponseContent()
-	return renderSplitPane(content, layout.rightWidth, layout.responseHeight, borderColor)
+	lines := strings.Split(content, "\n")
+	content = scrolledContent(lines, m.splitPaneScroll[splitPaneResponse], paneInnerHeight(layout.responseHeight))
+	return renderSplitPane(content, layout.rightWidth, layout.responseHeight, m.splitPaneBorderColor(splitPaneResponse, borderColor))
+}
+
+func (m Model) splitInfoLines() []string {
+	item, ok := m.selectedItem()
+	if !ok {
+		return []string{noItemSelectedMessage}
+	}
+	return m.withInfoItemAtCursor(item).buildItemDetailLines()
 }
 
 func (m Model) splitResponseContent() (string, lipgloss.Color) {

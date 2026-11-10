@@ -26,7 +26,7 @@ func (m Model) renderWorkflowDetailWithStepPanel() string {
 	)
 
 	panelLines := m.buildStepPanelLines(paneInnerWidth(layout.rightWidth))
-	scroll := min(m.workflowStepPanelScroll, maxStepPanelScroll(len(panelLines), paneInnerHeight(layout.listHeight)))
+	scroll := min(m.workflowStepPanelScroll, maxPaneScroll(len(panelLines), paneInnerHeight(layout.listHeight)))
 	panel := renderSplitPane(
 		strings.Join(panelLines[scroll:], "\n"),
 		layout.rightWidth, layout.listHeight, m.stepPanelBorderColor(),
@@ -192,11 +192,5 @@ func wrapLines(lines []string, width int) []string {
 func (m Model) maxStepPanelScroll() int {
 	layout := m.calculateRequestSplitLayout()
 	lineCount := len(m.buildStepPanelLines(paneInnerWidth(layout.rightWidth)))
-	return maxStepPanelScroll(lineCount, paneInnerHeight(layout.listHeight))
-}
-
-// maxStepPanelScroll stops scrolling once the last line is on screen, so the
-// panel never scrolls into blank space.
-func maxStepPanelScroll(lineCount, height int) int {
-	return max(lineCount-height, 0)
+	return maxPaneScroll(lineCount, paneInnerHeight(layout.listHeight))
 }
