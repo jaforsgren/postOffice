@@ -249,7 +249,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Quit application",
 			ShortHelp:   "q",
 			Handler:     handleQuitKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeEnvironments, ModeVariables, ModeRequests},
+			AvailableIn: []ViewMode{ModeCollections},
+		},
+		{
+			Keys:        []string{"q"},
+			Description: "Back (collections at the top)",
+			ShortHelp:   "q",
+			Handler:     handleBackOutKey,
+			AvailableIn: []ViewMode{ModeRequests, ModeEnvironments, ModeVariables},
 		},
 		{
 			Keys:        []string{"ctrl+v"},
@@ -1068,6 +1075,15 @@ func handleQuitKey(m Model) (Model, tea.Cmd) {
 	_ = m.parser.SaveState()
 	m.saveSession()
 	return m, tea.Quit
+}
+
+// handleBackOutKey goes back like esc, and from a list's top level to the
+// collections list, so q only quits from there and can't exit by accident.
+func handleBackOutKey(m Model) (Model, tea.Cmd) {
+	if m.viewingFavorites || m.searchActive || len(m.breadcrumb) > 0 {
+		return handleBackKey(m)
+	}
+	return handleCollectionsCommand(m, nil)
 }
 
 func handleEnterKey(m Model) (Model, tea.Cmd) {
