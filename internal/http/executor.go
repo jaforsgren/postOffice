@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,16 @@ import (
 	"time"
 )
 
+const (
+	requestTimeout     = 30 * time.Second
+	defaultContentType = "application/json"
+	// SkippedStatus is reported for a request whose pre-request script called
+	// pm.execution.skipRequest(); nothing was sent.
+	SkippedStatus = "Skipped"
+)
+
+var ErrPreRequestScript = errors.New("pre-request script errors")
+
 type Response struct {
 	StatusCode     int
 	Status         string
@@ -18,6 +29,7 @@ type Response struct {
 	Body           string
 	Duration       time.Duration
 	Error          error
+	Skipped        bool
 	RequestURL     string
 	RequestMethod  string
 	RequestHeaders map[string]string
@@ -31,37 +43,51 @@ type Executor struct {
 func NewExecutor() *Executor {
 	return &Executor{
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: requestTimeout,
 		},
 	}
 }
 
+// Execute sends req. With a non-nil scope it first runs the collection →
+// folder → request pre-request scripts (which may rewrite or skip the
+// request), and afterwards the test scripts, returning their combined result.
+// Without a scope no scripts run and the result is nil.
 func (e *Executor) Execute(
 	req *postman.Request,
-	item *postman.Item,
-	collection *postman.Collection,
-	environment *postman.Environment,
+	scope *script.RequestScope,
 	variables []postman.VariableSource,
 ) (*Response, *script.TestResult) {
 	start := time.Now()
 	resp := &Response{}
 
-	updatedVariables := variables
-	if item != nil {
-		preReqErrors := e.executePreRequestScripts(item, collection, environment)
-		if len(preReqErrors) > 0 {
-			resp.Error = fmt.Errorf("pre-request script errors: %v", preReqErrors)
-			resp.Duration = time.Since(start)
-			return resp, nil
+	var scriptRun *script.RequestRun
+	var scriptResult *script.TestResult
+	requestToSend := req
+	if scope != nil {
+		if scope.Sender == nil {
+			scope.Sender = e.SendRequest
 		}
-		updatedVariables = postman.GetAllVariables(collection, nil, environment)
+		scriptRun = script.NewRequestRun(*scope)
+		requestToSend, scriptResult = scriptRun.PreRequest(req)
+		if len(scriptResult.Errors) > 0 {
+			resp.Error = fmt.Errorf("%w: %v", ErrPreRequestScript, scriptResult.Errors)
+			resp.Duration = time.Since(start)
+			return resp, scriptResult
+		}
+		if scriptResult.Skipped {
+			resp.Skipped = true
+			resp.Status = SkippedStatus
+			resp.Duration = time.Since(start)
+			return resp, scriptResult
+		}
+		variables = postman.GetAllVariables(scope.Collection, scope.FolderPath, scope.Environment)
 	}
 
-	httpReq, err := e.buildRequest(req, updatedVariables)
+	httpReq, err := e.buildRequest(requestToSend, variables)
 	if err != nil {
 		resp.Error = err
 		resp.Duration = time.Since(start)
-		return resp, nil
+		return resp, scriptResult
 	}
 
 	resp.RequestMethod = httpReq.Method
@@ -82,7 +108,7 @@ func (e *Executor) Execute(
 	if err != nil {
 		resp.Error = fmt.Errorf("request failed: %w", err)
 		resp.Duration = time.Since(start)
-		return resp, nil
+		return resp, scriptResult
 	}
 	defer httpResp.Body.Close()
 
@@ -94,88 +120,68 @@ func (e *Executor) Execute(
 	if err != nil {
 		resp.Error = fmt.Errorf("failed to read response body: %w", err)
 		resp.Duration = time.Since(start)
-		return resp, nil
+		return resp, scriptResult
 	}
 
 	resp.Body = string(body)
 	resp.Duration = time.Since(start)
 
-	testResult := e.executeTestScripts(item, collection, environment, resp)
+	if scriptRun != nil {
+		responseData := &script.ResponseData{
+			StatusCode:   resp.StatusCode,
+			Status:       resp.Status,
+			Body:         resp.Body,
+			Headers:      resp.Headers,
+			ResponseTime: resp.Duration.Milliseconds(),
+		}
+		scriptResult.Merge(scriptRun.Test(script.NewRequestData(requestToSend), responseData))
+	}
 
-	return resp, testResult
+	return resp, scriptResult
 }
 
-func (e *Executor) executePreRequestScripts(
-	item *postman.Item,
-	collection *postman.Collection,
-	environment *postman.Environment,
-) []string {
-	ctx := &script.ExecutionContext{}
+// SendRequest performs a script's pm.sendRequest call. As in Postman, the
+// spec is sent as given: {{variables}} are not resolved.
+func (e *Executor) SendRequest(spec script.SendRequestSpec) (*script.ResponseData, error) {
+	var body io.Reader
+	if spec.Body != "" {
+		body = strings.NewReader(spec.Body)
+	}
+	httpReq, err := http.NewRequest(spec.Method, spec.URL, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	for _, header := range spec.Headers {
+		httpReq.Header.Set(header.Key, header.Value)
+	}
+	applyDefaultContentType(httpReq, body != nil)
 
-	if collection != nil {
-		ctx.CollectionVars = collection.Variables
+	start := time.Now()
+	httpResp, err := e.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	respBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if environment != nil {
-		ctx.EnvironmentVars = environment.Values
-	}
-
-	errors := script.ExecutePreRequestScripts(item.Events, ctx)
-
-	if collection != nil {
-		collection.Variables = ctx.CollectionVars
-	}
-
-	if environment != nil {
-		environment.Values = ctx.EnvironmentVars
-	}
-
-	return errors
+	return &script.ResponseData{
+		StatusCode:   httpResp.StatusCode,
+		Status:       httpResp.Status,
+		Body:         string(respBody),
+		Headers:      httpResp.Header,
+		ResponseTime: time.Since(start).Milliseconds(),
+	}, nil
 }
 
-func (e *Executor) executeTestScripts(
-	item *postman.Item,
-	collection *postman.Collection,
-	environment *postman.Environment,
-	resp *Response,
-) *script.TestResult {
-	if item == nil {
-		return nil
+func applyDefaultContentType(httpReq *http.Request, hasBody bool) {
+	if hasBody && httpReq.Header.Get("Content-Type") == "" {
+		httpReq.Header.Set("Content-Type", defaultContentType)
 	}
-
-	responseData := &script.ResponseData{
-		StatusCode:   resp.StatusCode,
-		Status:       resp.Status,
-		Body:         resp.Body,
-		Headers:      resp.Headers,
-		ResponseTime: resp.Duration.Milliseconds(),
-	}
-
-	ctx := &script.ExecutionContext{
-		Response: responseData,
-	}
-
-	if collection != nil {
-		ctx.CollectionVars = collection.Variables
-	}
-
-	if environment != nil {
-		ctx.EnvironmentVars = environment.Values
-	}
-
-	result := script.ExecuteTestScripts(item.Events, ctx)
-
-	if collection != nil {
-		collection.Variables = ctx.CollectionVars
-	}
-
-	if environment != nil {
-		environment.Values = ctx.EnvironmentVars
-	}
-
-	return result
 }
-
 
 func (e *Executor) buildRequest(req *postman.Request, variables []postman.VariableSource) (*http.Request, error) {
 	url := req.URL.Raw
@@ -200,9 +206,7 @@ func (e *Executor) buildRequest(req *postman.Request, variables []postman.Variab
 		httpReq.Header.Set(header.Key, resolvedValue)
 	}
 
-	if body != nil && httpReq.Header.Get("Content-Type") == "" {
-		httpReq.Header.Set("Content-Type", "application/json")
-	}
+	applyDefaultContentType(httpReq, body != nil)
 
 	return httpReq, nil
 }

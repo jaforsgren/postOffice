@@ -2,6 +2,12 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
+const (
+	mainWindowBorderColor = lipgloss.Color("81")
+	popupBorderColor      = lipgloss.Color("5")
+	errorBorderColor      = lipgloss.Color("1")
+)
+
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(false).
@@ -42,8 +48,8 @@ var (
 
 	mainWindowStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("81")).
-			Padding(1, 2)
+			BorderForeground(mainWindowBorderColor).
+			Padding(paneVerticalPadding, paneHorizontalPadding)
 
 	subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )

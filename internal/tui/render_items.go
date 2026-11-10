@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	itemNameColumnWidth    = 60
+	itemNameWidth          = 60
 	itemNameTruncationTail = "..."
 )
 
@@ -24,6 +24,17 @@ func (m Model) renderItemsList(availableHeight int) string {
 		return m.renderEmptyItems(availableHeight)
 	}
 
+	content := strings.Join(m.buildItemsListLines(availableHeight, itemNameWidth), "\n")
+	return mainWindowStyle.
+		Height(availableHeight).
+		Width(m.width - windowWidthInset).
+		Render(content)
+}
+
+// buildItemsListLines returns the header and the window of item lines around
+// the cursor. The window is one line shorter than availableHeight minus the
+// header, regardless of the caller's padding.
+func (m Model) buildItemsListLines(availableHeight int, nameWidth int) []string {
 	var lines []string
 
 	if m.viewingFavorites {
@@ -39,18 +50,20 @@ func (m Model) renderItemsList(availableHeight int) string {
 	startIdx, endIdx := calculateVisibleWindow(m.cursor, len(m.items), visibleLines)
 
 	for i := startIdx; i < endIdx; i++ {
-		line := m.formatItemLine(i)
-		lines = append(lines, line)
+		lines = append(lines, m.formatItemLine(i, nameWidth))
 	}
 
-	content := strings.Join(lines, "\n")
-	return mainWindowStyle.
-		Height(availableHeight).
-		Width(m.width - 4).
-		Render(content)
+	return lines
 }
 
 func (m Model) renderEmptyItems(availableHeight int) string {
+	return mainWindowStyle.
+		Height(availableHeight).
+		Width(m.width - windowWidthInset).
+		Render(m.emptyItemsMessage())
+}
+
+func (m Model) emptyItemsMessage() string {
 	emptyMsg := "No items to display\n\n"
 	emptyMsg += "Commands:\n"
 	emptyMsg += "  :load <path> or :l <path>     - Load a Postman collection\n"
@@ -65,13 +78,10 @@ func (m Model) renderEmptyItems(availableHeight int) string {
 	if m.collection != nil {
 		emptyMsg += fmt.Sprintf("\n[Collection loaded: %s - %d items]\n", m.collection.Info.Name, len(m.collection.Items))
 	}
-	return mainWindowStyle.
-		Height(availableHeight).
-		Width(m.width - 4).
-		Render(emptyMsg)
+	return emptyMsg
 }
 
-func (m Model) formatItemLine(index int) string {
+func (m Model) formatItemLine(index int, nameWidth int) string {
 	line := m.items[index]
 
 	modifiedPrefix := ""
@@ -135,8 +145,8 @@ func (m Model) formatItemLine(index int) string {
 
 	// Measured in display cells, not bytes: names hold multi-byte runes (tree markers, "→", emoji
 	// such as folderWorkflowIndicator) that would otherwise shift the status column.
-	line = ansi.Truncate(line, itemNameColumnWidth, itemNameTruncationTail)
-	line += strings.Repeat(" ", itemNameColumnWidth-ansi.StringWidth(line))
+	line = ansi.Truncate(line, nameWidth, itemNameTruncationTail)
+	line += strings.Repeat(" ", nameWidth-ansi.StringWidth(line))
 
 	fullLine := cursor + modifiedPrefix + line + executionInfo + locationInfo
 

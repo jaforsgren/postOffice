@@ -8,14 +8,16 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const noItemSelectedMessage = "No item selected"
+
 func (m Model) renderInfoPopup(availableHeight int) string {
 	if m.currentInfoItem == nil && m.environment == nil {
-		return m.renderEmptyPopup("No item selected", availableHeight)
+		return m.renderEmptyPopup(noItemSelectedMessage, availableHeight)
 	}
 
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("5")).
+		BorderForeground(popupBorderColor).
 		Height(availableHeight).
 		Width(m.width-4).
 		Padding(1, 2).
@@ -28,12 +30,12 @@ func (m Model) renderInfoView() string {
 		return mainWindowStyle.
 			Height(metrics.contentHeight).
 			Width(m.width - 4).
-			Render("No item selected")
+			Render(noItemSelectedMessage)
 	}
 
 	return mainWindowStyle.
-		Height(m.height-8).
-		Width(m.width-4).
+		Height(m.height - 8).
+		Width(m.width - 4).
 		Render(m.infoViewport.View())
 }
 
@@ -126,6 +128,13 @@ func (m Model) buildItemInfoLines() []string {
 
 	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Item Info (q: close)"))
 	lines = append(lines, "")
+	lines = append(lines, m.buildItemDetailLines()...)
+
+	return lines
+}
+
+func (m Model) buildItemDetailLines() []string {
+	var lines []string
 
 	lines = append(lines, requestStyle.Render("Name:"))
 	lines = append(lines, "  "+m.currentInfoItem.Name)
@@ -499,7 +508,7 @@ func (m Model) renderJSONPopup(availableHeight int) string {
 
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("5")).
+		BorderForeground(popupBorderColor).
 		Height(availableHeight).
 		Width(m.width-4).
 		Padding(1, 2).
@@ -516,7 +525,7 @@ func (m Model) renderJSONView() string {
 	}
 
 	return mainWindowStyle.
-		Height(m.height-8).
-		Width(m.width-4).
+		Height(m.height - 8).
+		Width(m.width - 4).
 		Render(m.jsonViewport.View())
 }

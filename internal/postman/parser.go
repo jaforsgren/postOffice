@@ -34,7 +34,7 @@ func NewParser() *Parser {
 }
 
 func (p *Parser) LoadCollection(path string) (*Collection, error) {
-	expandedPath, err := expandPath(path)
+	expandedPath, err := ExpandPath(path)
 	if err != nil {
 		logger.LogError("LoadCollection", path, err)
 		return nil, fmt.Errorf("failed to expand path: %w", err)
@@ -92,7 +92,8 @@ func parseOpenAPISpec(data []byte) (*Collection, error) {
 	return collection, nil
 }
 
-func expandPath(path string) (string, error) {
+// ExpandPath trims path and expands a leading "~/" to the home directory.
+func ExpandPath(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if strings.HasPrefix(path, "~/") {
 		homeDir, err := os.UserHomeDir()
@@ -129,7 +130,7 @@ func (p *Parser) ListCollections() []string {
 }
 
 func (p *Parser) LoadEnvironment(path string) (*Environment, error) {
-	expandedPath, err := expandPath(path)
+	expandedPath, err := ExpandPath(path)
 	if err != nil {
 		logger.LogError("LoadEnvironment", path, err)
 		return nil, fmt.Errorf("failed to expand path: %w", err)

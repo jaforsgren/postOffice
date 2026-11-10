@@ -1552,7 +1552,7 @@ func TestItemDisplayPrefix(t *testing.T) {
 	}
 }
 
-func TestExecuteRequest_GRPCReturnsUnsupported(t *testing.T) {
+func TestExecuteRequest_GRPCSendsRequest(t *testing.T) {
 	m := createTestModel()
 	grpcItem := postman.Item{
 		Name: "SayHello",
@@ -1563,10 +1563,11 @@ func TestExecuteRequest_GRPCReturnsUnsupported(t *testing.T) {
 	}
 
 	newM, cmd := m.executeRequest(grpcItem, m.breadcrumb)
-	if cmd != nil {
-		t.Error("Expected no command for gRPC request execution")
+	if cmd == nil {
+		t.Fatal("Expected a command that executes the gRPC request")
 	}
-	if newM.statusMessage == "" {
-		t.Error("Expected status message for unsupported gRPC execution")
+	itemID := newM.getRequestIdentifierByPath(newM.collection.Info.Name, newM.breadcrumb, grpcItem.Name)
+	if execution, ok := newM.requestExecutions[itemID]; !ok || execution.Status != "Sending..." {
+		t.Errorf("Expected the gRPC request to be marked as sending, got %+v", execution)
 	}
 }

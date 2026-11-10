@@ -45,6 +45,10 @@ const (
 
 const modeUnset ViewMode = -1
 
+// workflowProgressBuffer is how many run state snapshots may queue before the
+// runner blocks waiting for the TUI to render them.
+const workflowProgressBuffer = 20
+
 type EditType int
 
 const (
@@ -75,6 +79,16 @@ type RequestExecution struct {
 	TestResult *script.TestResult
 }
 
+// requestExecutor sends a request and runs its scripts; HTTP and gRPC
+// requests each have one.
+type requestExecutor interface {
+	Execute(
+		req *postman.Request,
+		scope *script.RequestScope,
+		variables []postman.VariableSource,
+	) (*http.Response, *script.TestResult)
+}
+
 type RequestCompleteMsg struct {
 	ItemID      string
 	Response    *http.Response
@@ -88,6 +102,7 @@ type RequestCompleteMsg struct {
 type Model struct {
 	parser              *postman.Parser
 	executor            *http.Executor
+	grpcExecutor        *grpc.Executor
 	commandRegistry     *CommandRegistry
 	mode                ViewMode
 	commandMode         bool
@@ -174,6 +189,8 @@ type Model struct {
 	requestExecutions  map[string]*RequestExecution
 	lastExecutedItemID string
 
+	splitViewActive bool
+
 	grpcEditEndpoint    string
 	grpcEditMethod      string
 	grpcEditTLS         bool
@@ -181,12 +198,16 @@ type Model struct {
 	grpcSelectedService int
 	grpcReflectPhase    GRPCReflectPhase
 
-	workflows              []*workflow.Workflow
-	workflowCursor         int
-	workflowStepCursor     int
-	activeWorkflow         *workflow.Workflow
-	workflowState          workflow.ExecutionState
-	workflowChan           <-chan workflow.ExecutionState
+	workflows          []*workflow.Workflow
+	workflowCursor     int
+	workflowStepCursor int
+	activeWorkflow     *workflow.Workflow
+	workflowState      workflow.ExecutionState
+	workflowChan       <-chan workflow.ExecutionState
+	// isCollectionRun is true when ModeWorkflowRun shows a collection run of
+	// collectionRunFolder (empty = whole collection) rather than a workflow.
+	isCollectionRun        bool
+	collectionRunFolder    []string
 	workflowViewport       viewport.Model
 	addingWorkflowStep     bool
 	editingWorkflowStepIdx int
@@ -254,6 +275,7 @@ func NewModel(parser *postman.Parser) Model {
 	m := Model{
 		parser:                parser,
 		executor:              http.NewExecutor(),
+		grpcExecutor:          grpc.NewExecutor(),
 		commandRegistry:       NewCommandRegistry(),
 		mode:                  ModeCollections,
 		commandMode:           false,

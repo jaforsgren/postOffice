@@ -273,7 +273,7 @@ func TestFormatItemLine_TreeIndentationForExpandedChildren(t *testing.T) {
 	innerLine := ""
 	for i, item := range m.currentItems {
 		if item.Name == "Inner" {
-			innerLine = m.formatItemLine(i)
+			innerLine = m.formatItemLine(i, itemNameWidth)
 		}
 	}
 	if innerLine == "" {

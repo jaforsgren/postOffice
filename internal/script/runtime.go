@@ -1,6 +1,7 @@
 package script
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,8 @@ import (
 	"postOffice/internal/postman"
 )
 
+// DefaultScriptTimeout bounds each synchronous JS segment: a script body or
+// one queued callback. Waiting on timers and HTTP is not counted.
 const DefaultScriptTimeout = 5 * time.Second
 
 type Runtime struct {
@@ -17,10 +20,7 @@ type Runtime struct {
 }
 
 func NewRuntime() *Runtime {
-	return &Runtime{
-		vm:      goja.New(),
-		timeout: DefaultScriptTimeout,
-	}
+	return NewRuntimeWithTimeout(DefaultScriptTimeout)
 }
 
 func NewRuntimeWithTimeout(timeout time.Duration) *Runtime {
@@ -31,130 +31,83 @@ func NewRuntimeWithTimeout(timeout time.Duration) *Runtime {
 }
 
 func (r *Runtime) ExecuteTestScript(script postman.Script, ctx *ExecutionContext) *TestResult {
-	result := &TestResult{
-		Tests:  []Test{},
-		Errors: []string{},
-	}
-
-	if len(script.Exec) == 0 {
-		return result
-	}
-
-	if err := setupPmAPI(r.vm, ctx, result); err != nil {
-		result.AddError(fmt.Sprintf("failed to setup pm API: %v", err))
-		return result
-	}
-
-	if err := setupCryptoJS(r.vm); err != nil {
-		result.AddError(fmt.Sprintf("failed to setup CryptoJS: %v", err))
-		return result
-	}
-
-	scriptCode := strings.Join(script.Exec, "\n")
-
-	timeoutChan := make(chan struct{})
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-time.After(r.timeout):
-			r.vm.Interrupt("timeout")
-			close(timeoutChan)
-		case <-done:
-		}
-	}()
-
-	_, err := r.vm.RunString(scriptCode)
-	close(done)
-
-	select {
-	case <-timeoutChan:
-		result.AddError(fmt.Sprintf("script execution timeout after %v", r.timeout))
-	default:
-		if err != nil {
-			result.AddError(fmt.Sprintf("script execution failed: %v", err))
-		}
-	}
-
-	return result
-}
-
-func ExecuteTestScripts(events []postman.Event, ctx *ExecutionContext) *TestResult {
-	combinedResult := &TestResult{
-		Tests:  []Test{},
-		Errors: []string{},
-	}
-
-	for _, event := range events {
-		if event.Listen == "test" {
-			runtime := NewRuntime()
-			result := runtime.ExecuteTestScript(event.Script, ctx)
-
-			combinedResult.Tests = append(combinedResult.Tests, result.Tests...)
-			combinedResult.Errors = append(combinedResult.Errors, result.Errors...)
-		}
-	}
-
-	return combinedResult
-}
-
-func ExecutePreRequestScripts(events []postman.Event, ctx *ExecutionContext) []string {
-	var errors []string
-
-	for _, event := range events {
-		if event.Listen == "prerequest" {
-			runtime := NewRuntime()
-			result := runtime.ExecutePreRequestScript(event.Script, ctx)
-			errors = append(errors, result.Errors...)
-		}
-	}
-
-	return errors
+	return r.execute(PhaseTest, []postman.Script{script}, ctx)
 }
 
 func (r *Runtime) ExecutePreRequestScript(script postman.Script, ctx *ExecutionContext) *TestResult {
-	result := &TestResult{
-		Tests:  []Test{},
-		Errors: []string{},
-	}
+	return r.execute(PhasePreRequest, []postman.Script{script}, ctx)
+}
 
-	if len(script.Exec) == 0 {
+// ExecuteChain runs every phase script in eventScopes in order (outermost
+// scope first: collection, folders, request) in one VM, so implicit globals a
+// collection script defines are visible to the request's script, as in
+// Postman. A pre-request skip stops the remaining scripts.
+func (r *Runtime) ExecuteChain(phase Phase, eventScopes [][]postman.Event, ctx *ExecutionContext) *TestResult {
+	var scripts []postman.Script
+	for _, events := range eventScopes {
+		for _, event := range events {
+			if event.Listen == string(phase) {
+				scripts = append(scripts, event.Script)
+			}
+		}
+	}
+	return r.execute(phase, scripts, ctx)
+}
+
+func (r *Runtime) execute(phase Phase, scripts []postman.Script, ctx *ExecutionContext) *TestResult {
+	result := newTestResult()
+
+	scripts = nonEmptyScripts(scripts)
+	if len(scripts) == 0 {
 		return result
 	}
 
-	if err := setupPmAPI(r.vm, ctx, result); err != nil {
+	loop := newEventLoop(r.vm, r.timeout)
+	if err := setupPmAPI(r.vm, ctx, result, phase, loop); err != nil {
 		result.AddError(fmt.Sprintf("failed to setup pm API: %v", err))
 		return result
 	}
-
 	if err := setupCryptoJS(r.vm); err != nil {
 		result.AddError(fmt.Sprintf("failed to setup CryptoJS: %v", err))
 		return result
 	}
 
-	scriptCode := strings.Join(script.Exec, "\n")
-
-	timeoutChan := make(chan struct{})
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-time.After(r.timeout):
-			r.vm.Interrupt("timeout")
-			close(timeoutChan)
-		case <-done:
+	for _, script := range scripts {
+		if result.Skipped {
+			break
 		}
-	}()
-
-	_, err := r.vm.RunString(scriptCode)
-	close(done)
-
-	select {
-	case <-timeoutChan:
-		result.AddError(fmt.Sprintf("script execution timeout after %v", r.timeout))
-	default:
-		if err != nil {
-			result.AddError(fmt.Sprintf("script execution failed: %v", err))
+		if err := loop.RunScript(isolateScope(script)); err != nil {
+			result.AddError(scriptErrorMessage(err))
+		}
+		for _, err := range loop.Drain() {
+			result.AddError(scriptErrorMessage(err))
 		}
 	}
 
 	return result
+}
+
+func nonEmptyScripts(scripts []postman.Script) []postman.Script {
+	var nonEmpty []postman.Script
+	for _, script := range scripts {
+		if len(script.Exec) > 0 {
+			nonEmpty = append(nonEmpty, script)
+		}
+	}
+	return nonEmpty
+}
+
+// isolateScope wraps a script in its own function scope. Postman does the
+// same: SAPI's collection and request test scripts both declare
+// `const CLIENT_ERROR`, which would be a redeclaration error in one shared
+// scope, while implicit globals (`sapi = {...}`) still carry over.
+func isolateScope(script postman.Script) string {
+	return "(function () {\n" + strings.Join(script.Exec, "\n") + "\n})();"
+}
+
+func scriptErrorMessage(err error) string {
+	if errors.Is(err, ErrScriptTimeout) || errors.Is(err, ErrEventLoopTimeout) {
+		return err.Error()
+	}
+	return fmt.Sprintf("script execution failed: %v", err)
 }

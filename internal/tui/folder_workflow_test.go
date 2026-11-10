@@ -256,7 +256,7 @@ func folderLine(t *testing.T, m Model, name string) string {
 	t.Helper()
 	for i, item := range m.currentItems {
 		if item.Name == name {
-			return ansi.Strip(m.formatItemLine(i))
+			return ansi.Strip(m.formatItemLine(i, itemNameWidth))
 		}
 	}
 	t.Fatalf("no row for %q", name)

@@ -10,7 +10,7 @@ A terminal UI for browsing and executing Postman collections with vim-style navi
 - Persistent session state
 - Environment variable support
 - Request and collection editing
-- gRPC request editing with live server reflection
+- gRPC request execution and editing, with live server reflection or a descriptor set
 - Workflow automation with inline JavaScript orchestration
 - Path parameter editing (`:id` style) per request
 - Variable autocomplete with resolved value preview when typing `{{`
@@ -48,6 +48,7 @@ go build -o postOffice
 - `i` — show info for selected item
 - `J` — show raw JSON for selected item
 - `H` — view saved responses for selected request
+- `tab` — toggle split view (list | info + response)
 - `r` — refresh current view
 - `/` — search / filter items
 - `?` — show help
@@ -97,6 +98,7 @@ Press `:` to enter command mode:
 - `:wf` — browse workflows
 - `:wf run <id>` — run a workflow by ID
 - `:wf new <id>` — create a new workflow
+- `:run` or `:runner` — run every request in the current folder (collection runner)
 - `:w` — save changes to file
 - `:wq` — save changes and quit
 - `:changes` or `:ch` — show unsaved changes
@@ -127,6 +129,26 @@ When loading files, `~/` is expanded to your home directory:
 3. View the response — use `j/k` to scroll, `d/u` for half-page scrolling
 4. Press `q` or `esc` to close
 5. Press `ctrl+r` to view the last response without re-executing
+
+### Scripts
+
+Pre-request and test scripts run the way Postman runs them: collection scripts first, then each enclosing folder's, then the request's. All of a request's scripts share one sandbox, so a helper defined as an implicit global in a collection script (`helpers = {...}`) is available to every request script, while each script keeps its own scope for `const`/`let`.
+
+Supported sandbox APIs:
+- `pm.test`, `pm.expect` (Chai BDD: `eql`, `equal`, `oneOf`, `a/an`, `include`, `keys`, `above/below/at.most/at.least/within`, `true/false/null/undefined/empty/exist/ok`, `lengthOf`, `match`, `property`, `members`, `throw`, `not`/`deep`/`any` flags, `pm.expect.fail`)
+- `pm.response` — `code`, `status`, `responseTime`, `responseSize`, `json()`, `text()`, `headers.get/has/toObject/all/each`, `to.have.status/header/jsonBody`, `to.be.ok/error`
+- `pm.request` — `method`, `url.toString()/getPath()`, `headers.get/has/add/upsert/remove`, `body.raw`, `body.update(...)`; pre-request changes are applied to the request that is sent
+- `pm.variables`, `pm.collectionVariables`, `pm.environment` — `get/set/has/unset`, plus `pm.environment.name`
+- `pm.info` — `requestName`, `requestId`, `eventName`
+- `pm.execution.skipRequest()` and `pm.execution.setNextRequest(name | id | null)` (honoured by `:run`)
+- `pm.sendRequest(urlOrOptions, callback)` or `await pm.sendRequest(...)`; `{{variables}}` are not resolved, as in Postman
+- `setTimeout`/`clearTimeout`, `console.*`, `CryptoJS` (HmacSHA256, Base64, Utf8), `atob`/`btoa`
+
+Each synchronous piece of a script (its body or one callback) may run for 5 seconds; waiting on timers and `pm.sendRequest` does not count, but all pending callbacks must finish within 2 minutes.
+
+### Collection Runner
+
+`:run` runs every request under the current folder (the whole collection at the top level) in order, like Postman's Collection Runner. `pm.execution.setNextRequest` jumps to another request in the run by name or id, and `null` ends the run; a run stops after 1000 requests to catch setNextRequest loops. Progress, test results and console output appear in the run view: `enter` re-runs, `esc` returns to the requests, `L` opens the full run report in your editor.
 
 ## Editing Requests
 
@@ -213,6 +235,7 @@ script: |
 - `f` — run from selected step
 - `r` — run selected step only
 - `ctrl+r` — view last response for selected step
+- `L` — open the run report (steps and logs) in your editor (`$VISUAL`, `$EDITOR`, else nvim)
 
 The workflow script receives `wf` (workflow control API) and `pm` (full Postman-compatible scripting API). Pre/post request scripts attached to collection requests are triggered automatically on each step.
 
@@ -221,6 +244,30 @@ See [docs/workflows.md](docs/workflows.md) for full documentation.
 ## gRPC Requests
 
 PostOffice supports gRPC requests stored in Postman collections (method `GRPC` or URL scheme `grpc://`). A dedicated edit form replaces the standard HTTP edit fields.
+
+### Executing a gRPC Request
+
+Press `enter` on a gRPC request to send it, just like an HTTP request; workflows run gRPC steps the same way. Only unary calls are supported.
+
+- **Variables** — `{{var}}` placeholders in the URL, metadata keys and values, and the message body are resolved before sending.
+- **Metadata** — the request's headers are sent as gRPC metadata. Values of keys ending in `-bin` are written base64-encoded (as in Postman) and sent as binary.
+- **Scripts** — pre-request and test scripts run as for HTTP requests, so a create call can store the id it returns for later requests:
+
+  ```js
+  pm.environment.set("claim_id", pm.response.json().claimId);
+  ```
+
+  The response body is the reply message as protobuf JSON, with camelCase field names. A successful call has `pm.response.code` 200 so `pm.response.to.have.status(200)` works; a failed call shows its gRPC status (e.g. `NotFound`) and does not run test scripts.
+
+### Servers Without Reflection
+
+Message types are looked up through server reflection. For servers that don't offer it, point the `GRPC_PROTOSET` variable (environment or collection) at a descriptor set compiled from the service's protos:
+
+```bash
+protoc -I protos --include_imports --descriptor_set_out=services.protoset $(find protos -name '*.proto')
+```
+
+PostOffice falls back to the descriptor set when the server answers reflection with `Unimplemented`; without one, the request fails with a message saying so.
 
 ### Editing a gRPC Request
 
