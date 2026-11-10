@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
+	"postOffice/internal/timing"
 	"strings"
 	"time"
 )
@@ -17,6 +19,7 @@ type Response struct {
 	Headers        map[string][]string
 	Body           string
 	Duration       time.Duration
+	Timing         []timing.Phase
 	Error          error
 	RequestURL     string
 	RequestMethod  string
@@ -64,6 +67,9 @@ func (e *Executor) Execute(
 		return resp, nil
 	}
 
+	recorder := &traceRecorder{}
+	httpReq = httpReq.WithContext(httptrace.WithClientTrace(httpReq.Context(), recorder.clientTrace()))
+
 	resp.RequestMethod = httpReq.Method
 	resp.RequestURL = httpReq.URL.String()
 	resp.RequestHeaders = make(map[string]string)
@@ -82,6 +88,7 @@ func (e *Executor) Execute(
 	if err != nil {
 		resp.Error = fmt.Errorf("request failed: %w", err)
 		resp.Duration = time.Since(start)
+		resp.Timing = recorder.phases(start, time.Now())
 		return resp, nil
 	}
 	defer httpResp.Body.Close()
@@ -91,6 +98,8 @@ func (e *Executor) Execute(
 	resp.Headers = httpResp.Header
 
 	body, err := io.ReadAll(httpResp.Body)
+	recorder.markBodyRead()
+	resp.Timing = recorder.phases(start, time.Now())
 	if err != nil {
 		resp.Error = fmt.Errorf("failed to read response body: %w", err)
 		resp.Duration = time.Since(start)
@@ -175,7 +184,6 @@ func (e *Executor) executeTestScripts(
 
 	return result
 }
-
 
 func (e *Executor) buildRequest(req *postman.Request, variables []postman.VariableSource) (*http.Request, error) {
 	url := req.URL.Raw

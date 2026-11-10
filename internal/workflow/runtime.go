@@ -16,7 +16,14 @@ import (
 	"postOffice/internal/servicebus"
 )
 
-const defaultScriptTimeout = 30 * time.Second
+const (
+	defaultScriptTimeout = 30 * time.Second
+	grpcCallTimeout      = 30 * time.Second
+
+	grpcRequestMethod = "gRPC"
+	grpcSuccessCode   = 200
+	grpcSuccessStatus = "OK"
+)
 
 // Runner executes a workflow against a collection and environment.
 type Runner struct {
@@ -502,8 +509,8 @@ func (r *Runner) executeItem(item *postman.Item) (*StepResponse, *http.Response,
 	variables := r.getVariables()
 
 	if item.IsGRPC() {
-		stepResp, err := r.executeGRPC(item, variables)
-		return stepResp, nil, err
+		stepResp, resp := r.executeGRPC(item, variables)
+		return stepResp, resp, nil
 	}
 
 	if item.IsServiceBus() {
@@ -578,7 +585,7 @@ func (r *Runner) executeMessageBus(item *postman.Item, protocol string) (*StepRe
 	return stepResp, resp, nil
 }
 
-func (r *Runner) executeGRPC(item *postman.Item, variables []postman.VariableSource) (*StepResponse, error) {
+func (r *Runner) executeGRPC(item *postman.Item, variables []postman.VariableSource) (*StepResponse, *http.Response) {
 	rawURL := postman.ResolveVariables(item.Request.URL.Raw, variables)
 
 	resolvedReq := *item.Request
@@ -590,27 +597,40 @@ func (r *Runner) executeGRPC(item *postman.Item, variables []postman.VariableSou
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), grpcCallTimeout)
 	defer cancel()
 
-	start := time.Now()
-	respJSON, err := internalgrpc.ExecuteRequest(ctx, &resolvedReq)
-	elapsed := time.Since(start).Milliseconds()
+	result, err := internalgrpc.ExecuteRequest(ctx, &resolvedReq)
+
+	resp := &http.Response{
+		RequestMethod: grpcRequestMethod,
+		RequestURL:    rawURL,
+		Duration:      result.Duration,
+		Timing:        result.Phases,
+	}
+	if resolvedReq.Body != nil {
+		resp.RequestBody = resolvedReq.Body.Raw
+	}
 
 	if err != nil {
 		r.addLog(fmt.Sprintf("[gRPC ERROR] %v", err))
+		resp.Error = err
 		return &StepResponse{
 			Code: 0,
 			Body: fmt.Sprintf(`{"error":%q}`, err.Error()),
-			Time: elapsed,
-		}, nil
+			Time: result.Duration.Milliseconds(),
+		}, resp
 	}
 
+	resp.StatusCode = grpcSuccessCode
+	resp.Status = grpcSuccessStatus
+	resp.Body = result.Body
+
 	return &StepResponse{
-		Code: 200,
-		Body: respJSON,
-		Time: elapsed,
-	}, nil
+		Code: grpcSuccessCode,
+		Body: result.Body,
+		Time: result.Duration.Milliseconds(),
+	}, resp
 }
 
 func (r *Runner) getVariables() []postman.VariableSource {
