@@ -18,8 +18,8 @@ type Workflow struct {
 // Step is a named reference to a request within the collection.
 type Step struct {
 	ID         string `yaml:"id"`
-	Request    string `yaml:"request"`              // collection path, e.g. "Auth/Login"
-	PreScript  string `yaml:"pre_script,omitempty"` // JS executed before the request
+	Request    string `yaml:"request"`               // collection path, e.g. "Auth/Login"
+	PreScript  string `yaml:"pre_script,omitempty"`  // JS executed before the request
 	PostScript string `yaml:"post_script,omitempty"` // JS executed after the request, receives `step.response`
 }
 
@@ -51,6 +51,7 @@ func (r *StepResponse) Text() string { return r.Body }
 
 // StepRunResult is returned to the workflow script by wf.run().
 type StepRunResult struct {
+	Status    string          // StatusSuccess, StatusFailed or StatusSkipped
 	Response  *StepResponse   // alias for Last
 	Responses []*StepResponse // all repetition results
 	Last      *StepResponse   // last repetition result
@@ -71,8 +72,8 @@ type StepState struct {
 	ID           string
 	Request      string
 	Status       string
-	Progress     int // current repeat iteration (1-based)
-	Total        int // planned repeat count
+	Progress     int                    // current repeat iteration (1-based)
+	Total        int                    // planned repeat count
 	LastResponse *internalhttp.Response `json:"-"`
 }
 

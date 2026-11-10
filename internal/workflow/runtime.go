@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -27,13 +28,16 @@ type Runner struct {
 	httpExecutor *http.Executor
 	grpcExecutor *internalgrpc.Executor
 
-	wfSteps  []Step
-	ctx      *script.ExecutionContext
-	state    ExecutionState
-	status   string
-	vm       *goja.Runtime
-	loop     *script.EventLoop
-	onChange func(ExecutionState)
+	wfSteps []Step
+	// anyStepFailed fails the whole run at the end, while still letting the
+	// workflow script carry on after a failed step.
+	anyStepFailed bool
+	ctx           *script.ExecutionContext
+	state         ExecutionState
+	status        string
+	vm            *goja.Runtime
+	loop          *script.EventLoop
+	onChange      func(ExecutionState)
 }
 
 // NewRunner creates a runner bound to the given collection and environment.
@@ -50,10 +54,15 @@ func NewRunner(
 	}
 }
 
+// ErrStepsFailed is the run error when the workflow script finished but at
+// least one step failed.
+var ErrStepsFailed = errors.New("one or more steps failed")
+
 // Run executes wf, calling onChange after each state change.
 func (r *Runner) Run(wf *Workflow, onChange func(ExecutionState)) ExecutionState {
 	r.onChange = onChange
 	r.status = StatusRunning
+	r.anyStepFailed = false
 	r.wfSteps = wf.Steps
 	r.state = r.buildInitialState(wf)
 	r.ctx = &script.ExecutionContext{}
@@ -116,6 +125,9 @@ func (r *Runner) Run(wf *Workflow, onChange func(ExecutionState)) ExecutionState
 
 	if r.status == StatusFailed || r.status == StatusStopped {
 		return r.finalize(r.status, r.state.Error)
+	}
+	if r.anyStepFailed {
+		return r.finalize(StatusFailed, ErrStepsFailed.Error())
 	}
 	return r.finalize(StatusSuccess, "")
 }
@@ -237,10 +249,10 @@ func (r *Runner) setupWFAPI() error {
 
 	if err := wfObj.Set("run", func(call goja.FunctionCall) goja.Value {
 		if r.status == StatusFailed || r.status == StatusStopped {
-			return r.emptyResultJS()
+			return r.emptyResultJS(StatusSkipped)
 		}
 		if len(call.Arguments) == 0 {
-			return r.emptyResultJS()
+			return r.emptyResultJS(StatusFailed)
 		}
 		stepID := call.Arguments[0].String()
 
@@ -252,7 +264,7 @@ func (r *Runner) setupWFAPI() error {
 		result, err := r.runStep(stepID, opts)
 		if err != nil {
 			r.addLog(fmt.Sprintf("[ERROR] step %q: %v", stepID, err))
-			return r.emptyResultJS()
+			return r.emptyResultJS(StatusFailed)
 		}
 		return r.resultToJS(result)
 	}); err != nil {
@@ -361,15 +373,13 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 	}
 
 	if requestPath == "" {
-		ss.Status = StatusFailed
-		r.notifyProgress()
+		r.failStep(ss)
 		return nil, fmt.Errorf("step %q has no request path", stepID)
 	}
 
 	item, err := r.resolveRequest(requestPath)
 	if err != nil {
-		ss.Status = StatusFailed
-		r.notifyProgress()
+		r.failStep(ss)
 		return nil, fmt.Errorf("cannot resolve %q: %w", requestPath, err)
 	}
 
@@ -385,14 +395,16 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 
 	if wfStep != nil && wfStep.PreScript != "" {
 		if err := r.runStepScript(wfStep.PreScript, stepID, nil); err != nil {
-			ss.Status = StatusFailed
-			r.notifyProgress()
+			r.failStep(ss)
 			return nil, fmt.Errorf("pre-script for step %q failed: %w", stepID, err)
 		}
 	}
 
 	var responses []*StepResponse
 	var last *StepResponse
+	// The last attempt decides the status: with repeat/until, earlier attempts
+	// failing while a poll waits for a result is expected.
+	status := StatusSuccess
 
 	for i := 0; i < repeat; i++ {
 		ss.Progress = i + 1
@@ -400,10 +412,10 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 
 		outcome, execErr := r.executeItem(item, requestPath)
 		if execErr != nil {
-			ss.Status = StatusFailed
-			r.notifyProgress()
+			r.failStep(ss)
 			return nil, execErr
 		}
+		status = r.recordOutcome(requestPath, outcome)
 		stepResp := outcome.step
 		responses = append(responses, stepResp)
 		last = stepResp
@@ -418,20 +430,60 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 
 	if wfStep != nil && wfStep.PostScript != "" && last != nil {
 		if err := r.runStepScript(wfStep.PostScript, stepID, last); err != nil {
-			ss.Status = StatusFailed
-			r.notifyProgress()
+			r.failStep(ss)
 			return nil, fmt.Errorf("post-script for step %q failed: %w", stepID, err)
 		}
 	}
 
-	ss.Status = StatusSuccess
-	r.notifyProgress()
+	if status == StatusFailed {
+		r.failStep(ss)
+	} else {
+		ss.Status = status
+		r.notifyProgress()
+	}
 
 	return &StepRunResult{
+		Status:    status,
 		Response:  last,
 		Responses: responses,
 		Last:      last,
 	}, nil
+}
+
+// recordOutcome logs a request's test results and console output and returns
+// its step status.
+func (r *Runner) recordOutcome(path string, outcome itemOutcome) string {
+	result := outcome.scripts
+	if result != nil {
+		for _, log := range result.ConsoleLogs {
+			r.addLog(fmt.Sprintf("[%s] %s", path, log))
+		}
+		for _, test := range result.Tests {
+			if test.Passed {
+				r.addLog(fmt.Sprintf("[%s] ✓ %s", path, test.Name))
+			} else {
+				r.addLog(fmt.Sprintf("[%s] ✗ %s: %s", path, test.Name, test.Error))
+			}
+		}
+		for _, scriptErr := range result.Errors {
+			r.addLog(fmt.Sprintf("[%s] script error: %s", path, scriptErr))
+		}
+	}
+
+	switch {
+	case outcome.raw != nil && outcome.raw.Skipped:
+		return StatusSkipped
+	case outcome.raw != nil && outcome.raw.Error != nil, result != nil && result.HasFailures():
+		return StatusFailed
+	default:
+		return StatusSuccess
+	}
+}
+
+func (r *Runner) failStep(ss *StepState) {
+	ss.Status = StatusFailed
+	r.anyStepFailed = true
+	r.notifyProgress()
 }
 
 // folderPathOf returns the folders of a "folder/sub/request" path.
@@ -682,9 +734,10 @@ func (r *Runner) responseToJS(resp *StepResponse) *goja.Object {
 
 func (r *Runner) resultToJS(result *StepRunResult) goja.Value {
 	if result == nil {
-		return r.emptyResultJS()
+		return r.emptyResultJS(StatusFailed)
 	}
 	obj := r.vm.NewObject()
+	obj.Set("status", result.Status)
 
 	var lastJS goja.Value = goja.Null()
 	if result.Last != nil {
@@ -702,8 +755,9 @@ func (r *Runner) resultToJS(result *StepRunResult) goja.Value {
 	return obj
 }
 
-func (r *Runner) emptyResultJS() goja.Value {
+func (r *Runner) emptyResultJS(status string) goja.Value {
 	obj := r.vm.NewObject()
+	obj.Set("status", status)
 	emptyResp := r.vm.NewObject()
 	emptyResp.Set("code", 0)
 	emptyResp.Set("body", "")

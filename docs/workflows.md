@@ -248,9 +248,25 @@ Variable mutations made in the workflow script are immediately visible to subseq
 
 ```ts
 {
+  status: "success" | "failed" | "skipped";
   response: Response;  // alias of last
   last: Response;      // final execution result
   responses: Response[]; // all results when repeat > 1
+}
+```
+
+### Step status
+
+A step is **failed** when its request could not be sent (connection error, timeout, unknown request), when one of its Postman scripts throws, when any `pm.test` fails, or when its own pre/post script fails. A pre-request script calling `pm.execution.skipRequest()` makes it **skipped**. Otherwise it is **success**; an HTTP error status alone (e.g. 404) does not fail a step unless a test checks for it.
+
+With `repeat`/`until`, the last attempt decides the status, so a poll that fails a few times before succeeding ends as success.
+
+A failed step does not stop the workflow script, so it can react to `result.status`. The workflow itself ends as failed ("one or more steps failed") if any step failed.
+
+```js
+const result = await wf.run("create-claim");
+if (result.status === "failed") {
+  wf.fail("create-claim failed, see the run report");
 }
 ```
 
