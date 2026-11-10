@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -147,7 +148,7 @@ func TestParseRunArgs(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := executionOptions{environmentPath: "env.json", output: outputJUnit, reportPath: "r.xml", persist: true}
-	if opts.collectionPath != "c.json" || opts.requestPath != "Users/Get User" || opts.execution != want {
+	if opts.collectionPath != "c.json" || opts.requestPath != "Users/Get User" || !reflect.DeepEqual(opts.execution, want) {
 		t.Errorf("got %+v", opts)
 	}
 
@@ -163,7 +164,7 @@ func TestParseRunArgs(t *testing.T) {
 		{"c.json", "--folder", ""},
 		{"c.json", "--output", "xml"},
 		{"c.json", "--report", "r.json"},
-		{"c.json", "--iterations", "3"},
+		{"c.json", "--repeat", "3"},
 	} {
 		if _, err := parseRunArgs(args); !errors.Is(err, errUsage) {
 			t.Errorf("%v: err = %v, want errUsage", args, err)
@@ -259,7 +260,7 @@ func TestRun_InputErrorsExit2(t *testing.T) {
 		"missing environment": {"run", f.collectionPath, "-e", filepath.Join(f.dir, "nope.json")},
 		"unknown request":     {"run", f.collectionPath, "Users/Nobody"},
 		"unknown folder":      {"run", f.collectionPath, "--folder", "Admins"},
-		"bad flag":            {"run", f.collectionPath, "--bail"},
+		"bad flag":            {"run", f.collectionPath, "--retries"},
 	}
 	for name, args := range cases {
 		if code, _, errOut := cli(t, args...); code != exitUsage || !strings.HasPrefix(errOut, "Error: ") {

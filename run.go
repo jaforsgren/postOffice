@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
@@ -18,12 +19,15 @@ var (
 	outputFlag  = flagSpec{names: []string{"--output"}, takesValue: true}
 	reportFlag  = flagSpec{names: []string{"--report"}, takesValue: true}
 	persistFlag = flagSpec{names: []string{"--persist"}}
+
+	iterationsFlag = flagSpec{names: []string{"--iterations", "-n"}, takesValue: true}
+	bailFlag       = flagSpec{names: []string{"--bail"}}
+	dataFlag       = flagSpec{names: []string{"--data", "-d"}, takesValue: true}
 )
 
-// executionFlags are accepted by every command that sends requests. Runner
-// options (such as --iterations, --bail and --data) are added here and to
-// executionOptions, and so apply to `run` and `workflow run` alike.
-var executionFlags = []flagSpec{environmentFlag, outputFlag, reportFlag, persistFlag}
+// executionFlags are accepted by every command that sends requests, so they
+// apply to `run` and `workflow run` alike.
+var executionFlags = []flagSpec{environmentFlag, outputFlag, reportFlag, persistFlag, iterationsFlag, bailFlag, dataFlag}
 
 // errPersistUnsupported is returned when --persist would overwrite a file that is not a Postman collection.
 var errPersistUnsupported = errors.New("--persist only works with Postman collection files")
@@ -34,6 +38,10 @@ type executionOptions struct {
 	output          outputFormat
 	reportPath      string
 	persist         bool
+	// runner holds stop-on-failure and the iteration count; Data is loaded
+	// from dataPath when the run starts, so a bad file is an input error.
+	runner   workflow.ExecutionOptions
+	dataPath string
 }
 
 func parseExecutionOptions(parsed parsedArgs) (executionOptions, error) {
@@ -42,6 +50,18 @@ func parseExecutionOptions(parsed parsedArgs) (executionOptions, error) {
 		output:          outputText,
 		reportPath:      parsed.value(reportFlag),
 		persist:         parsed.has(persistFlag),
+		runner:          workflow.ExecutionOptions{StopOnFailure: parsed.has(bailFlag)},
+		dataPath:        parsed.value(dataFlag),
+	}
+	if parsed.has(iterationsFlag) {
+		iterations, err := strconv.Atoi(parsed.value(iterationsFlag))
+		if err != nil {
+			return executionOptions{}, usageErrorf("--iterations must be a whole number, got %q", parsed.value(iterationsFlag))
+		}
+		opts.runner.Iterations = iterations
+		if err := opts.runner.Validate(); err != nil {
+			return executionOptions{}, usageErrorf("--iterations: %v", err)
+		}
 	}
 	if parsed.has(outputFlag) {
 		opts.output = outputFormat(parsed.value(outputFlag))
@@ -120,6 +140,10 @@ Options:
                                  print the text report
   --persist                      save script variable changes back to the
                                  collection and environment files (off by default)
+  -n, --iterations <n>           run n times (default: one per --data row, else 1)
+  -d, --data <file.csv|json>     one iteration per row; values are available as
+                                 {{key}} and pm.iterationData
+  --bail                         stop at the first failed request, test or script
 
 Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input error.`,
 	run: func(out io.Writer, args []string) error {
@@ -161,12 +185,19 @@ func executeRun(out io.Writer, collectionPath string, opts executionOptions, bui
 		}
 	}
 
+	runnerOptions := opts.runner
+	if opts.dataPath != "" {
+		if runnerOptions.Data, err = workflow.LoadIterationData(opts.dataPath); err != nil {
+			return err
+		}
+	}
+
 	wf, err := buildWorkflow(collection)
 	if err != nil {
 		return err
 	}
 
-	state := workflow.NewRunner(collection, environment, internalhttp.NewExecutor()).Run(wf, workflow.ExecutionOptions{}, nil)
+	state := workflow.NewRunner(collection, environment, internalhttp.NewExecutor()).Run(wf, runnerOptions, nil)
 	report := newRunReport(state, collection.Info.Name, environmentName(environment))
 	if err := writeRunOutput(out, report, opts); err != nil {
 		return err

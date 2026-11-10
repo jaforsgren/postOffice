@@ -70,6 +70,10 @@ Options:
                                        and print the text report
   --persist                            save script variable changes back to the
                                        collection and environment files
+  -n, --iterations <n>                 run n times (default: one per --data row, else 1)
+  -d, --data <file.csv|json>           one iteration per row; values are available
+                                       as {{key}} and pm.iterationData
+  --bail                               stop at the first failed request, test or script
 
 Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input error.`,
 	run: func(out io.Writer, args []string) error {

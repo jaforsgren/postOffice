@@ -30,6 +30,7 @@ var machineWriters = map[outputFormat]func(io.Writer, runReport) error{
 const requestTestCaseName = "request"
 
 const (
+	iterationLabelPrefix  = "#"
 	jsonIndent            = "  "
 	testIndent            = "    "
 	millisecondsPerSecond = 1000.0
@@ -41,6 +42,7 @@ type runReport struct {
 	Collection  string          `json:"collection"`
 	Environment string          `json:"environment,omitempty"`
 	Status      string          `json:"status"`
+	Iterations  int             `json:"iterations,omitempty"`
 	Passed      bool            `json:"passed"`
 	Error       string          `json:"error,omitempty"`
 	Summary     reportSummary   `json:"summary"`
@@ -59,8 +61,10 @@ type reportSummary struct {
 }
 
 type requestReport struct {
-	Step       string       `json:"step"`
-	Request    string       `json:"request"`
+	Step    string `json:"step"`
+	Request string `json:"request"`
+	// Iteration is set (1-based) only in runs with more than one iteration.
+	Iteration  int          `json:"iteration,omitempty"`
 	Status     string       `json:"status"`
 	HTTPStatus string       `json:"httpStatus,omitempty"`
 	DurationMs int64        `json:"durationMs"`
@@ -88,17 +92,30 @@ func newRunReport(state workflow.ExecutionState, collectionName, environmentName
 		Requests:    []requestReport{},
 	}
 
-	stepLogs := map[string][]string{}
+	multiIteration := state.IsMultiIteration()
+	if multiIteration {
+		report.Iterations = state.Iterations
+	}
+
+	type stepRun struct {
+		stepID    string
+		iteration int
+	}
+	stepLogs := map[stepRun][]string{}
 	for _, entry := range state.Logs {
 		if entry.StepID == "" {
 			report.Logs = append(report.Logs, entry.Message)
 		} else {
-			stepLogs[entry.StepID] = append(stepLogs[entry.StepID], entry.Message)
+			key := stepRun{entry.StepID, entry.Iteration}
+			stepLogs[key] = append(stepLogs[key], entry.Message)
 		}
 	}
 
 	for _, step := range state.Steps {
 		request := requestReport{Step: step.ID, Request: step.Request, Status: step.Status, Tests: []testReport{}}
+		if multiIteration {
+			request.Iteration = step.Iteration
+		}
 		if resp := step.LastResponse; resp != nil {
 			request.HTTPStatus = resp.Status
 			request.DurationMs = resp.Duration.Milliseconds()
@@ -115,7 +132,7 @@ func newRunReport(state workflow.ExecutionState, collectionName, environmentName
 		} else if step.Status == workflow.StatusFailed {
 			// The step failed before its request ran (unresolvable path, failing
 			// step script), so the engine's log is the only explanation.
-			request.Errors = append(request.Errors, stepLogs[step.ID]...)
+			request.Errors = append(request.Errors, stepLogs[stepRun{step.ID, step.Iteration}]...)
 		}
 		report.Requests = append(report.Requests, request)
 		report.Summary.add(request)
@@ -145,6 +162,15 @@ func (s *reportSummary) add(request requestReport) {
 	}
 }
 
+// label names the request in text and JUnit output, prefixed with "#n " in
+// multi-iteration runs so each iteration's run of a request stays apart.
+func (r requestReport) label() string {
+	if r.Iteration == 0 {
+		return r.Request
+	}
+	return fmt.Sprintf("%s%d %s", iterationLabelPrefix, r.Iteration, r.Request)
+}
+
 func writeTextReport(out io.Writer, report runReport) {
 	fmt.Fprintf(out, "Run %q (collection %s", report.Name, report.Collection)
 	if report.Environment != "" {
@@ -153,7 +179,7 @@ func writeTextReport(out io.Writer, report runReport) {
 	fmt.Fprint(out, ")\n\n")
 
 	for _, request := range report.Requests {
-		fmt.Fprintf(out, "%s %s", workflow.StatusIcon(request.Status), request.Request)
+		fmt.Fprintf(out, "%s %s", workflow.StatusIcon(request.Status), request.label())
 		if request.HTTPStatus != "" {
 			fmt.Fprintf(out, "  %s  %dms", request.HTTPStatus, request.DurationMs)
 		} else {
@@ -176,7 +202,11 @@ func writeTextReport(out io.Writer, report runReport) {
 	}
 
 	s := report.Summary
-	fmt.Fprintf(out, "\n%d requests: %d passed, %d failed, %d skipped\n", s.Requests, s.Passed, s.Failed, s.Skipped)
+	fmt.Fprintln(out)
+	if report.Iterations > 0 {
+		fmt.Fprintf(out, "%d iterations\n", report.Iterations)
+	}
+	fmt.Fprintf(out, "%d requests: %d passed, %d failed, %d skipped\n", s.Requests, s.Passed, s.Failed, s.Skipped)
 	fmt.Fprintf(out, "%d tests: %d passed, %d failed\n", s.Tests, s.TestsPassed, s.TestsFailed)
 	if report.Passed {
 		fmt.Fprintln(out, "PASSED")
@@ -229,9 +259,9 @@ func writeJUnitReport(out io.Writer, report runReport) error {
 	suites := junitTestSuites{Name: report.Name}
 	var totalMs int64
 	for _, request := range report.Requests {
-		suite := junitTestSuite{Name: request.Request, Time: junitSeconds(request.DurationMs)}
+		suite := junitTestSuite{Name: request.label(), Time: junitSeconds(request.DurationMs)}
 		for _, test := range request.Tests {
-			testCase := junitTestCase{Name: test.Name, ClassName: request.Request, Time: junitSeconds(0)}
+			testCase := junitTestCase{Name: test.Name, ClassName: request.label(), Time: junitSeconds(0)}
 			if !test.Passed {
 				testCase.Failure = &junitFailure{Message: test.Error, Text: test.Error}
 			}
@@ -272,7 +302,7 @@ func writeJUnitReport(out io.Writer, report runReport) error {
 // requestTestCase returns the testcase standing for the request itself, when
 // there is something to report beyond its pm.tests.
 func requestTestCase(request requestReport) (junitTestCase, bool) {
-	testCase := junitTestCase{Name: requestTestCaseName, ClassName: request.Request, Time: junitSeconds(request.DurationMs)}
+	testCase := junitTestCase{Name: requestTestCaseName, ClassName: request.label(), Time: junitSeconds(request.DurationMs)}
 	switch {
 	case request.Status == workflow.StatusSkipped:
 		testCase.Skipped = &struct{}{}
