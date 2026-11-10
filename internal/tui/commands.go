@@ -444,6 +444,13 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
+			Keys:        []string{splitFocusInKey},
+			Description: "Focus split pane (← back)",
+			ShortHelp:   "→",
+			Handler:     handleSplitFocusInKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Keys:        []string{"tab"},
 			Description: "Toggle step panel (logs, request, response)",
 			ShortHelp:   "tab",
@@ -1383,7 +1390,7 @@ func handleStepPanelScrollUpKey(m Model) (Model, tea.Cmd) {
 
 func handleToggleSplitViewKey(m Model) (Model, tea.Cmd) {
 	m.splitViewActive = !m.splitViewActive
-	return m, nil
+	return m.focusSplitPane(splitPaneNone), nil
 }
 
 func handleEditScriptKey(m Model) (Model, tea.Cmd) {
