@@ -5,8 +5,28 @@ import (
 	"testing"
 )
 
+func TestOverrideVariables(t *testing.T) {
+	base := []VariableSource{{Key: "user", Value: "env"}, {Key: "base", Value: "url"}}
+
+	t.Run("overrides first and shadowed keys dropped", func(t *testing.T) {
+		merged := OverrideVariables([]VariableSource{{Key: "user", Value: "data"}}, base)
+		if len(merged) != 2 || merged[0].Value != "data" || merged[1].Key != "base" {
+			t.Errorf("unexpected merge %+v", merged)
+		}
+		if got := ResolveVariables("{{user}}", merged); got != "data" {
+			t.Errorf("expected the override to resolve, got %q", got)
+		}
+	})
+
+	t.Run("no overrides returns variables unchanged", func(t *testing.T) {
+		if merged := OverrideVariables(nil, base); len(merged) != len(base) {
+			t.Errorf("unexpected merge %+v", merged)
+		}
+	})
+}
+
 func TestGetAllVariables_EnvironmentOnly(t *testing.T) {
-env := &Environment{
+	env := &Environment{
 		Name: "Test Env",
 		Values: []EnvVariable{
 			{Key: "apiKey", Value: "secret123", Enabled: true},
@@ -42,7 +62,7 @@ env := &Environment{
 }
 
 func TestGetAllVariables_CollectionOnly(t *testing.T) {
-collection := &Collection{
+	collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "collectionVar", Value: "collectionValue"},
@@ -71,7 +91,7 @@ collection := &Collection{
 }
 
 func TestGetAllVariables_FolderVariables(t *testing.T) {
-collection := &Collection{
+	collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Items: []Item{
 			{
@@ -179,7 +199,7 @@ func TestGetAllVariables_Precedence(t *testing.T) {
 }
 
 func TestGetAllVariables_NoBreadcrumb(t *testing.T) {
-collection := &Collection{
+	collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "var1", Value: "value1"},
@@ -211,7 +231,7 @@ collection := &Collection{
 }
 
 func TestGetAllVariables_EmptyBreadcrumb(t *testing.T) {
-collection := &Collection{
+	collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "var1", Value: "value1"},
@@ -226,7 +246,7 @@ collection := &Collection{
 }
 
 func TestGetAllVariables_InvalidBreadcrumb(t *testing.T) {
-collection := &Collection{
+	collection := &Collection{
 		Info: Info{Name: "Test Collection"},
 		Variables: []Variable{
 			{Key: "var1", Value: "value1"},

@@ -22,6 +22,18 @@ type RequestScope struct {
 	FolderPath  []string
 	Item        *postman.Item
 	Sender      RequestSender
+	// Iteration is the run pass this request belongs to; zero outside runs.
+	Iteration Iteration
+}
+
+// Variables returns the {{variable}} values for this request in precedence
+// order: iteration data, then environment, collection and folders, as in
+// Postman's data-driven runs.
+func (s RequestScope) Variables() []postman.VariableSource {
+	return postman.OverrideVariables(
+		s.Iteration.Data.variables(),
+		postman.GetAllVariables(s.Collection, s.FolderPath, s.Environment),
+	)
 }
 
 // eventScopes returns event lists outermost first: collection, each folder
@@ -104,6 +116,7 @@ func (rr *RequestRun) run(phase Phase, request *RequestData, response *ResponseD
 		Request:     request,
 		Response:    response,
 		Info:        scope.info(),
+		Iteration:   scope.Iteration,
 		SendRequest: scope.Sender,
 	}
 	if scope.Collection != nil {

@@ -113,14 +113,14 @@ func bodyUpdateValue(vm *goja.Runtime, arg goja.Value) string {
 	return raw.String()
 }
 
-func newInfoObject(vm *goja.Runtime, info RequestInfo, phase Phase) (*goja.Object, error) {
+func newInfoObject(vm *goja.Runtime, info RequestInfo, iteration Iteration, phase Phase) (*goja.Object, error) {
 	obj := vm.NewObject()
 	for name, value := range map[string]any{
 		"requestName":    info.RequestName,
 		"requestId":      info.RequestID,
 		"eventName":      string(phase),
-		"iteration":      0,
-		"iterationCount": 1,
+		"iteration":      iteration.Index,
+		"iterationCount": iteration.count(),
 	} {
 		if err := obj.Set(name, value); err != nil {
 			return nil, fmt.Errorf("failed to set pm.info.%s: %w", name, err)

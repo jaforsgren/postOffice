@@ -72,6 +72,27 @@ func GetAllVariables(collection *Collection, breadcrumb []string, environment *E
 	return variables
 }
 
+// OverrideVariables puts overrides ahead of variables and drops the
+// variables they shadow, keeping the list free of duplicate keys (which
+// ResolveVariables would otherwise resolve to the last occurrence).
+func OverrideVariables(overrides, variables []VariableSource) []VariableSource {
+	if len(overrides) == 0 {
+		return variables
+	}
+	shadowed := make(map[string]bool, len(overrides))
+	merged := make([]VariableSource, 0, len(overrides)+len(variables))
+	for _, override := range overrides {
+		shadowed[override.Key] = true
+		merged = append(merged, override)
+	}
+	for _, variable := range variables {
+		if !shadowed[variable.Key] {
+			merged = append(merged, variable)
+		}
+	}
+	return merged
+}
+
 // ExtractPathParams returns ordered path parameter names (without leading colon) from a URL.
 // Checks URL.Path segments first, then scans URL.Raw as fallback.
 func ExtractPathParams(url URL) []string {

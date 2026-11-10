@@ -54,6 +54,7 @@ type ExecutionContext struct {
 	Response        *ResponseData
 	Request         *RequestData
 	Info            RequestInfo
+	Iteration       Iteration
 	EnvironmentName string
 	SendRequest     RequestSender
 	CollectionVars  []postman.Variable
