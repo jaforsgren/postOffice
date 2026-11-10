@@ -122,19 +122,23 @@ type Environment struct {
 	unknown unknownFields
 }
 
+// EnvVariable and Variable keep a choice variable's chosen value in Value,
+// so tools that don't know Choices still read the chosen one.
 type EnvVariable struct {
-	Key     string `json:"key"`
-	Value   string `json:"value"`
-	Enabled bool   `json:"enabled"`
-	Type    string `json:"type"`
+	Key     string   `json:"key"`
+	Value   string   `json:"value"`
+	Choices []string `json:"choices,omitempty"`
+	Enabled bool     `json:"enabled"`
+	Type    string   `json:"type"`
 	unknown unknownFields
 }
 
 type Variable struct {
-	Key     string `json:"key"`
-	Value   string `json:"value"`
-	Type    string `json:"type,omitempty"`
-	Enabled bool   `json:"enabled,omitempty"`
+	Key     string   `json:"key"`
+	Value   string   `json:"value"`
+	Choices []string `json:"choices,omitempty"`
+	Type    string   `json:"type,omitempty"`
+	Enabled bool     `json:"enabled,omitempty"`
 	unknown unknownFields
 }
 

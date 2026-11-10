@@ -6,9 +6,10 @@ import (
 )
 
 type VariableSource struct {
-	Key    string
-	Value  string
-	Source string
+	Key     string
+	Value   string
+	Choices []string
+	Source  string
 }
 
 var variablePattern = regexp.MustCompile(`\{\{([^}]+)\}\}`)
@@ -24,9 +25,10 @@ func GetAllVariables(collection *Collection, breadcrumb []string, environment *E
 		for _, envVar := range environment.Values {
 			if envVar.Enabled && !seen[envVar.Key] {
 				variables = append(variables, VariableSource{
-					Key:    envVar.Key,
-					Value:  envVar.Value,
-					Source: "Environment: " + environment.Name,
+					Key:     envVar.Key,
+					Value:   envVar.Value,
+					Choices: envVar.Choices,
+					Source:  "Environment: " + environment.Name,
 				})
 				seen[envVar.Key] = true
 			}
@@ -37,9 +39,10 @@ func GetAllVariables(collection *Collection, breadcrumb []string, environment *E
 		for _, collVar := range collection.Variables {
 			if !seen[collVar.Key] {
 				variables = append(variables, VariableSource{
-					Key:    collVar.Key,
-					Value:  collVar.Value,
-					Source: "Collection: " + collection.Info.Name,
+					Key:     collVar.Key,
+					Value:   collVar.Value,
+					Choices: collVar.Choices,
+					Source:  "Collection: " + collection.Info.Name,
 				})
 				seen[collVar.Key] = true
 			}
@@ -54,9 +57,10 @@ func GetAllVariables(collection *Collection, breadcrumb []string, environment *E
 						for _, folderVar := range item.Variables {
 							if !seen[folderVar.Key] {
 								variables = append(variables, VariableSource{
-									Key:    folderVar.Key,
-									Value:  folderVar.Value,
-									Source: "Folder: " + folderPath,
+									Key:     folderVar.Key,
+									Value:   folderVar.Value,
+									Choices: folderVar.Choices,
+									Source:  "Folder: " + folderPath,
 								})
 								seen[folderVar.Key] = true
 							}
@@ -122,16 +126,23 @@ func ExtractPathParams(url URL) []string {
 	return params
 }
 
+// ResolveVariables replaces each {{key}} with its value, and each {{key[N]}}
+// with a choice variable's N-th choice. Unknown references are left as is.
 func ResolveVariables(text string, variables []VariableSource) string {
-	variableMap := make(map[string]string)
+	variableMap := make(map[string]VariableSource)
 	for _, v := range variables {
-		variableMap[v.Key] = v.Value
+		variableMap[v.Key] = v
 	}
 
 	return variablePattern.ReplaceAllStringFunc(text, func(match string) string {
 		key := strings.TrimSpace(match[2 : len(match)-2])
-		if value, exists := variableMap[key]; exists {
-			return value
+		if variable, exists := variableMap[key]; exists {
+			return variable.Value
+		}
+		if choiceKey, index, ok := splitChoiceReference(key); ok {
+			if variable, exists := variableMap[choiceKey]; exists && index < len(variable.Choices) {
+				return variable.Choices[index]
+			}
 		}
 		return match
 	})

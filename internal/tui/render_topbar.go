@@ -335,7 +335,7 @@ func (m Model) buildShortcutsDisplay(width int) []string {
 	descGrayStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
 
 	var formatted []string
-	for _, shortcut := range m.commandRegistry.GetContextualShortcuts(m.mode) {
+	for _, shortcut := range m.contextualShortcuts() {
 		parts := strings.SplitN(shortcut, ">", 2)
 		if len(parts) != 2 {
 			continue
@@ -390,7 +390,7 @@ func (m Model) countRequestsRecursive(items []postman.Item) int {
 }
 
 func (m Model) getContextualShortcuts() string {
-	shortcuts := m.commandRegistry.GetContextualShortcuts(m.mode)
+	shortcuts := m.contextualShortcuts()
 	return strings.Join(shortcuts, "  ")
 }
 

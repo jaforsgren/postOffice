@@ -10,10 +10,8 @@ import (
 )
 
 const (
-	requestVariablesKey      = "V"
-	undefinedVariableSource  = "undefined: saving adds it to the collection"
-	requestVariablesShortcut = "<Enter/e> Edit value  <j/k> Navigate  <Esc/q> Back"
-	requestVariableEditHint  = "<Enter> Save to file  <Esc> Cancel"
+	requestVariablesKey     = "V"
+	undefinedVariableSource = "undefined: saving adds it to the collection"
 
 	unresolvedVariablesFormat = "⚠ Unresolved: %s (press %s to set them; new ones are saved as collection variables)"
 )
@@ -25,8 +23,13 @@ var unresolvedVariablesStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"
 type requestVariableRow struct {
 	Key     string
 	Value   string
+	Choices []string
 	Source  string
 	Defined bool
+}
+
+func (row requestVariableRow) variableValue() postman.VariableValue {
+	return postman.VariableValue{Value: row.Value, Choices: row.Choices}
 }
 
 // handleRequestVariablesKey lists the variables a request uses, so just
@@ -47,7 +50,7 @@ func handleRequestVariablesKey(m Model) (Model, tea.Cmd) {
 	m.requestVarsItem = item
 	m.requestVarsFolderPath = folderPath
 	m.requestVarsCursor = firstUndefinedRow(m.variableRows(item.Request, folderPath))
-	m.requestVarEditing = false
+	m.requestVarEdit = requestVarEditNone
 	m.requestVarsReturnMode = m.mode
 	m.mode = ModeRequestVariables
 	m.statusMessage = fmt.Sprintf("Variables used by %s", item.Name)
@@ -123,64 +126,13 @@ func (m Model) variableRows(req *postman.Request, requestFolderPath []string) []
 	var rows []requestVariableRow
 	for _, key := range postman.ReferencedVariables(req) {
 		variable, defined := resolved[key]
-		row := requestVariableRow{Key: key, Value: variable.Value, Source: variable.Source, Defined: defined}
+		row := requestVariableRow{Key: key, Value: variable.Value, Choices: variable.Choices, Source: variable.Source, Defined: defined}
 		if !defined {
 			row.Source = undefinedVariableSource
 		}
 		rows = append(rows, row)
 	}
 	return rows
-}
-
-func (m Model) handleRequestVariablesKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.requestVarEditing {
-		return m.handleRequestVariableEditKeys(msg)
-	}
-
-	rows := m.requestVariableRows()
-	switch msg.String() {
-	case "esc", "q", "h", "backspace":
-		m = m.closeRequestVariables()
-	case "j", "down":
-		if m.requestVarsCursor < len(rows)-1 {
-			m.requestVarsCursor++
-		}
-	case "k", "up":
-		if m.requestVarsCursor > 0 {
-			m.requestVarsCursor--
-		}
-	case "enter", "e":
-		if m.requestVarsCursor < len(rows) {
-			m.editFieldInput.SetValue(rows[m.requestVarsCursor].Value)
-			m.editFieldInput.CursorEnd()
-			m.requestVarEditing = true
-			m.statusMessage = fmt.Sprintf("Editing {{%s}}", rows[m.requestVarsCursor].Key)
-			return m, m.editFieldInput.Focus()
-		}
-	}
-	return m, nil
-}
-
-func (m Model) handleRequestVariableEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEsc:
-		m.requestVarEditing = false
-		m.editFieldInput.Blur()
-		m.statusMessage = "Edit cancelled"
-		return m, nil
-	case tea.KeyEnter:
-		m.requestVarEditing = false
-		m.editFieldInput.Blur()
-		rows := m.requestVariableRows()
-		if m.requestVarsCursor >= len(rows) {
-			return m, nil
-		}
-		return m.saveRequestVariable(rows[m.requestVarsCursor].Key, m.editFieldInput.Value()), nil
-	}
-
-	var cmd tea.Cmd
-	m.editFieldInput, cmd = m.editFieldInput.Update(msg)
-	return m, cmd
 }
 
 // variableEnvironments are the loaded environments behind m.environment, in
@@ -204,7 +156,7 @@ func (m Model) variableEnvironments() []*postman.Environment {
 	return environments
 }
 
-func (m Model) saveRequestVariable(key, value string) Model {
+func (m Model) saveRequestVariable(key string, value postman.VariableValue) Model {
 	collection, folderPath := m.collectionScope(m.requestVarsFolderPath)
 	owner := postman.SetVariable(collection, folderPath, m.variableEnvironments(), key, value)
 
@@ -246,43 +198,4 @@ func (m Model) reloadActiveEnvironment() Model {
 		m.environment = environment
 	}
 	return m
-}
-
-func (m Model) renderRequestVariables(availableHeight int) string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	undefinedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-
-	lines := []string{titleStyle.Render("Variables used by " + m.requestVarsItem.Name), ""}
-
-	const keyColWidth = 30
-	for i, row := range m.requestVariableRows() {
-		prefix, style := "  ", normalItemStyle
-		if i == m.requestVarsCursor {
-			prefix, style = "> ", selectedItemStyle
-		}
-
-		value := style.Render(strings.ReplaceAll(row.Value, "\n", " "))
-		if i == m.requestVarsCursor && m.requestVarEditing {
-			value = m.editFieldInput.View()
-		}
-		lines = append(lines, prefix+style.Width(keyColWidth).Render("{{"+row.Key+"}}")+"  "+value)
-
-		sourceStyle := dimStyle
-		if !row.Defined {
-			sourceStyle = undefinedStyle
-		}
-		lines = append(lines, strings.Repeat(" ", keyColWidth+4)+sourceStyle.Italic(true).Render(row.Source))
-	}
-
-	hint := requestVariablesShortcut
-	if m.requestVarEditing {
-		hint = requestVariableEditHint
-	}
-	lines = append(lines, "", dimStyle.Render(hint))
-
-	return mainWindowStyle.
-		Height(availableHeight).
-		Width(m.width - 4).
-		Render(strings.Join(lines, "\n"))
 }

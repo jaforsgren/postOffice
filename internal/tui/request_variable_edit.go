@@ -1,0 +1,299 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"postOffice/internal/postman"
+)
+
+// requestVarEditState is what the request variables panel is editing.
+type requestVarEditState int
+
+const (
+	requestVarEditNone requestVarEditState = iota
+	// requestVarEditText edits a plain variable's value as text.
+	requestVarEditText
+	// requestVarEditChoices picks a choice variable's value from its choices.
+	requestVarEditChoices
+	// requestVarEditNewChoice types a choice to add and choose.
+	requestVarEditNewChoice
+)
+
+const (
+	addChoiceKey    = "a"
+	deleteChoiceKey = "d"
+	choiceMarker    = "▾"
+	chosenLabel     = "(current)"
+	newChoicePrefix = "+ "
+)
+
+type shortcutHint struct {
+	keys        string
+	description string
+}
+
+var (
+	requestVariablesShortcuts = []shortcutHint{
+		{"enter/e", "Edit value"},
+		{addChoiceKey, "Add choice"},
+		{"j/k", "Navigate"},
+		{"esc/q", "Back"},
+	}
+	requestVariableTextShortcuts = []shortcutHint{
+		{"enter", "Save to file"},
+		{"esc", "Cancel"},
+	}
+	requestVariableChoicesShortcuts = []shortcutHint{
+		{"enter", "Choose"},
+		{"j/k", "Navigate"},
+		{addChoiceKey, "Add choice"},
+		{deleteChoiceKey, "Delete choice"},
+		{"esc", "Cancel"},
+	}
+	requestVariableNewChoiceShortcuts = []shortcutHint{
+		{"enter", "Add and choose"},
+		{"esc", "Cancel"},
+	}
+)
+
+// formatShortcuts renders hints as "<keys> description", the format the top
+// bar's shortcuts section reads.
+func formatShortcuts(hints []shortcutHint) []string {
+	formatted := make([]string, len(hints))
+	for i, hint := range hints {
+		formatted[i] = fmt.Sprintf("<%s> %s", hint.keys, hint.description)
+	}
+	return formatted
+}
+
+// contextualShortcuts are the current view's shortcuts for the top bar. The
+// request variables panel handles its own keys, so it lists its own.
+func (m Model) contextualShortcuts() []string {
+	if m.mode == ModeRequestVariables {
+		return formatShortcuts(m.requestVariableShortcuts())
+	}
+	return m.commandRegistry.GetContextualShortcuts(m.mode)
+}
+
+func (m Model) requestVariableShortcuts() []shortcutHint {
+	switch m.requestVarEdit {
+	case requestVarEditText:
+		return requestVariableTextShortcuts
+	case requestVarEditChoices:
+		return requestVariableChoicesShortcuts
+	case requestVarEditNewChoice:
+		return requestVariableNewChoiceShortcuts
+	default:
+		return requestVariablesShortcuts
+	}
+}
+
+func (m Model) selectedRequestVariableRow() (requestVariableRow, bool) {
+	rows := m.requestVariableRows()
+	if m.requestVarsCursor >= len(rows) {
+		return requestVariableRow{}, false
+	}
+	return rows[m.requestVarsCursor], true
+}
+
+func (m Model) handleRequestVariablesKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	row, hasRow := m.selectedRequestVariableRow()
+	switch m.requestVarEdit {
+	case requestVarEditText:
+		return m.handleRequestVariableTextKeys(msg, row)
+	case requestVarEditChoices:
+		return m.handleRequestVariableChoiceKeys(msg, row)
+	case requestVarEditNewChoice:
+		return m.handleRequestVariableNewChoiceKeys(msg, row)
+	}
+
+	switch msg.String() {
+	case "esc", "q", "h", "backspace":
+		m = m.closeRequestVariables()
+	case "j", "down":
+		if m.requestVarsCursor < len(m.requestVariableRows())-1 {
+			m.requestVarsCursor++
+		}
+	case "k", "up":
+		if m.requestVarsCursor > 0 {
+			m.requestVarsCursor--
+		}
+	case "enter", "e":
+		if hasRow {
+			return m.startRequestVariableEdit(row)
+		}
+	case addChoiceKey:
+		if hasRow {
+			return m.startNewChoice(row)
+		}
+	}
+	return m, nil
+}
+
+// startRequestVariableEdit opens the choices of a choice variable, or a text
+// input for a plain one.
+func (m Model) startRequestVariableEdit(row requestVariableRow) (Model, tea.Cmd) {
+	if row.variableValue().IsChoice() {
+		m.requestVarEdit = requestVarEditChoices
+		m.requestVarChoiceCursor = row.variableValue().ChoiceIndex()
+		m.statusMessage = fmt.Sprintf("Choose {{%s}}", row.Key)
+		return m, nil
+	}
+	m.editFieldInput.SetValue(row.Value)
+	m.editFieldInput.CursorEnd()
+	m.requestVarEdit = requestVarEditText
+	m.statusMessage = fmt.Sprintf("Editing {{%s}}", row.Key)
+	return m, m.editFieldInput.Focus()
+}
+
+func (m Model) startNewChoice(row requestVariableRow) (Model, tea.Cmd) {
+	m.editFieldInput.SetValue("")
+	m.requestVarEdit = requestVarEditNewChoice
+	m.statusMessage = fmt.Sprintf("New choice for {{%s}}", row.Key)
+	return m, m.editFieldInput.Focus()
+}
+
+func (m Model) stopRequestVariableEdit(status string) Model {
+	m.requestVarEdit = requestVarEditNone
+	m.editFieldInput.Blur()
+	m.statusMessage = status
+	return m
+}
+
+func (m Model) handleRequestVariableTextKeys(msg tea.KeyMsg, row requestVariableRow) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		return m.stopRequestVariableEdit("Edit cancelled"), nil
+	case tea.KeyEnter:
+		m = m.stopRequestVariableEdit("")
+		return m.saveRequestVariable(row.Key, postman.VariableValue{Value: m.editFieldInput.Value(), Choices: row.Choices}), nil
+	}
+
+	var cmd tea.Cmd
+	m.editFieldInput, cmd = m.editFieldInput.Update(msg)
+	return m, cmd
+}
+
+func (m Model) handleRequestVariableChoiceKeys(msg tea.KeyMsg, row requestVariableRow) (tea.Model, tea.Cmd) {
+	value := row.variableValue()
+	switch msg.String() {
+	case "esc", "q":
+		return m.stopRequestVariableEdit("Edit cancelled"), nil
+	case "j", "down":
+		if m.requestVarChoiceCursor < len(value.Choices)-1 {
+			m.requestVarChoiceCursor++
+		}
+	case "k", "up":
+		if m.requestVarChoiceCursor > 0 {
+			m.requestVarChoiceCursor--
+		}
+	case "enter":
+		m = m.stopRequestVariableEdit("")
+		return m.saveRequestVariable(row.Key, value.WithChosen(m.requestVarChoiceCursor)), nil
+	case addChoiceKey:
+		return m.startNewChoice(row)
+	case deleteChoiceKey:
+		remaining := value.WithoutChoice(m.requestVarChoiceCursor)
+		m = m.saveRequestVariable(row.Key, remaining)
+		if !remaining.IsChoice() {
+			m.requestVarEdit = requestVarEditNone
+		}
+		m.requestVarChoiceCursor = min(m.requestVarChoiceCursor, max(len(remaining.Choices)-1, 0))
+	}
+	return m, nil
+}
+
+func (m Model) handleRequestVariableNewChoiceKeys(msg tea.KeyMsg, row requestVariableRow) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m = m.stopRequestVariableEdit("Edit cancelled")
+		if row.variableValue().IsChoice() {
+			m.requestVarEdit = requestVarEditChoices
+		}
+		return m, nil
+	case tea.KeyEnter:
+		choice := m.editFieldInput.Value()
+		if choice == "" {
+			return m, nil
+		}
+		m = m.stopRequestVariableEdit("")
+		return m.saveRequestVariable(row.Key, row.variableValue().WithChoice(choice)), nil
+	}
+
+	var cmd tea.Cmd
+	m.editFieldInput, cmd = m.editFieldInput.Update(msg)
+	return m, cmd
+}
+
+func (m Model) renderRequestVariables(availableHeight int) string {
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	undefinedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+
+	lines := []string{titleStyle.Render("Variables used by " + m.requestVarsItem.Name), ""}
+
+	const keyColWidth = 30
+	indent := strings.Repeat(" ", keyColWidth+4)
+	for i, row := range m.requestVariableRows() {
+		selected := i == m.requestVarsCursor
+		prefix, style := "  ", normalItemStyle
+		if selected {
+			prefix, style = "> ", selectedItemStyle
+		}
+
+		value := style.Render(strings.ReplaceAll(row.Value, "\n", " "))
+		if selected && m.requestVarEdit == requestVarEditText {
+			value = m.editFieldInput.View()
+		}
+		if row.variableValue().IsChoice() {
+			value += "  " + dimStyle.Render(choiceSummary(row.variableValue()))
+		}
+		lines = append(lines, prefix+style.Width(keyColWidth).Render("{{"+row.Key+"}}")+"  "+value)
+
+		if selected && (m.requestVarEdit == requestVarEditChoices || m.requestVarEdit == requestVarEditNewChoice) {
+			lines = append(lines, m.choiceListLines(row, indent, dimStyle)...)
+		}
+
+		sourceStyle := dimStyle
+		if !row.Defined {
+			sourceStyle = undefinedStyle
+		}
+		lines = append(lines, indent+sourceStyle.Italic(true).Render(row.Source))
+	}
+
+	lines = append(lines, "", dimStyle.Render(strings.Join(formatShortcuts(m.requestVariableShortcuts()), "  ")))
+
+	return mainWindowStyle.
+		Height(availableHeight).
+		Width(m.width - 4).
+		Render(strings.Join(lines, "\n"))
+}
+
+// choiceSummary marks a choice variable with which of its choices is chosen.
+func choiceSummary(value postman.VariableValue) string {
+	return fmt.Sprintf("%s %d/%d", choiceMarker, value.ChoiceIndex()+1, len(value.Choices))
+}
+
+// choiceListLines is the dropdown of row's choices, with the new choice
+// input below it while one is being typed.
+func (m Model) choiceListLines(row requestVariableRow, indent string, dimStyle lipgloss.Style) []string {
+	var lines []string
+	for i, choice := range row.Choices {
+		prefix, style := "  ", normalItemStyle
+		if m.requestVarEdit == requestVarEditChoices && i == m.requestVarChoiceCursor {
+			prefix, style = "▸ ", selectedItemStyle
+		}
+		line := indent + prefix + style.Render(fmt.Sprintf("[%d] %s", i, choice))
+		if choice == row.Value {
+			line += " " + dimStyle.Render(chosenLabel)
+		}
+		lines = append(lines, line)
+	}
+	if m.requestVarEdit == requestVarEditNewChoice {
+		lines = append(lines, indent+newChoicePrefix+m.editFieldInput.View())
+	}
+	return lines
+}

@@ -190,7 +190,8 @@ type Model struct {
 	requestVarsItem          postman.Item
 	requestVarsFolderPath    []string
 	requestVarsCursor        int
-	requestVarEditing        bool
+	requestVarEdit           requestVarEditState
+	requestVarChoiceCursor   int
 	requestVarsReturnMode    ViewMode
 	requestTypeSelectionMode bool
 

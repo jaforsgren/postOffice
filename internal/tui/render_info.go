@@ -82,6 +82,9 @@ func (m Model) buildEnvironmentVariablesTable() []string {
 		value := m.formatEnvironmentVariableValue(variable, i == m.envVarCursor, valueColWidth, keyColWidth)
 
 		line := prefix + key + "  " + valueStyle.Render(value)
+		if choices := (postman.VariableValue{Value: variable.Value, Choices: variable.Choices}); choices.IsChoice() {
+			line += "  " + subtleStyle.Render(choiceSummary(choices)+" "+strings.Join(choices.Choices, ", "))
+		}
 		lines = append(lines, line)
 
 		if i == m.envVarCursor && !variable.Enabled {

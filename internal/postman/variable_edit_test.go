@@ -49,7 +49,7 @@ func TestSetVariable_EnvironmentWinsOverCollection(t *testing.T) {
 	collection := variableEditCollection()
 	env := &Environment{Name: "dev", Values: []EnvVariable{{Key: "shared", Value: "env", Enabled: true}}}
 
-	owner := SetVariable(collection, nil, []*Environment{env}, "shared", "new")
+	owner := SetVariable(collection, nil, []*Environment{env}, "shared", VariableValue{Value: "new"})
 
 	if owner != (VariableOwner{Scope: VariableScopeEnvironment, Name: "dev"}) {
 		t.Errorf("expected the environment to own it, got %+v", owner)
@@ -63,7 +63,7 @@ func TestSetVariable_FirstEnvironmentDefiningKeyWins(t *testing.T) {
 	first := &Environment{Name: "dev", Values: []EnvVariable{{Key: "other", Value: "x", Enabled: true}}}
 	second := &Environment{Name: "shared", Values: []EnvVariable{{Key: "persona_id", Value: "p1", Enabled: true}}}
 
-	owner := SetVariable(variableEditCollection(), nil, []*Environment{first, second}, "persona_id", "p2")
+	owner := SetVariable(variableEditCollection(), nil, []*Environment{first, second}, "persona_id", VariableValue{Value: "p2"})
 
 	if owner.Name != "shared" || second.Values[0].Value != "p2" {
 		t.Errorf("expected the second environment to be updated, got %+v %+v", owner, second.Values)
@@ -74,7 +74,7 @@ func TestSetVariable_DisabledEnvironmentValueIsSkipped(t *testing.T) {
 	collection := variableEditCollection()
 	env := &Environment{Name: "dev", Values: []EnvVariable{{Key: "claim_id", Value: "off", Enabled: false}}}
 
-	owner := SetVariable(collection, nil, []*Environment{env}, "claim_id", "c2")
+	owner := SetVariable(collection, nil, []*Environment{env}, "claim_id", VariableValue{Value: "c2"})
 
 	if owner.Scope != VariableScopeCollection || collection.Variables[0].Value != "c2" || env.Values[0].Value != "off" {
 		t.Errorf("expected the collection variable to be updated, got %+v", owner)
@@ -84,7 +84,7 @@ func TestSetVariable_DisabledEnvironmentValueIsSkipped(t *testing.T) {
 func TestSetVariable_OutermostFolderDefiningKeyWins(t *testing.T) {
 	collection := variableEditCollection()
 
-	owner := SetVariable(collection, []string{"Claims", "Nested"}, nil, "folder_only", "f2")
+	owner := SetVariable(collection, []string{"Claims", "Nested"}, nil, "folder_only", VariableValue{Value: "f2"})
 
 	if owner != (VariableOwner{Scope: VariableScopeFolder, Name: "Claims"}) {
 		t.Errorf("expected the Claims folder to own it, got %+v", owner)
@@ -97,7 +97,7 @@ func TestSetVariable_OutermostFolderDefiningKeyWins(t *testing.T) {
 func TestSetVariable_UndefinedBecomesCollectionVariable(t *testing.T) {
 	collection := variableEditCollection()
 
-	owner := SetVariable(collection, nil, nil, "new_key", "v")
+	owner := SetVariable(collection, nil, nil, "new_key", VariableValue{Value: "v"})
 
 	if owner.Scope != VariableScopeCollection {
 		t.Errorf("expected a collection variable, got %+v", owner)
