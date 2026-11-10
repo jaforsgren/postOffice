@@ -97,6 +97,7 @@ Press `:` to enter command mode:
 - `:wf` — browse workflows
 - `:wf run <id>` — run a workflow by ID
 - `:wf new <id>` — create a new workflow
+- `:run` or `:runner` — run every request in the current folder (collection runner)
 - `:w` — save changes to file
 - `:wq` — save changes and quit
 - `:changes` or `:ch` — show unsaved changes
@@ -127,6 +128,26 @@ When loading files, `~/` is expanded to your home directory:
 3. View the response — use `j/k` to scroll, `d/u` for half-page scrolling
 4. Press `q` or `esc` to close
 5. Press `ctrl+r` to view the last response without re-executing
+
+### Scripts
+
+Pre-request and test scripts run the way Postman runs them: collection scripts first, then each enclosing folder's, then the request's. All of a request's scripts share one sandbox, so a helper defined as an implicit global in a collection script (`helpers = {...}`) is available to every request script, while each script keeps its own scope for `const`/`let`.
+
+Supported sandbox APIs:
+- `pm.test`, `pm.expect` (Chai BDD: `eql`, `equal`, `oneOf`, `a/an`, `include`, `keys`, `above/below/at.most/at.least/within`, `true/false/null/undefined/empty/exist/ok`, `lengthOf`, `match`, `property`, `members`, `throw`, `not`/`deep`/`any` flags, `pm.expect.fail`)
+- `pm.response` — `code`, `status`, `responseTime`, `responseSize`, `json()`, `text()`, `headers.get/has/toObject/all/each`, `to.have.status/header/jsonBody`, `to.be.ok/error`
+- `pm.request` — `method`, `url.toString()/getPath()`, `headers.get/has/add/upsert/remove`, `body.raw`, `body.update(...)`; pre-request changes are applied to the request that is sent
+- `pm.variables`, `pm.collectionVariables`, `pm.environment` — `get/set/has/unset`, plus `pm.environment.name`
+- `pm.info` — `requestName`, `requestId`, `eventName`
+- `pm.execution.skipRequest()` and `pm.execution.setNextRequest(name | id | null)` (honoured by `:run`)
+- `pm.sendRequest(urlOrOptions, callback)` or `await pm.sendRequest(...)`; `{{variables}}` are not resolved, as in Postman
+- `setTimeout`/`clearTimeout`, `console.*`, `CryptoJS` (HmacSHA256, Base64, Utf8), `atob`/`btoa`
+
+Each synchronous piece of a script (its body or one callback) may run for 5 seconds; waiting on timers and `pm.sendRequest` does not count, but all pending callbacks must finish within 2 minutes.
+
+### Collection Runner
+
+`:run` runs every request under the current folder (the whole collection at the top level) in order, like Postman's Collection Runner. `pm.execution.setNextRequest` jumps to another request in the run by name or id, and `null` ends the run; a run stops after 1000 requests to catch setNextRequest loops. Progress, test results and console output appear in the run view: `enter` re-runs, `esc` returns to the requests, `L` opens the full run report in your editor.
 
 ## Editing Requests
 
@@ -211,6 +232,7 @@ script: |
 - `f` — run from selected step
 - `r` — run selected step only
 - `ctrl+r` — view last response for selected step
+- `L` — open the run report (steps and logs) in your editor (`$VISUAL`, `$EDITOR`, else nvim)
 
 The workflow script receives `wf` (workflow control API) and `pm` (full Postman-compatible scripting API). Pre/post request scripts attached to collection requests are triggered automatically on each step.
 
