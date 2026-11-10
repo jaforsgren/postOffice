@@ -2,46 +2,59 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"postOffice/internal/alias"
 	"sort"
 	"strings"
 )
 
-// headlessCommands maps a headless command name to its handler. An alias
-// stores one of these names plus the args to replay. Register future
-// headless commands (e.g. "validate", "convert") here to make them
-// available both directly and via `postOffice alias`.
-var headlessCommands = map[string]func([]string) error{
-	"merge": runMerge,
+var aliasCommand = &cliCommand{
+	name:    "alias",
+	summary: "Save and replay headless commands under a short name",
+	usage: `Usage:
+  postOffice alias add <name> <command> [args...]   save a command, e.g. "run" or "merge"
+  postOffice alias remove <name>
+  postOffice alias list
+  postOffice alias run <name>
+
+Aliases are stored in ~/.postoffice_aliases.json. Any command marked as
+aliasable (run, workflow, ls, merge) can be saved.`,
+	run: runAlias,
 }
 
-func runAlias(args []string) error {
+// aliasableCommand returns the headless command an alias may store and replay.
+func aliasableCommand(name string) (*cliCommand, bool) {
+	cmd, ok := lookupCommand(name)
+	return cmd, ok && cmd.aliasable
+}
+
+func runAlias(out io.Writer, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: postOffice alias <add|remove|list|run> ...")
+		return usageErrorf("missing alias subcommand")
 	}
 
 	switch args[0] {
 	case "add":
-		return aliasAdd(args[1:])
+		return aliasAdd(out, args[1:])
 	case "remove":
-		return aliasRemove(args[1:])
+		return aliasRemove(out, args[1:])
 	case "list":
-		return aliasList()
+		return aliasList(out)
 	case "run":
-		return aliasRun(args[1:])
+		return aliasRun(out, args[1:])
 	default:
-		return fmt.Errorf("unknown alias subcommand: %s", args[0])
+		return usageErrorf("unknown alias subcommand: %s", args[0])
 	}
 }
 
-func aliasAdd(args []string) error {
+func aliasAdd(out io.Writer, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: postOffice alias add <name> <command> [args...]")
+		return usageErrorf("alias add needs a name and a command")
 	}
 	name, command, commandArgs := args[0], args[1], args[2:]
 
-	if _, ok := headlessCommands[command]; !ok {
-		return fmt.Errorf("unknown headless command: %s", command)
+	if _, ok := aliasableCommand(command); !ok {
+		return usageErrorf("unknown headless command: %s", command)
 	}
 
 	cfg, err := alias.Load()
@@ -55,13 +68,13 @@ func aliasAdd(args []string) error {
 		return fmt.Errorf("failed to save alias config: %w", err)
 	}
 
-	fmt.Printf("Saved alias %q -> %s %s\n", name, command, strings.Join(commandArgs, " "))
+	fmt.Fprintf(out, "Saved alias %q -> %s %s\n", name, command, strings.Join(commandArgs, " "))
 	return nil
 }
 
-func aliasRemove(args []string) error {
+func aliasRemove(out io.Writer, args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: postOffice alias remove <name>")
+		return usageErrorf("alias remove needs exactly one name")
 	}
 	name := args[0]
 
@@ -78,11 +91,11 @@ func aliasRemove(args []string) error {
 		return fmt.Errorf("failed to save alias config: %w", err)
 	}
 
-	fmt.Printf("Removed alias %q\n", name)
+	fmt.Fprintf(out, "Removed alias %q\n", name)
 	return nil
 }
 
-func aliasList() error {
+func aliasList(out io.Writer) error {
 	cfg, err := alias.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load alias config: %w", err)
@@ -95,20 +108,20 @@ func aliasList() error {
 	sort.Strings(names)
 
 	if len(names) == 0 {
-		fmt.Println("No aliases defined")
+		fmt.Fprintln(out, "No aliases defined")
 		return nil
 	}
 
 	for _, name := range names {
 		a := cfg.Aliases[name]
-		fmt.Printf("%s: %s %s\n", name, a.Command, strings.Join(a.Args, " "))
+		fmt.Fprintf(out, "%s: %s %s\n", name, a.Command, strings.Join(a.Args, " "))
 	}
 	return nil
 }
 
-func aliasRun(args []string) error {
+func aliasRun(out io.Writer, args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: postOffice alias run <name>")
+		return usageErrorf("alias run needs exactly one name")
 	}
 	name := args[0]
 
@@ -122,10 +135,10 @@ func aliasRun(args []string) error {
 		return fmt.Errorf("alias not found: %s", name)
 	}
 
-	handler, ok := headlessCommands[a.Command]
+	cmd, ok := aliasableCommand(a.Command)
 	if !ok {
 		return fmt.Errorf("alias %q references unknown headless command: %s", name, a.Command)
 	}
 
-	return handler(a.Args)
+	return cmd.run(out, a.Args)
 }

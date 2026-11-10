@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"postOffice/internal/postman"
@@ -130,7 +131,7 @@ func TestRunMerge_Collections(t *testing.T) {
 		t.Fatalf("failed to write file2: %v", err)
 	}
 
-	if err := runMerge([]string{file1, file2, "--forceMerge"}); err != nil {
+	if err := runMerge(io.Discard, []string{file1, file2, "--forceMerge"}); err != nil {
 		t.Fatalf("runMerge failed: %v", err)
 	}
 
@@ -167,7 +168,7 @@ func TestRunMerge_GroupByCollection(t *testing.T) {
 		t.Fatalf("failed to write file2: %v", err)
 	}
 
-	if err := runMerge([]string{file1, file2, "--forceMerge", "--group-by-collection"}); err != nil {
+	if err := runMerge(io.Discard, []string{file1, file2, "--forceMerge", "--group-by-collection"}); err != nil {
 		t.Fatalf("runMerge failed: %v", err)
 	}
 
@@ -210,7 +211,7 @@ func TestRunMerge_GroupByCollectionFallsBackToFilename(t *testing.T) {
 		t.Fatalf("failed to write file2: %v", err)
 	}
 
-	if err := runMerge([]string{file1, file2, "--forceMerge", "--group-by-collection"}); err != nil {
+	if err := runMerge(io.Discard, []string{file1, file2, "--forceMerge", "--group-by-collection"}); err != nil {
 		t.Fatalf("runMerge failed: %v", err)
 	}
 
@@ -247,7 +248,7 @@ func TestRunMerge_GroupByCollectionRejectsEnvironments(t *testing.T) {
 		t.Fatalf("failed to write file2: %v", err)
 	}
 
-	err := runMerge([]string{file1, file2, "--forceMerge", "--group-by-collection"})
+	err := runMerge(io.Discard, []string{file1, file2, "--forceMerge", "--group-by-collection"})
 	if err == nil {
 		t.Fatal("expected error when --group-by-collection is used with environments")
 	}
@@ -269,7 +270,7 @@ func TestRunMerge_Environments(t *testing.T) {
 		t.Fatalf("failed to write file2: %v", err)
 	}
 
-	if err := runMerge([]string{file1, file2, "--keep-original", "-o", outFile}); err != nil {
+	if err := runMerge(io.Discard, []string{file1, file2, "--keep-original", "-o", outFile}); err != nil {
 		t.Fatalf("runMerge failed: %v", err)
 	}
 
@@ -313,7 +314,7 @@ func TestRunMerge_MismatchedTypes(t *testing.T) {
 		t.Fatalf("failed to write env file: %v", err)
 	}
 
-	err := runMerge([]string{collectionFile, envFile, "--forceMerge"})
+	err := runMerge(io.Discard, []string{collectionFile, envFile, "--forceMerge"})
 	if err == nil {
 		t.Fatal("expected error when merging a collection with an environment")
 	}

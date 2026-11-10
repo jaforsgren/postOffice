@@ -3,11 +3,33 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"postOffice/internal/postman"
 	"strings"
 )
+
+var mergeCommand = &cliCommand{
+	name:      "merge",
+	aliases:   []string{"-m", "--merge"},
+	summary:   "Merge two collections or two environments",
+	aliasable: true,
+	usage: `Usage:
+  postOffice merge <file1.json> <file2.json> (--forceMerge | --keep-original) [options]
+  postOffice -m <file1.json> <file2.json> ...
+
+Merges two collections or two environments. Folders with the same name merge
+recursively; same-named requests or variables follow the chosen strategy.
+
+Options:
+  --forceMerge                  file2 wins conflicts
+  --keep-original               file1 wins conflicts
+  -o, --output <file>           write the result here instead of over file1
+  -g, --group-by-collection     nest each collection's items under a folder
+                                named after it (collections only)`,
+	run: runMerge,
+}
 
 type mergeOptions struct {
 	file1             string
@@ -71,7 +93,7 @@ func parseMergeArgs(args []string) (*mergeOptions, error) {
 	}, nil
 }
 
-func runMerge(args []string) error {
+func runMerge(out io.Writer, args []string) error {
 	opts, err := parseMergeArgs(args)
 	if err != nil {
 		return err
@@ -123,7 +145,7 @@ func runMerge(args []string) error {
 		return fmt.Errorf("failed to write %s: %w", output, err)
 	}
 
-	fmt.Printf("Merged %s and %s -> %s\n", opts.file1, opts.file2, output)
+	fmt.Fprintf(out, "Merged %s and %s -> %s\n", opts.file1, opts.file2, output)
 	return nil
 }
 
