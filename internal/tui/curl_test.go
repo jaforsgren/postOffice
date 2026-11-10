@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"postOffice/internal/history"
 	"postOffice/internal/postman"
 	"strings"
 	"testing"
@@ -192,7 +193,7 @@ func TestExtractNameFromURL(t *testing.T) {
 
 func TestHandlePasteCurlKey_NoCollectionLoaded(t *testing.T) {
 	parser := postman.NewParser()
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeRequests
 
 	m, _ = handlePasteCurlKey(m)
@@ -210,7 +211,7 @@ func TestInsertItemAtCursor_ParsedCurlItem(t *testing.T) {
 		t.Fatalf("failed to load collection: %v", err)
 	}
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.collection = collection
 	m.mode = ModeRequests
 	m = m.loadRequestsList()

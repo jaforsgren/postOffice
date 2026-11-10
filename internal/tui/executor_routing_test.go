@@ -1,13 +1,14 @@
 package tui
 
 import (
+	"postOffice/internal/history"
 	"testing"
 
 	"postOffice/internal/postman"
 )
 
 func TestExecutorFor_RoutesByProtocol(t *testing.T) {
-	m := NewModel(postman.NewParser())
+	m := NewModel(postman.NewParser(), history.NewStore(""))
 	grpcItem := postman.Item{Request: &postman.Request{Method: "GRPC", URL: postman.URL{Raw: "grpc://localhost:1/svc.Service/Method"}}}
 	httpItem := postman.Item{Request: &postman.Request{Method: "GET", URL: postman.URL{Raw: "http://localhost:1/"}}}
 

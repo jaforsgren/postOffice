@@ -137,7 +137,7 @@ func parseCurlToItem(text string) (*postman.Item, error) {
 		case tok == "-d" || tok == "--data" || tok == "--data-raw" || tok == "--data-binary":
 			if i+1 < len(tokens) {
 				i++
-				req.Body = &postman.Body{Mode: "raw", Raw: tokens[i]}
+				req.Body = &postman.Body{Mode: postman.BodyModeRaw, Raw: tokens[i]}
 				if req.Method == "GET" {
 					req.Method = "POST"
 				}
@@ -201,7 +201,7 @@ func parseGRPCCurlToItem(text string) (*postman.Item, error) {
 		case tok == "-d" || tok == "--data":
 			if i+1 < len(tokens) {
 				i++
-				req.Body = &postman.Body{Mode: "raw", Raw: tokens[i]}
+				req.Body = &postman.Body{Mode: postman.BodyModeRaw, Raw: tokens[i]}
 			}
 		case tok == "-import-path" || tok == "-proto" || tok == "-authority" || tok == "-connect-timeout" || tok == "-max-time":
 			i++ // skip value

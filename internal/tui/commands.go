@@ -207,6 +207,14 @@ func (cr *CommandRegistry) registerCommands() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
 		},
 		{
+			Name:        "history",
+			Aliases:     []string{"hist", "hi"},
+			Description: "Show request history (replay and diff)",
+			ShortHelp:   ":hist",
+			Handler:     handleHistoryCommand,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeHistory},
+		},
+		{
 			Name:        "wf",
 			Aliases:     []string{"workflow", "workflows"},
 			Description: "Manage and run workflows (:wf [run|new] <name>)",
@@ -262,6 +270,27 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeResponse, ModeEnvironments, ModeChanges, ModeWorkflows, ModeWorkflowDetail, ModeSavedResponses},
 		},
 		{
+			Keys:        []string{"enter"},
+			Description: "Replay request",
+			ShortHelp:   "enter",
+			Handler:     Model.replayHistoryEntry,
+			AvailableIn: []ViewMode{ModeHistory},
+		},
+		{
+			Keys:        []string{"d"},
+			Description: "Diff with current response",
+			ShortHelp:   "d",
+			Handler:     Model.showHistoryDiff,
+			AvailableIn: []ViewMode{ModeHistory},
+		},
+		{
+			Keys:        []string{"ctrl+o"},
+			Description: "Request history",
+			ShortHelp:   "ctrl+o",
+			Handler:     Model.openRequestHistory,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables},
+		},
+		{
 			Keys:        []string{"ctrl+e"},
 			Description: "Execute request/run folder",
 			ShortHelp:   "ctrl+e",
@@ -315,7 +344,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHelp},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHelp, ModeHistory, ModeHistoryDiff},
 		},
 		{
 			Keys:        []string{"q"},
@@ -329,14 +358,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Navigate up",
 			ShortHelp:   "j/k",
 			Handler:     handleUpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory},
 		},
 		{
 			Keys:        []string{"down", "j"},
 			Description: "Scroll/Navigate",
 			ShortHelp:   "j/k",
 			Handler:     handleDownKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory},
 		},
 		{
 			Keys:        []string{"a"},
@@ -490,14 +519,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Show help",
 			ShortHelp:   "?",
 			Handler:     handleHelpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail, ModeResponse, ModeInfo, ModeChanges},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail, ModeResponse, ModeInfo, ModeChanges, ModeHistory},
 		},
 		{
 			Keys:        []string{"q"},
 			Description: "Close view",
 			ShortHelp:   "q",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeSavedResponses},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeSavedResponses, ModeHistory, ModeHistoryDiff},
 		},
 		{
 			Keys:        []string{"g"},
@@ -939,6 +968,10 @@ func handleDeleteCommand(m Model, args []string) (Model, tea.Cmd) {
 	return handleDeleteRequestKey(m)
 }
 
+func handleHistoryCommand(m Model, args []string) (Model, tea.Cmd) {
+	return m.openRequestHistory()
+}
+
 func handleQuitCommand(m Model, args []string) (Model, tea.Cmd) {
 	return handleQuitKey(m)
 }
@@ -991,7 +1024,7 @@ func handleEnterKey(m Model) (Model, tea.Cmd) {
 			m.scrollOffset = 0
 			m.configureViewport(&m.responseViewport, strings.Join(m.responseViewLines(), "\n"))
 			m.mode = ModeResponse
-			m.statusMessage = fmt.Sprintf("Viewing saved: %s  %s", sr.SavedAt.Format("2006-01-02 15:04:05"), sr.Status)
+			m.statusMessage = fmt.Sprintf("Viewing saved: %s  %s", sr.SavedAt.Format(timestampLayout), sr.Status)
 		}
 		return m, nil
 	}
@@ -1179,6 +1212,12 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.scrollOffset = 0
 		m.statusMessage = "Closed response view"
 		return m, nil
+	case ModeHistory:
+		return m.closeRequestHistory()
+	case ModeHistoryDiff:
+		m.mode = ModeHistory
+		m.statusMessage = "Closed history diff"
+		return m, nil
 	case ModeSavedResponses:
 		m.mode = ModeRequests
 		m.savedResponseCursor = 0
@@ -1290,6 +1329,12 @@ func handleUpKey(m Model) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.mode == ModeHistory {
+		if m.requestHistoryCursor > 0 {
+			m.requestHistoryCursor--
+		}
+		return m, nil
+	}
 	if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
 		if m.envVarCursor > 0 {
 			m.envVarCursor--
@@ -1327,6 +1372,12 @@ func handleDownKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeSavedResponses {
 		if m.savedResponseCursor < len(m.savedResponses)-1 {
 			m.savedResponseCursor++
+		}
+		return m, nil
+	}
+	if m.mode == ModeHistory {
+		if m.requestHistoryCursor < m.requestHistory.Len()-1 {
+			m.requestHistoryCursor++
 		}
 		return m, nil
 	}
@@ -1724,19 +1775,7 @@ func handleSaveResponseKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "No response to save"
 		return m, nil
 	}
-	resp := m.lastResponse
-	saved := postman.SavedResponse{
-		SavedAt:         time.Now(),
-		RequestMethod:   resp.RequestMethod,
-		RequestURL:      resp.RequestURL,
-		RequestHeaders:  resp.RequestHeaders,
-		RequestBody:     resp.RequestBody,
-		StatusCode:      resp.StatusCode,
-		Status:          resp.Status,
-		ResponseHeaders: resp.Headers,
-		Body:            resp.Body,
-		DurationMS:      resp.Duration.Milliseconds(),
-	}
+	saved := newSavedResponse(m.lastResponse, time.Now())
 	if err := m.parser.SaveResponse(m.lastExecutedItemID, saved); err != nil {
 		m.statusMessage = fmt.Sprintf("Failed to save response: %v", err)
 		return m, nil

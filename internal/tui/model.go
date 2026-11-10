@@ -2,6 +2,7 @@ package tui
 
 import (
 	"postOffice/internal/grpc"
+	"postOffice/internal/history"
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
@@ -35,6 +36,8 @@ const (
 	ModeSavedResponses
 	ModeHelp
 	ModeRequestVariables
+	ModeHistory
+	ModeHistoryDiff
 )
 
 type GRPCReflectPhase int
@@ -91,13 +94,16 @@ type requestExecutor interface {
 }
 
 type RequestCompleteMsg struct {
-	ItemID      string
-	Response    *http.Response
-	TestResult  *script.TestResult
-	Collection  *postman.Collection
-	Environment *postman.Environment
-	ItemName    string
-	IsModified  bool
+	ItemID          string
+	Response        *http.Response
+	TestResult      *script.TestResult
+	Collection      *postman.Collection
+	Environment     *postman.Environment
+	EnvironmentName string
+	Protocol        history.Protocol
+	ItemName        string
+	IsModified      bool
+	Replayed        bool
 }
 
 type Model struct {
@@ -245,6 +251,11 @@ type Model struct {
 	helpViewport viewport.Model
 	helpShowAll  bool
 
+	requestHistory       *history.Store
+	requestHistoryCursor int
+	historyReturnMode    ViewMode
+	historyDiffViewport  viewport.Model
+
 	// favorites maps a request's "collection/folder/.../name" identifier
 	// (see getRequestIdentifierByPath) to true when it's been favorited.
 	favorites             map[string]bool
@@ -273,7 +284,7 @@ func waitForWorkflow(ch <-chan workflow.ExecutionState) tea.Cmd {
 	}
 }
 
-func NewModel(parser *postman.Parser) Model {
+func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
 	cmdInput := textinput.New()
 	cmdInput.Placeholder = "Enter command..."
 	cmdInput.CharLimit = 500
@@ -321,6 +332,9 @@ func NewModel(parser *postman.Parser) Model {
 		workflowViewport:      viewport.New(0, 0),
 		savedResponseViewport: viewport.New(0, 0),
 		helpViewport:          viewport.New(0, 0),
+		requestHistory:        requestHistory,
+		historyReturnMode:     modeUnset,
+		historyDiffViewport:   viewport.New(0, 0),
 		requestExecutions:     make(map[string]*RequestExecution),
 		favorites:             make(map[string]bool),
 	}

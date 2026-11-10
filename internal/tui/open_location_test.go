@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"postOffice/internal/history"
 	"strings"
 	"testing"
 
@@ -39,7 +40,7 @@ func TestItemLocation_Collections(t *testing.T) {
 		t.Fatalf("failed to load collection: %v", err)
 	}
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 
@@ -59,7 +60,7 @@ func TestItemLocation_Environments(t *testing.T) {
 		t.Fatalf("failed to load environment: %v", err)
 	}
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeEnvironments
 	m = m.loadEnvironmentsList()
 
@@ -83,7 +84,7 @@ func TestItemLocation_OtherModeReturnsFalse(t *testing.T) {
 
 func TestHandleOpenCollectionLocationKey_NoSelection(t *testing.T) {
 	parser := postman.NewParser()
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m.items = []string{}
 
@@ -101,7 +102,7 @@ func TestHandleOpenCollectionLocationKey_OpensResolvedPath(t *testing.T) {
 		t.Fatalf("failed to load collection: %v", err)
 	}
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 	m.cursor = 0
@@ -123,7 +124,7 @@ func TestHandleOpenCollectionLocationKey_OpensResolvedPath(t *testing.T) {
 
 func TestHandleOpenEnvironmentLocationKey_NoSelection(t *testing.T) {
 	parser := postman.NewParser()
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeEnvironments
 	m.items = []string{}
 
@@ -141,7 +142,7 @@ func TestHandleOpenEnvironmentLocationKey_OpensResolvedPath(t *testing.T) {
 		t.Fatalf("failed to load environment: %v", err)
 	}
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeEnvironments
 	m = m.loadEnvironmentsList()
 	m.cursor = 0
@@ -168,7 +169,7 @@ func TestFormatItemLine_ShowsLocationColumnForCollections(t *testing.T) {
 		t.Fatalf("failed to load collection: %v", err)
 	}
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 	m.width = 200
@@ -196,7 +197,7 @@ func TestHandleOpenLocationKey_ReportsError(t *testing.T) {
 		t.Fatalf("failed to load collection: %v", err)
 	}
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 	m.cursor = 0

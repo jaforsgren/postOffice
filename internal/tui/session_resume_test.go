@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"postOffice/internal/history"
 	"testing"
 
 	"postOffice/internal/postman"
@@ -16,7 +17,7 @@ func simulateRelaunch(t *testing.T) Model {
 	if err := parser.LoadState(); err != nil {
 		t.Fatalf("LoadState failed: %v", err)
 	}
-	return NewModel(parser)
+	return NewModel(parser, history.NewStore(""))
 }
 
 // TestQuit_FlushesStateEvenIfInMemorySetIsBehind guards the exit-time
@@ -31,7 +32,7 @@ func TestQuit_FlushesStateEvenIfInMemorySetIsBehind(t *testing.T) {
 
 	pathOwn := writeTempCollectionFile(t, "Owned By This Session")
 	parser := postman.NewParser()
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m = m.loadCollection(pathOwn)
 
 	pathOther := writeTempCollectionFile(t, "Owned By Other Session")
@@ -64,7 +65,7 @@ func TestSessionResume_LoadedCollectionsAndEnvironmentsSurviveRelaunch(t *testin
 	envPath := writeTempEnvironmentFile(t, "Resume Env")
 
 	parser := postman.NewParser()
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m = m.loadCollection(collPath)
 	m = m.loadEnvironment(envPath)
 
@@ -86,7 +87,7 @@ func TestSessionResume_ActiveEnvironmentsMergeAfterRelaunch(t *testing.T) {
 	pathShared := writeTempEnvironmentFile(t, "Shared")
 
 	parser := postman.NewParser()
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m = m.loadEnvironment(pathDev)
 	m = m.loadEnvironment(pathShared)
 
@@ -117,7 +118,7 @@ func TestSessionResume_RequestsViewBreadcrumbSurvivesRelaunch(t *testing.T) {
 	collPath := writeTempCollectionFile(t, "Resume Collection")
 
 	parser := postman.NewParser()
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m = m.loadCollection(collPath)
 	m.mode = ModeRequests
 	m.breadcrumb = []string{}
@@ -143,7 +144,7 @@ func TestSessionResume_MergedCollectionViewDoesNotBreakRestore(t *testing.T) {
 	pathB := writeTempCollectionFile(t, "Collection B")
 
 	parser := postman.NewParser()
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m = m.loadCollection(pathA)
 	m = m.loadCollection(pathB)
 

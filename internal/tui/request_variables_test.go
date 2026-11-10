@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"postOffice/internal/history"
 	"strings"
 	"testing"
 
@@ -53,7 +54,7 @@ func requestVariablesModel(t *testing.T) (Model, string, string) {
 		t.Fatal(err)
 	}
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.collection = collection
 	m.environment = environment
 	m.mode = ModeRequests

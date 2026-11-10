@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"postOffice/internal/history"
 	"postOffice/internal/postman"
 	"strings"
 	"testing"
@@ -42,7 +43,7 @@ func nestedMockCollection() *postman.Collection {
 func nestedTestModel() Model {
 	parser := postman.NewParser()
 	collection := nestedMockCollection()
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.collection = collection
 	m.mode = ModeRequests
 	m = m.loadRequestsList()

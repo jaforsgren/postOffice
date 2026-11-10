@@ -118,6 +118,8 @@ var helpSections = []struct {
 	{[]ViewMode{ModeWorkflowRun}, "Workflow Run"},
 	{[]ViewMode{ModeWorkflowDetail}, "Workflow Detail"},
 	{[]ViewMode{ModeSavedResponses}, "Saved Responses"},
+	{[]ViewMode{ModeHistory}, "Request History"},
+	{[]ViewMode{ModeHistoryDiff}, "History Diff"},
 	{[]ViewMode{ModeHelp}, "Help"},
 }
 

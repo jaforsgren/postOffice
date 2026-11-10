@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"postOffice/internal/history"
 	"strings"
 	"testing"
 
@@ -18,7 +19,7 @@ func TestSpacebarKeypress_TogglesActiveCollection(t *testing.T) {
 	parser := createMockParser()
 	parser.LoadCollection(pathA)
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 	m.cursor = 0
@@ -36,7 +37,7 @@ func TestSpacebarKeypress_TogglesActiveEnvironment(t *testing.T) {
 	parser := createMockParser()
 	parser.LoadEnvironment(envPath)
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeEnvironments
 	m = m.loadEnvironmentsList()
 	m.cursor = 0
@@ -56,7 +57,7 @@ func TestHandleToggleActiveCollectionKey(t *testing.T) {
 	parser.LoadCollection(pathA)
 	parser.LoadCollection(pathB)
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 	m.cursor = 0 // "Collection A" (list is sorted)
@@ -83,7 +84,7 @@ func TestHandleSelection_ModeCollections_SingleActiveUsesCursor(t *testing.T) {
 	parser.LoadCollection(pathA)
 	parser.LoadCollection(pathB)
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 	m.cursor = 1 // "Collection B"
@@ -107,7 +108,7 @@ func TestHandleSelection_ModeCollections_MultiActiveShowsCombinedView(t *testing
 	parser.ToggleActiveCollection("Collection A")
 	parser.ToggleActiveCollection("Collection B")
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 	m.cursor = 0
@@ -134,7 +135,7 @@ func TestHandleSelection_ModeEnvironments_MultiActiveMerges(t *testing.T) {
 	parser.ToggleActiveEnvironment("Dev")
 	parser.ToggleActiveEnvironment("Shared")
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeEnvironments
 	m = m.loadEnvironmentsList()
 	m.cursor = 0
@@ -158,7 +159,7 @@ func TestEnterEditMode_BlockedForMergedCollection(t *testing.T) {
 	parser.ToggleActiveCollection("Collection A")
 	parser.ToggleActiveCollection("Collection B")
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 	m.cursor = 0
@@ -191,7 +192,7 @@ func TestStatusIsError_ResetOnNextKeypress(t *testing.T) {
 	parser.ToggleActiveCollection("Collection A")
 	parser.ToggleActiveCollection("Collection B")
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 	m.cursor = 0
@@ -232,7 +233,7 @@ func TestActiveMarker_RenderedForActiveCollections(t *testing.T) {
 	parser.LoadCollection(pathA)
 	parser.ToggleActiveCollection("Collection A")
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.mode = ModeCollections
 	m = m.loadCollectionsList()
 
@@ -243,7 +244,7 @@ func TestActiveMarker_RenderedForActiveCollections(t *testing.T) {
 }
 
 func TestStatusBar_ShowsSpaceHintInCollectionsAndEnvironments(t *testing.T) {
-	m := NewModel(createMockParser())
+	m := NewModel(createMockParser(), history.NewStore(""))
 	m.width = 120
 
 	m.mode = ModeCollections

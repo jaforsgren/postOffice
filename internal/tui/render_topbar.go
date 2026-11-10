@@ -305,6 +305,10 @@ func (m Model) getModeString() string {
 		return "Workflow"
 	case ModeWorkflowRun:
 		return "Workflow Run"
+	case ModeHistory:
+		return "Request History"
+	case ModeHistoryDiff:
+		return "History Diff"
 	default:
 		return ""
 	}
@@ -416,12 +420,14 @@ func (m Model) renderStatusBar() string {
 		help = "ctrl+r: resend | ya/yb/yr/yy: copy | ctrl+g: open in editor | q: close | j/k: scroll"
 	case ModeInfo:
 		help = "ya/yb/yr/yy: copy | ctrl+g: open in editor | q: close | j/k: scroll"
-	case ModeJSON, ModeLog:
+	case ModeJSON, ModeLog, ModeHistoryDiff:
 		help = "q: close | j/k: scroll"
 	case ModeSavedResponses:
 		help = "enter: view | d: delete | esc: back | j/k: navigate"
 	case ModeCollections, ModeEnvironments:
 		help = "q: quit | ↑↓/jk: navigate | space: toggle active | enter: select | backspace/h: back | /: search | :: command"
+	case ModeHistory:
+		help = "enter: replay | d: diff vs current | esc: back | j/k: navigate"
 	default:
 		help = "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
 	}

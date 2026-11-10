@@ -48,6 +48,7 @@ type Header struct {
 }
 
 const (
+	BodyModeRaw       = "raw"
 	BodyModeFormData  = "formdata"
 	FormParamTypeFile = "file"
 )

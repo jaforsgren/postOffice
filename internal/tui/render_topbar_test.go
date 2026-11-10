@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"postOffice/internal/history"
 	"strings"
 	"testing"
 
@@ -8,7 +9,7 @@ import (
 )
 
 func TestBuildLoadedNamesLine_None(t *testing.T) {
-	m := NewModel(createMockParser())
+	m := NewModel(createMockParser(), history.NewStore(""))
 
 	line := m.buildLoadedNamesLine("📁", "Collections", nil, func(string) bool { return false })
 
@@ -18,7 +19,7 @@ func TestBuildLoadedNamesLine_None(t *testing.T) {
 }
 
 func TestBuildLoadedNamesLine_ListsAllNames(t *testing.T) {
-	m := NewModel(createMockParser())
+	m := NewModel(createMockParser(), history.NewStore(""))
 	names := []string{"Alpha", "Beta"}
 
 	line := m.buildLoadedNamesLine("📁", "Collections", names, func(string) bool { return false })
@@ -29,7 +30,7 @@ func TestBuildLoadedNamesLine_ListsAllNames(t *testing.T) {
 }
 
 func TestBuildLoadedNamesLine_TruncatesWithCount(t *testing.T) {
-	m := NewModel(createMockParser())
+	m := NewModel(createMockParser(), history.NewStore(""))
 	names := []string{
 		"Collection One With A Long Name",
 		"Collection Two With A Long Name",
@@ -54,7 +55,7 @@ func TestTopBar_ShowsAllLoadedCollectionsAndEnvironments(t *testing.T) {
 	parser.LoadCollection(pathB)
 	parser.LoadEnvironment(envPath)
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.width = 160
 	m.height = 40
 
@@ -74,7 +75,7 @@ func TestTopBar_SeparatesContextEnvironmentsAndShortcuts(t *testing.T) {
 	parser.LoadEnvironment(writeTempEnvironmentFile(t, "Staging"))
 	parser.ToggleActiveEnvironment("Dev")
 
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.width = 200
 	m.height = 40
 	m.mode = ModeRequests
@@ -100,7 +101,7 @@ func TestBuildEnvironmentsSection_OverflowShowsCount(t *testing.T) {
 	for _, name := range []string{"A", "B", "C", "D", "E", "F", "G"} {
 		parser.LoadEnvironment(writeTempEnvironmentFile(t, name))
 	}
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 
 	lines := m.buildEnvironmentsSection()
 
@@ -110,7 +111,7 @@ func TestBuildEnvironmentsSection_OverflowShowsCount(t *testing.T) {
 }
 
 func TestBuildShortcutsDisplay_DropsColumnsThatDoNotFit(t *testing.T) {
-	m := NewModel(createMockParser())
+	m := NewModel(createMockParser(), history.NewStore(""))
 	m.mode = ModeRequests
 
 	narrow := m.buildShortcutsDisplay(1)

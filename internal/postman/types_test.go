@@ -183,8 +183,8 @@ func TestItem_IsGRPC(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "Nil request",
-			item: Item{Name: "Empty"},
+			name:     "Nil request",
+			item:     Item{Name: "Empty"},
 			expected: false,
 		},
 	}

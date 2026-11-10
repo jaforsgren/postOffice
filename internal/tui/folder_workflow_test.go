@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"postOffice/internal/history"
 	"strings"
 	"testing"
 
@@ -72,7 +73,7 @@ func folderRunTestModel(t *testing.T, path string) Model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewModel(parser)
+	m := NewModel(parser, history.NewStore(""))
 	m.width = 200
 	m.collection = collection
 	m.mode = ModeRequests

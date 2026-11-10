@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"postOffice/internal/amqp"
 	"postOffice/internal/grpc"
+	"postOffice/internal/history"
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/logger"
 	"postOffice/internal/postman"
@@ -81,6 +82,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.statusMessage = fmt.Sprintf("Response: %s - %s (%v)%s", msg.ItemName, msg.Response.Status, msg.Response.Duration, statusSuffix)
 			logger.Log(fmt.Sprintf("[REQUEST] %s %s (%v)", msg.Response.Status, msg.ItemName, msg.Response.Duration))
+		}
+
+		m = m.recordHistory(msg)
+
+		if msg.Replayed && m.mode == ModeHistory {
+			m.previousMode = ModeHistory
+			m.mode = ModeResponse
+			m.scrollOffset = 0
 		}
 
 		if m.mode == ModeResponse {
@@ -205,7 +214,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleEditModeKeys(msg)
 		}
 
-		if m.mode == ModeResponse || m.mode == ModeInfo || m.mode == ModeJSON || m.mode == ModeHelp {
+		if m.mode == ModeResponse || m.mode == ModeInfo || m.mode == ModeJSON || m.mode == ModeHelp || m.mode == ModeHistoryDiff {
 			key := msg.String()
 			if key == "esc" || key == "h" || key == "backspace" || key == "q" {
 				return m.handleNormalMode(msg)
@@ -228,6 +237,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logsViewport, cmd = m.logsViewport.Update(msg)
 			case ModeHelp:
 				m.helpViewport, cmd = m.helpViewport.Update(msg)
+			case ModeHistoryDiff:
+				m.historyDiffViewport, cmd = m.historyDiffViewport.Update(msg)
 			}
 			return m, cmd
 		}
@@ -836,7 +847,7 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 	}
 
 	m.requestExecutions[itemID] = &RequestExecution{
-		Status:     "Sending...",
+		Status:     statusSending,
 		Timestamp:  time.Now(),
 		Duration:   0,
 		Response:   nil,
@@ -848,6 +859,7 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 	executor := m.executorFor(item)
 	collection := m.collection
 	environment := m.environment
+	environmentName := m.environmentName()
 	itemCopy := item
 
 	scope := &script.RequestScope{
@@ -861,15 +873,24 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 		response, testResult := executor.Execute(requestToExecute, scope, variables)
 
 		return RequestCompleteMsg{
-			ItemID:      itemID,
-			Response:    response,
-			TestResult:  testResult,
-			Collection:  collection,
-			Environment: environment,
-			ItemName:    item.Name,
-			IsModified:  isModified,
+			ItemID:          itemID,
+			Response:        response,
+			TestResult:      testResult,
+			Collection:      collection,
+			Environment:     environment,
+			EnvironmentName: environmentName,
+			Protocol:        protocolFor(item),
+			ItemName:        item.Name,
+			IsModified:      isModified,
 		}
 	}
+}
+
+func protocolFor(item postman.Item) history.Protocol {
+	if item.IsGRPC() {
+		return history.ProtocolGRPC
+	}
+	return history.ProtocolHTTP
 }
 
 func (m Model) executorFor(item postman.Item) requestExecutor {
@@ -880,32 +901,31 @@ func (m Model) executorFor(item postman.Item) requestExecutor {
 }
 
 func (m Model) executeServiceBusRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	return m.executeMessageItem(item, folderPath, "Sending ASB message", func(req *postman.Request, vars []postman.VariableSource) *internalhttp.Response {
-		return servicebus.Send(req, vars)
-	})
+	return m.executeProtocolItem(item, folderPath, history.ProtocolServiceBus, "Sending ASB message", servicebus.Send)
 }
 
 func (m Model) executeAMQPRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	return m.executeMessageItem(item, folderPath, "Publishing AMQP message", func(req *postman.Request, vars []postman.VariableSource) *internalhttp.Response {
-		return amqp.Publish(req, vars)
-	})
+	return m.executeProtocolItem(item, folderPath, history.ProtocolAMQP, "Publishing AMQP message", amqp.Publish)
 }
 
-func (m Model) executeMessageItem(
+// executeProtocolItem runs pre-request scripts, then sends a non-HTTP request with send.
+func (m Model) executeProtocolItem(
 	item postman.Item,
 	folderPath []string,
+	protocol history.Protocol,
 	statusPrefix string,
-	send func(*postman.Request, []postman.VariableSource) *internalhttp.Response,
+	send requestSender,
 ) (Model, tea.Cmd) {
 	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, folderPath, item.Name)
 	m.statusMessage = fmt.Sprintf("%s: %s", statusPrefix, item.Name)
 	m.requestExecutions[itemID] = &RequestExecution{
-		Status:    "Sending...",
+		Status:    statusSending,
 		Timestamp: time.Now(),
 	}
 
 	collection := m.collection
 	environment := m.environment
+	environmentName := m.environmentName()
 	itemCopy := item
 	scope := script.RequestScope{
 		Collection:  collection,
@@ -932,12 +952,14 @@ func (m Model) executeMessageItem(
 		variables := postman.GetAllVariables(collection, folderPath, environment)
 		resp := send(request, variables)
 		return RequestCompleteMsg{
-			ItemID:      itemID,
-			Response:    resp,
-			TestResult:  preResult,
-			Collection:  collection,
-			Environment: environment,
-			ItemName:    itemCopy.Name,
+			ItemID:          itemID,
+			Response:        resp,
+			TestResult:      preResult,
+			Collection:      collection,
+			Environment:     environment,
+			EnvironmentName: environmentName,
+			Protocol:        protocol,
+			ItemName:        itemCopy.Name,
 		}
 	}
 }
@@ -1676,7 +1698,7 @@ func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.grpcEditMethod = selected.FullMethod
 		m.editRequest.URL.Raw = m.buildGRPCURL()
 		if m.editRequest.Body == nil {
-			m.editRequest.Body = &postman.Body{Mode: "raw"}
+			m.editRequest.Body = &postman.Body{Mode: postman.BodyModeRaw}
 		}
 		m.editRequest.Body.Raw = selected.InputTemplate
 		m.mode = ModeEdit
@@ -1726,7 +1748,7 @@ func (m Model) enterNewItemEditMode(requestType string) Model {
 			Method: "GRPC",
 			URL:    postman.URL{Raw: "grpc://"},
 			Header: []postman.Header{},
-			Body:   &postman.Body{Mode: "raw", Raw: "{}"},
+			Body:   &postman.Body{Mode: postman.BodyModeRaw, Raw: "{}"},
 		}
 		editType = EditTypeGRPCRequest
 	case "Service Bus (ASB)":
@@ -1734,7 +1756,7 @@ func (m Model) enterNewItemEditMode(requestType string) Model {
 			Method: "POST",
 			URL:    postman.URL{Raw: "asb://"},
 			Header: []postman.Header{},
-			Body:   &postman.Body{Mode: "raw", Raw: "{}"},
+			Body:   &postman.Body{Mode: postman.BodyModeRaw, Raw: "{}"},
 		}
 		editType = EditTypeRequest
 	case "AMQP":
@@ -1742,7 +1764,7 @@ func (m Model) enterNewItemEditMode(requestType string) Model {
 			Method: "POST",
 			URL:    postman.URL{Raw: "amqp://"},
 			Header: []postman.Header{},
-			Body:   &postman.Body{Mode: "raw", Raw: "{}"},
+			Body:   &postman.Body{Mode: postman.BodyModeRaw, Raw: "{}"},
 		}
 		editType = EditTypeRequest
 	default: // HTTP
@@ -1916,7 +1938,7 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.editRequest.Header = m.parseHeaders(m.editFieldTextArea.Value())
 				case 4:
 					if m.editRequest.Body == nil {
-						m.editRequest.Body = &postman.Body{Mode: "raw"}
+						m.editRequest.Body = &postman.Body{Mode: postman.BodyModeRaw}
 					}
 					m.editRequest.Body.Raw = m.editFieldTextArea.Value()
 				}
@@ -1983,7 +2005,7 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.editRequest.Header = m.parseHeaders(m.editFieldTextArea.Value())
 				case 4:
 					if m.editRequest.Body == nil {
-						m.editRequest.Body = &postman.Body{Mode: "raw"}
+						m.editRequest.Body = &postman.Body{Mode: postman.BodyModeRaw}
 					}
 					m.editRequest.Body.Raw = m.editFieldTextArea.Value()
 				}

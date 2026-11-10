@@ -82,9 +82,9 @@ func NewWorkflow(id string) *Workflow {
 	name := strings.Join(parts, " ")
 
 	return &Workflow{
-		ID:    id,
-		Name:  name,
-		Steps: []Step{},
+		ID:     id,
+		Name:   name,
+		Steps:  []Step{},
 		Script: "export default async function (wf, pm) {\n  // start here\n}\n",
 	}
 }
