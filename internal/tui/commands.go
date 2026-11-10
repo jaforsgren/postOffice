@@ -670,6 +670,20 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeWorkflowDetail, ModeWorkflowRun},
 		},
 		{
+			Keys:        []string{undoKey},
+			Description: "Undo last saved change",
+			ShortHelp:   undoKey,
+			Handler:     handleUndoKey,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments},
+		},
+		{
+			Keys:        []string{redoKey},
+			Description: "Redo",
+			ShortHelp:   redoKey,
+			Handler:     handleRedoKey,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments},
+		},
+		{
 			Keys:        []string{jumpBackKey},
 			Description: "Jump back",
 			ShortHelp:   jumpBackKey,

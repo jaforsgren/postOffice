@@ -264,6 +264,9 @@ type Model struct {
 	helpShowAll    bool
 	helpReturnMode ViewMode
 
+	// undoHistory undoes and redoes the collection and environment edits saved from the TUI.
+	undoHistory *undoHistory
+
 	requestHistory       *history.Store
 	requestHistoryCursor int
 	historyReturnMode    ViewMode
@@ -355,6 +358,7 @@ func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
 		savedResponseViewport: viewport.New(0, 0),
 		helpViewport:          viewport.New(0, 0),
 		requestHistory:        requestHistory,
+		undoHistory:           newUndoHistory(),
 		historyReturnMode:     modeUnset,
 		historyDiffViewport:   viewport.New(0, 0),
 		requestExecutions:     make(map[string]*RequestExecution),

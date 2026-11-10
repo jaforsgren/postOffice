@@ -24,10 +24,18 @@ func (m Model) markCollectionModified(folderPath []string) {
 	m.modifiedCollections[m.owningCollectionName(folderPath)] = true
 }
 
-// saveOwningCollection writes the collection holding folderPath to its file.
+// saveOwningCollection writes the collection holding folderPath to its file,
+// which leaves it unsaved only while request edits kept apart from it remain.
 func (m Model) saveOwningCollection(folderPath []string) error {
 	m.syncMergedCollection()
-	return m.parser.SaveCollection(m.owningCollectionName(folderPath))
+	name := m.owningCollectionName(folderPath)
+	if err := m.saveCollectionUndoable(name); err != nil {
+		return err
+	}
+	if !m.hasUnsavedRequestsWithPrefix(m.getRequestIdentifierByPath(name, nil, "")) {
+		delete(m.modifiedCollections, name)
+	}
+	return nil
 }
 
 // syncMergedCollection writes combined-view edits back to the collections it

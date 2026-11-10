@@ -162,7 +162,7 @@ func (m Model) saveRequestVariable(key string, value postman.VariableValue) Mode
 
 	var err error
 	if owner.Scope == postman.VariableScopeEnvironment {
-		err = m.parser.SaveEnvironment(owner.Name)
+		err = m.saveEnvironmentUndoable(owner.Name)
 		m = m.reloadActiveEnvironment()
 	} else {
 		err = m.saveOwningCollection(m.requestVarsFolderPath)

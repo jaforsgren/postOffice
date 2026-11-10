@@ -1468,7 +1468,7 @@ func (m Model) saveAllModifiedRequests() (Model, error) {
 
 	m.syncMergedCollection()
 	for collectionName := range m.modifiedCollections {
-		if err := m.parser.SaveCollection(collectionName); err != nil {
+		if err := m.saveCollectionUndoable(collectionName); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", collectionName, err))
 		} else {
 			savedCount++
