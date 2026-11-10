@@ -270,12 +270,17 @@ Merge two Postman collections or two environment files headlessly, without start
 
 # write the merged result elsewhere instead of overwriting file1
 ./postOffice -m file1.json file2.json --forceMerge -o merged.json
+
+# keep each collection's items under its own top-level folder instead of
+# merging same-named items together at the root
+./postOffice -m file1.json file2.json --forceMerge --group-by-collection
 ```
 
 - Exactly one of `--forceMerge` or `--keep-original` is required.
 - Both inputs must be the same type (two collections, or two environments) — mixing a collection with an environment is an error.
 - Folders with the same name are merged recursively; same-named requests or variables are resolved by the chosen strategy. Items unique to either file are kept.
 - Without `-o`, the merged result overwrites the first input file.
+- `--group-by-collection` (or `-g`; collections only) nests each collection's items under a folder named after that collection (its `info.name`, or the filename if unnamed) instead of merging items at the top level. If a collection already has a top-level folder matching its own name (e.g. from a previous grouped merge), that folder is reused rather than double-wrapped; if both collections' group folders end up with the same name, their contents merge into one folder using the normal `--forceMerge`/`--keep-original` rules instead of producing duplicate folders.
 
 ### Headless Aliases
 

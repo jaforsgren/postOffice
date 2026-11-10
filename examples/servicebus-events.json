@@ -1,0 +1,841 @@
+{
+  "info": {
+    "name": "Claim Created Events",
+    "description": "Test events for the local Azure Service Bus emulator. Mirrors send-events.py. Load with :load and the servicebus-emulator.env.json environment with :loadenv.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Claim Documentation",
+      "item": [
+        {
+          "name": "claim-created",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-26-NWGXJJ\",\n  \"subject\": \"LF-26-NWGXJJ\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"zytmasoPQq6TnMn_oRQoU\\\", \\\"subject\\\": \\\"LF-26-NWGXJJ\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "Sends a claim.created event (se.develophub.claim-documentation.claim.created.v1)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var claimId = 'claim-' + Math.random().toString(36).substring(2, 10);",
+                  "var personaId = 'persona-' + Math.random().toString(36).substring(2, 10);",
+                  "pm.collectionVariables.set('claim_id', claimId);",
+                  "pm.collectionVariables.set('persona_id', personaId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "payment-completed v1034",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.payment.completed.event.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-26-NWGXJJ\",\n  \"subject\": \"LF-26-NWGXJJ\",\n  \"event-name\": \"se.develophub.payment.completed.event.v1\",\n  \"source\": \"payment-service\",\n  \"data\": \"{\\\"payment-id\\\": \\\"C531323EAE753140C0D522B90F994295\\\", \\\"external-id\\\": \\\"LF-26-NWGXJJ\\\", \\\"system-id\\\": \\\"sejfa\\\", \\\"payment-method\\\": \\\"BankTransfer\\\", \\\"completed-at-utc\\\": \\\"2026-06-12T10:00:00Z\\\", \\\"version\\\": 1, \\\"source\\\": \\\"SejfaSystemAgent\\\"}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://payments"
+            }
+          },
+          "description": "Sends an unknown event type to the claimdocumentation topic (negative test case)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var claimId = 'claim-' + Math.random().toString(36).substring(2, 10);",
+                  "pm.collectionVariables.set('claim_id', claimId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TT-01 InvalidExposureCount",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-EXPO2:1\",\n  \"subject\": \"LF-TT-EXPO2\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-01\\\", \\\"subject\\\": \\\"LF-TT-EXPO2\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-01] InvalidExposureCount: two exposures submitted; DamageExposureCountHandler expects exactly one"
+        },
+        {
+          "name": "TT-02 PolicyholderHasProtectedIdentity",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-PRTID:1\",\n  \"subject\": \"LF-TT-PRTID\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-02\\\", \\\"subject\\\": \\\"LF-TT-PRTID\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-02] PolicyholderHasProtectedIdentity: persona-tt-02 has isProtected=true in persona.events"
+        },
+        {
+          "name": "TT-03 InvalidPhoneNumber",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-PHONE:1\",\n  \"subject\": \"LF-TT-PHONE\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-03\\\", \\\"subject\\\": \\\"LF-TT-PHONE\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-03] InvalidPhoneNumber: persona-tt-03 has phoneNumber='+468123456789' (landline, fails ^\\+467\\d{8}$)"
+        },
+        {
+          "name": "TT-04 InsurerHaveReceivedPaymentWithinTimeLimit",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-RCPAY:1\",\n  \"subject\": \"LF-TT-RCPAY\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-04\\\", \\\"subject\\\": \\\"LF-TT-RCPAY\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-04] InsurerHaveReceivedPaymentWithinTimeLimit: payments.payments has payment for persona-tt-04 dated 2026-06-08 (within 7-day anti-fraud window)"
+        },
+        {
+          "name": "TT-05 InsuranceNotActive",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-INACT:1\",\n  \"subject\": \"LF-TT-INACT\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-05\\\", \\\"subject\\\": \\\"LF-TT-INACT\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-05] InsuranceNotActive: insurify.policies POLICY-TT-05 has policyState='Cancelled', policySubState='Cancellation completed'"
+        },
+        {
+          "name": "TT-06 HasUnpaidClaims",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-UNPAID:1\",\n  \"subject\": \"LF-TT-UNPAID\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-06\\\", \\\"subject\\\": \\\"LF-TT-UNPAID\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-06] HasUnpaidClaims: insurify.policies POLICY-TT-06 has policySubState='Unpaid'"
+        },
+        {
+          "name": "TT-07 InsuranceHaveNotBeenActiveEnough",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-NEWINS:1\",\n  \"subject\": \"LF-TT-NEWINS\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-07\\\", \\\"subject\\\": \\\"LF-TT-NEWINS\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-07] InsuranceHaveNotBeenActiveEnough: insurify.policies POLICY-TT-07 startDate=2026-05-28, policySubState='Paid' (not renewed) — 14 days active, below 30-day minimum"
+        },
+        {
+          "name": "TT-08 SuperSejfaInsuranceNotEligible",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-SUPER:1\",\n  \"subject\": \"LF-TT-SUPER\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-08\\\", \\\"subject\\\": \\\"LF-TT-SUPER\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-08] SuperSejfaInsuranceNotEligible: insurify.policies POLICY-TT-08 has packageName='Sejfa Super Package'"
+        },
+        {
+          "name": "TT-09 DamageNotFiledByPolicyholder",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-AGENT:1\",\n  \"subject\": \"LF-TT-AGENT\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-09\\\", \\\"subject\\\": \\\"LF-TT-AGENT\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-09] DamageNotFiledByPolicyholder: claim author is system/AgentPortal — filedBy does not match personaId"
+        },
+        {
+          "name": "TT-10 DamageTypeOtherNotEligible",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-OTHER:1\",\n  \"subject\": \"LF-TT-OTHER\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-10\\\", \\\"subject\\\": \\\"LF-TT-OTHER\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-10] DamageTypeOtherNotEligible: exposures[0].moment='Other' — case-insensitive match disqualifies claim"
+        },
+        {
+          "name": "TT-11 DamageAmountTooLow",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-AMTLO:1\",\n  \"subject\": \"LF-TT-AMTLO\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-11\\\", \\\"subject\\\": \\\"LF-TT-AMTLO\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-11] DamageToLowToBeHandled: exposures[0].cost.amount=200 SEK — below exclusive lower bound of 250 SEK"
+        },
+        {
+          "name": "TT-12 DamageAmountTooHigh",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.claim-documentation.claim.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"LF-TT-AMTHI:1\",\n  \"subject\": \"LF-TT-AMTHI\",\n  \"event-name\": \"se.develophub.claim-documentation.claim.created.v1\",\n  \"source\": \"claim-documentation-service\",\n  \"data\": \"{\\\"persona-id\\\": \\\"persona-tt-12\\\", \\\"subject\\\": \\\"LF-TT-AMTHI\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}"
+            }
+          },
+          "description": "[TT-FAIL-12] DamageToHighToBeHandled: exposures[0].cost.amount=5000 SEK — at exclusive upper bound of 5000 SEK"
+        }
+      ],
+      "description": "Events for the claimdocumentation topic"
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "payment-completed",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.payment.completed.event.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"{{payment_claim_id}}\",\n  \"subject\": \"{{payment_claim_id}}\",\n  \"event-name\": \"se.develophub.payment.completed.event.v1\",\n  \"source\": \"payment-service\",\n  \"data\": \"{\\\"payment-id\\\": \\\"{{payment_id}}\\\", \\\"external-id\\\": \\\"{{payment_claim_id}}\\\", \\\"system-id\\\": \\\"sejfa-payments\\\", \\\"payment-method\\\": \\\"Swish\\\", \\\"completed-at-utc\\\": \\\"{{completed_at}}\\\", \\\"version\\\": 1, \\\"source\\\": \\\"SejfaSystemAgent\\\"}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_payments}}"
+            }
+          },
+          "description": "Sends a payment.completed event",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var claimId = 'claim-' + Math.random().toString(36).substring(2, 10);",
+                  "var paymentId = 'pay-' + Math.random().toString(36).substring(2, 10);",
+                  "pm.collectionVariables.set('payment_claim_id', claimId);",
+                  "pm.collectionVariables.set('payment_id', paymentId);",
+                  "pm.collectionVariables.set('completed_at', new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "payment-failed",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.payment.failed.event.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"{{failed_claim_id}}\",\n  \"subject\": \"{{failed_claim_id}}\",\n  \"event-name\": \"se.develophub.payment.failed.event.v1\",\n  \"source\": \"payment-service\",\n  \"data\": \"{\\\"payment-id\\\": \\\"{{failed_payment_id}}\\\", \\\"external-id\\\": \\\"{{failed_claim_id}}\\\", \\\"system-id\\\": \\\"sejfa-payments\\\", \\\"payment-method\\\": \\\"Swish\\\", \\\"failed-at-utc\\\": \\\"{{failed_at}}\\\", \\\"version\\\": 1, \\\"source\\\": \\\"SejfaSystemAgent\\\"}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_payments}}"
+            }
+          },
+          "description": "Sends a payment.failed event",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var claimId = 'claim-' + Math.random().toString(36).substring(2, 10);",
+                  "var paymentId = 'pay-' + Math.random().toString(36).substring(2, 10);",
+                  "pm.collectionVariables.set('failed_claim_id', claimId);",
+                  "pm.collectionVariables.set('failed_payment_id', paymentId);",
+                  "pm.collectionVariables.set('failed_at', new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "payment-completed sejfa (triggers auto-close)",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.payment.completed.event.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"1.0\",\n  \"id\": \"LF-26-NWGXJJ\",\n  \"subject\": \"LF-26-NWGXJJ\",\n  \"event-name\": \"se.develophub.payment.completed.event.v1\",\n  \"source\": \"payment-service\",\n  \"data\": \"{\\\"payment-id\\\": \\\"C531323EAE753140C0D522B90F994295\\\", \\\"external-id\\\": \\\"LF-26-NWGXJJ\\\", \\\"system-id\\\": \\\"sejfa\\\", \\\"payment-method\\\": \\\"BankTransfer\\\", \\\"completed-at-utc\\\": \\\"2026-06-12T10:00:00Z\\\", \\\"version\\\": 1, \\\"author\\\": {\\\"customer\\\": null, \\\"representative\\\": null, \\\"system\\\": {\\\"name\\\": \\\"SejfaSystemAgent\\\"}}}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_payments}}"
+            }
+          },
+          "description": "system-id == \"sejfa\" — triggers the auto-close handler"
+        },
+        {
+          "name": "payment-completed ClaimsAdjustment (no auto-close)",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.payment.completed.event.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"1.0\",\n  \"id\": \"LF-26-NWGXJJ\",\n  \"subject\": \"LF-26-NWGXJJ\",\n  \"event-name\": \"se.develophub.payment.completed.event.v1\",\n  \"source\": \"payment-service\",\n  \"data\": \"{\\\"payment-id\\\": \\\"C531323EAE753140C0D522B90F994295\\\", \\\"external-id\\\": \\\"LF-26-NWGXJJ\\\", \\\"system-id\\\": \\\"ClaimsAdjustment\\\", \\\"payment-method\\\": \\\"BankTransfer\\\", \\\"completed-at-utc\\\": \\\"2026-06-12T10:00:00Z\\\", \\\"version\\\": 1, \\\"author\\\": {\\\"customer\\\": null, \\\"representative\\\": null, \\\"system\\\": {\\\"name\\\": \\\"ClaimsAdjustmentSystemAgent\\\"}}}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_payments}}"
+            }
+          },
+          "description": "Internal payment — does NOT trigger auto-close (system-id == \"ClaimsAdjustment\", handled via normal ChangeStatusAsync)"
+        }
+      ],
+      "description": "Events for the payments topic"
+    },
+    {
+      "name": "Cosmos",
+      "item": [
+        {
+          "name": "Query Events By Id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{cosmos_auth}}"
+              },
+              {
+                "key": "x-ms-date",
+                "value": "{{cosmos_date}}"
+              },
+              {
+                "key": "x-ms-version",
+                "value": "2018-12-31"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/query+json"
+              },
+              {
+                "key": "x-ms-documentdb-isquery",
+                "value": "true"
+              },
+              {
+                "key": "x-ms-max-item-count",
+                "value": "-1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"SELECT * FROM c WHERE c.id = @id\",\"parameters\":[{\"name\":\"@id\",\"value\":\"{{cosmos_query_id}}\"}]}"
+            },
+            "url": {
+              "raw": "{{cosmos_url}}/dbs/{{cosmos_db}}/colls/{{cosmos_collection}}/docs"
+            }
+          },
+          "description": "Queries the events collection for a document with id == {{cosmos_query_id}}. Set cosmos_query_id before executing.",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var masterKey = pm.environment.get('cosmos_master_key');",
+                  "var db        = pm.environment.get('cosmos_db');",
+                  "var coll      = pm.environment.get('cosmos_collection');",
+                  "var date      = new Date().toUTCString();",
+                  "",
+                  "var verb         = 'post';",
+                  "var resourceType = 'docs';",
+                  "var resourceLink = 'dbs/' + db + '/colls/' + coll;",
+                  "var text = verb + '\\n' + resourceType + '\\n' + resourceLink + '\\n' + date.toLowerCase() + '\\n\\n';",
+                  "",
+                  "var keyBytes = CryptoJS.enc.Base64.parse(masterKey);",
+                  "var hash     = CryptoJS.HmacSHA256(CryptoJS.enc.Utf8.parse(text), keyBytes);",
+                  "var sig      = CryptoJS.enc.Base64.stringify(hash);",
+                  "var token    = encodeURIComponent('type=master\u0026ver=1.0\u0026sig=' + sig);",
+                  "",
+                  "pm.collectionVariables.set('cosmos_auth', token);",
+                  "pm.collectionVariables.set('cosmos_date', date);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List All Documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{cosmos_auth}}"
+              },
+              {
+                "key": "x-ms-date",
+                "value": "{{cosmos_date}}"
+              },
+              {
+                "key": "x-ms-version",
+                "value": "2018-12-31"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/query+json"
+              },
+              {
+                "key": "x-ms-documentdb-isquery",
+                "value": "true"
+              },
+              {
+                "key": "x-ms-max-item-count",
+                "value": "-1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"SELECT * FROM c\",\"parameters\":[]}"
+            },
+            "url": {
+              "raw": "{{cosmos_url}}/dbs/{{cosmos_db}}/colls/{{cosmos_collection}}/docs"
+            }
+          },
+          "description": "Lists all documents in the events collection.",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var masterKey = pm.environment.get('cosmos_master_key');",
+                  "var db        = pm.environment.get('cosmos_db');",
+                  "var coll      = pm.environment.get('cosmos_collection');",
+                  "var date      = new Date().toUTCString();",
+                  "",
+                  "var verb         = 'post';",
+                  "var resourceType = 'docs';",
+                  "var resourceLink = 'dbs/' + db + '/colls/' + coll;",
+                  "var text = verb + '\\n' + resourceType + '\\n' + resourceLink + '\\n' + date.toLowerCase() + '\\n\\n';",
+                  "",
+                  "var keyBytes = CryptoJS.enc.Base64.parse(masterKey);",
+                  "var hash     = CryptoJS.HmacSHA256(CryptoJS.enc.Utf8.parse(text), keyBytes);",
+                  "var sig      = CryptoJS.enc.Base64.stringify(hash);",
+                  "var token    = encodeURIComponent('type=master\u0026ver=1.0\u0026sig=' + sig);",
+                  "",
+                  "pm.collectionVariables.set('cosmos_auth', token);",
+                  "pm.collectionVariables.set('cosmos_date', date);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Databases",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{cosmos_auth}}"
+              },
+              {
+                "key": "x-ms-date",
+                "value": "{{cosmos_date}}"
+              },
+              {
+                "key": "x-ms-version",
+                "value": "2018-12-31"
+              }
+            ],
+            "url": {
+              "raw": "{{cosmos_url}}/dbs"
+            }
+          },
+          "description": "Lists all databases in the CosmosDB emulator.",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var masterKey = pm.environment.get('cosmos_master_key');",
+                  "var date = new Date().toUTCString();",
+                  "var text = 'get\\ndbs\\n\\n' + date.toLowerCase() + '\\n\\n';",
+                  "var keyBytes = CryptoJS.enc.Base64.parse(masterKey);",
+                  "var hash     = CryptoJS.HmacSHA256(CryptoJS.enc.Utf8.parse(text), keyBytes);",
+                  "var sig      = CryptoJS.enc.Base64.stringify(hash);",
+                  "pm.collectionVariables.set('cosmos_auth', encodeURIComponent('type=master\u0026ver=1.0\u0026sig=' + sig));",
+                  "pm.collectionVariables.set('cosmos_date', date);"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "CosmosDB queries against the local emulator. Requests generate a fresh HMAC auth token in their pre-request script."
+    },
+    {
+      "name": "Conversation",
+      "item": [
+        {
+          "name": "conversation-created",
+          "request": {
+            "method": "ASB",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "message-name",
+                "value": "se.develophub.conversation.created.v1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schema-version\": \"{{schemaVersion}}\",\n  \"id\": \"{{conv_claim_id}}\",\n  \"subject\": \"{{conv_claim_id}}\",\n  \"event-name\": \"se.develophub.conversation.created.v1\",\n  \"source\": \"conversation-service\",\n  \"data\": \"{\\\"conversation-id\\\": \\\"{{conversation_id}}\\\", \\\"claim-id\\\": \\\"{{conv_claim_id}}\\\", \\\"version\\\": 1}\",\n  \"data-type\": \"application/json\"\n}"
+            },
+            "url": {
+              "raw": "asb://{{sb_topic_conversation}}"
+            }
+          },
+          "description": "Sends a conversation.created event",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var claimId = 'claim-' + Math.random().toString(36).substring(2, 10);",
+                  "var conversationId = 'conv-' + Math.random().toString(36).substring(2, 10);",
+                  "pm.collectionVariables.set('conv_claim_id', claimId);",
+                  "pm.collectionVariables.set('conversation_id', conversationId);"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Events for the conversation topic"
+    }
+  ],
+  "variable": [
+    {
+      "key": "routingKeyHeader",
+      "value": "message-name"
+    },
+    {
+      "key": "schemaVersion",
+      "value": "1.0"
+    },
+    {
+      "key": "claim_id",
+      "value": "claim-9zuhy9rr"
+    },
+    {
+      "key": "cosmos_query_id",
+      "value": ""
+    },
+    {
+      "key": "cosmos_auth",
+      "value": "type%3Dmaster%26ver%3D1.0%26sig%3Dundefined"
+    },
+    {
+      "key": "cosmos_date",
+      "value": "Thu, 27 Aug 2026 14:05:59 GMT"
+    },
+    {
+      "key": "persona_id",
+      "value": "persona-xfsu1cjy"
+    }
+  ]
+}

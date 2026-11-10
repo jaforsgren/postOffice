@@ -83,6 +83,36 @@ func TestParseMergeArgs(t *testing.T) {
 			t.Fatal("expected error for -o with no value")
 		}
 	})
+
+	t.Run("group-by-collection flag", func(t *testing.T) {
+		opts, err := parseMergeArgs([]string{"a.json", "b.json", "--forceMerge", "--group-by-collection"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !opts.groupByCollection {
+			t.Error("expected groupByCollection to be true")
+		}
+	})
+
+	t.Run("-g shorthand for group-by-collection", func(t *testing.T) {
+		opts, err := parseMergeArgs([]string{"a.json", "b.json", "--forceMerge", "-g"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !opts.groupByCollection {
+			t.Error("expected groupByCollection to be true via -g")
+		}
+	})
+
+	t.Run("group-by-collection defaults to false", func(t *testing.T) {
+		opts, err := parseMergeArgs([]string{"a.json", "b.json", "--forceMerge"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if opts.groupByCollection {
+			t.Error("expected groupByCollection to default to false")
+		}
+	})
 }
 
 func TestRunMerge_Collections(t *testing.T) {
@@ -119,6 +149,107 @@ func TestRunMerge_Collections(t *testing.T) {
 	}
 	if len(merged.Items) != 2 {
 		t.Fatalf("expected 2 merged items, got %d", len(merged.Items))
+	}
+}
+
+func TestRunMerge_GroupByCollection(t *testing.T) {
+	dir := t.TempDir()
+	file1 := filepath.Join(dir, "a.json")
+	file2 := filepath.Join(dir, "b.json")
+
+	col1 := `{"info":{"name":"Collection A","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[{"name":"Get Users","request":{"method":"GET","url":{"raw":"https://a.example.com/users"}}}]}`
+	col2 := `{"info":{"name":"Collection B","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[{"name":"Get Orders","request":{"method":"GET","url":{"raw":"https://b.example.com/orders"}}}]}`
+
+	if err := os.WriteFile(file1, []byte(col1), 0644); err != nil {
+		t.Fatalf("failed to write file1: %v", err)
+	}
+	if err := os.WriteFile(file2, []byte(col2), 0644); err != nil {
+		t.Fatalf("failed to write file2: %v", err)
+	}
+
+	if err := runMerge([]string{file1, file2, "--forceMerge", "--group-by-collection"}); err != nil {
+		t.Fatalf("runMerge failed: %v", err)
+	}
+
+	data, err := os.ReadFile(file1)
+	if err != nil {
+		t.Fatalf("failed to read merged output: %v", err)
+	}
+
+	var merged postman.Collection
+	if err := json.Unmarshal(data, &merged); err != nil {
+		t.Fatalf("failed to parse merged output: %v", err)
+	}
+
+	if len(merged.Items) != 2 {
+		t.Fatalf("expected 2 top-level group folders, got %d", len(merged.Items))
+	}
+	if merged.Items[0].Name != "Collection A" || !merged.Items[0].IsFolder() {
+		t.Errorf("expected first group folder %q, got %+v", "Collection A", merged.Items[0])
+	}
+	if merged.Items[1].Name != "Collection B" || !merged.Items[1].IsFolder() {
+		t.Errorf("expected second group folder %q, got %+v", "Collection B", merged.Items[1])
+	}
+	if len(merged.Items[0].Items) != 1 || merged.Items[0].Items[0].Name != "Get Users" {
+		t.Errorf("expected Collection A folder to contain Get Users, got %+v", merged.Items[0].Items)
+	}
+}
+
+func TestRunMerge_GroupByCollectionFallsBackToFilename(t *testing.T) {
+	dir := t.TempDir()
+	file1 := filepath.Join(dir, "unnamed-a.json")
+	file2 := filepath.Join(dir, "unnamed-b.json")
+
+	col1 := `{"info":{"schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[{"name":"Get Users","request":{"method":"GET","url":{"raw":"https://a.example.com/users"}}}]}`
+	col2 := `{"info":{"schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[{"name":"Get Orders","request":{"method":"GET","url":{"raw":"https://b.example.com/orders"}}}]}`
+
+	if err := os.WriteFile(file1, []byte(col1), 0644); err != nil {
+		t.Fatalf("failed to write file1: %v", err)
+	}
+	if err := os.WriteFile(file2, []byte(col2), 0644); err != nil {
+		t.Fatalf("failed to write file2: %v", err)
+	}
+
+	if err := runMerge([]string{file1, file2, "--forceMerge", "--group-by-collection"}); err != nil {
+		t.Fatalf("runMerge failed: %v", err)
+	}
+
+	data, err := os.ReadFile(file1)
+	if err != nil {
+		t.Fatalf("failed to read merged output: %v", err)
+	}
+
+	var merged postman.Collection
+	if err := json.Unmarshal(data, &merged); err != nil {
+		t.Fatalf("failed to parse merged output: %v", err)
+	}
+
+	if merged.Items[0].Name != "unnamed-a" {
+		t.Errorf("expected fallback group name from filename %q, got %q", "unnamed-a", merged.Items[0].Name)
+	}
+	if merged.Items[1].Name != "unnamed-b" {
+		t.Errorf("expected fallback group name from filename %q, got %q", "unnamed-b", merged.Items[1].Name)
+	}
+}
+
+func TestRunMerge_GroupByCollectionRejectsEnvironments(t *testing.T) {
+	dir := t.TempDir()
+	file1 := filepath.Join(dir, "env1.json")
+	file2 := filepath.Join(dir, "env2.json")
+
+	env1 := `{"id":"1","name":"Env A","values":[]}`
+	env2 := `{"id":"2","name":"Env B","values":[]}`
+
+	if err := os.WriteFile(file1, []byte(env1), 0644); err != nil {
+		t.Fatalf("failed to write file1: %v", err)
+	}
+	if err := os.WriteFile(file2, []byte(env2), 0644); err != nil {
+		t.Fatalf("failed to write file2: %v", err)
+	}
+
+	err := runMerge([]string{file1, file2, "--forceMerge", "--group-by-collection"})
+	if err == nil {
+		t.Fatal("expected error when --group-by-collection is used with environments")
 	}
 }
 
