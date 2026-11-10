@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -26,6 +27,18 @@ func editorBin() string {
 		return "nvim"
 	}
 	return "vim"
+}
+
+const noEditorChangesMessage = "No changes from editor"
+
+// readEditedFile returns the editor's result and whether it differs from what
+// was handed to the editor, so quitting without edits leaves nothing dirty.
+func readEditedFile(path string, original []byte) ([]byte, bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false, err
+	}
+	return data, !bytes.Equal(data, original), nil
 }
 
 // ── request editing via temp JSON ────────────────────────────────────────────
@@ -87,8 +100,9 @@ type VimEditCompleteMsg struct {
 	OriginalName string
 	// FromEditMode is true when vim was opened from ModeEdit, so the result
 	// should update the in-progress edit state rather than the collection directly.
-	FromEditMode bool
-	Err          error
+	FromEditMode    bool
+	OriginalContent []byte
+	Err             error
 }
 
 func (m Model) openVimForItem(item postman.Item, folderPath []string) (Model, tea.Cmd) {
@@ -172,12 +186,13 @@ func openVimEditorForRequest(payload vimEditPayload, itemID string, folderPath [
 	tempFilePath := tmpFile.Name()
 	return tea.ExecProcess(exec.Command(editorBin(), tempFilePath), func(err error) tea.Msg {
 		return VimEditCompleteMsg{
-			TempFile:     tempFilePath,
-			ItemID:       itemID,
-			FolderPath:   folderPath,
-			OriginalName: originalName,
-			FromEditMode: fromEditMode,
-			Err:          err,
+			TempFile:        tempFilePath,
+			ItemID:          itemID,
+			FolderPath:      folderPath,
+			OriginalName:    originalName,
+			FromEditMode:    fromEditMode,
+			OriginalContent: data,
+			Err:             err,
 		}
 	})
 }
@@ -190,9 +205,13 @@ func (m Model) applyVimEdit(msg VimEditCompleteMsg) Model {
 		return m
 	}
 
-	data, err := os.ReadFile(msg.TempFile)
+	data, changed, err := readEditedFile(msg.TempFile, msg.OriginalContent)
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Failed to read edited file: %v", err)
+		return m
+	}
+	if !changed {
+		m.statusMessage = noEditorChangesMessage
 		return m
 	}
 
@@ -270,8 +289,9 @@ func (m Model) applyVimEditToCollection(msg VimEditCompleteMsg, payload vimEditP
 // VimScriptEditCompleteMsg is sent when the editor exits after editing a
 // pre-request/test/workflow-step script's content in an external editor.
 type VimScriptEditCompleteMsg struct {
-	TempFile string
-	Err      error
+	TempFile        string
+	OriginalContent []byte
+	Err             error
 }
 
 // writeTempFile writes content to a new temp file named after pattern
@@ -294,14 +314,15 @@ func writeTempFile(pattern, content string) (string, error) {
 }
 
 func (m Model) openVimForScript() (Model, tea.Cmd) {
-	tempFilePath, err := writeTempFile("postoffice-script-*.js", m.editFieldTextArea.Value())
+	content := m.editFieldTextArea.Value()
+	tempFilePath, err := writeTempFile("postoffice-script-*.js", content)
 	if err != nil {
 		m.statusMessage = err.Error()
 		return m, nil
 	}
 
 	return m, tea.ExecProcess(exec.Command(editorBin(), tempFilePath), func(err error) tea.Msg {
-		return VimScriptEditCompleteMsg{TempFile: tempFilePath, Err: err}
+		return VimScriptEditCompleteMsg{TempFile: tempFilePath, OriginalContent: []byte(content), Err: err}
 	})
 }
 
@@ -313,14 +334,18 @@ func (m Model) applyVimScriptEdit(msg VimScriptEditCompleteMsg) Model {
 		return m
 	}
 
-	data, err := os.ReadFile(msg.TempFile)
+	data, changed, err := readEditedFile(msg.TempFile, msg.OriginalContent)
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Failed to read edited file: %v", err)
 		return m
 	}
+	m.editFieldTextArea.Focus()
+	if !changed {
+		m.statusMessage = noEditorChangesMessage
+		return m
+	}
 
 	m.editFieldTextArea.SetValue(strings.TrimRight(string(data), "\n"))
-	m.editFieldTextArea.Focus()
 	m.statusMessage = "Updated from editor (:w to save, :wq to save & exit)"
 	return m
 }
@@ -521,9 +546,10 @@ func (m Model) applyVimWorkflowEdit(msg VimWorkflowEditCompleteMsg) Model {
 
 // VimBulkEditCompleteMsg is sent when the editor exits after editing a folder's item array.
 type VimBulkEditCompleteMsg struct {
-	TempFile   string
-	FolderPath []string
-	Err        error
+	TempFile        string
+	FolderPath      []string
+	OriginalContent []byte
+	Err             error
 }
 
 func (m Model) openVimForCurrentLevel() (Model, tea.Cmd) {
@@ -560,9 +586,10 @@ func (m Model) openVimForCurrentLevel() (Model, tea.Cmd) {
 	tempFilePath := tmpFile.Name()
 	return m, tea.ExecProcess(exec.Command(editorBin(), tempFilePath), func(err error) tea.Msg {
 		return VimBulkEditCompleteMsg{
-			TempFile:   tempFilePath,
-			FolderPath: folderPath,
-			Err:        err,
+			TempFile:        tempFilePath,
+			FolderPath:      folderPath,
+			OriginalContent: data,
+			Err:             err,
 		}
 	})
 }
@@ -575,9 +602,13 @@ func (m Model) applyVimBulkEdit(msg VimBulkEditCompleteMsg) Model {
 		return m
 	}
 
-	data, err := os.ReadFile(msg.TempFile)
+	data, changed, err := readEditedFile(msg.TempFile, msg.OriginalContent)
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Failed to read edited file: %v", err)
+		return m
+	}
+	if !changed {
+		m.statusMessage = noEditorChangesMessage
 		return m
 	}
 

@@ -11,6 +11,7 @@ import (
 	"postOffice/internal/script"
 	"postOffice/internal/servicebus"
 	"postOffice/internal/workflow"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -1290,6 +1291,7 @@ func (m Model) enterEditMode(item postman.Item, folderPath []string) Model {
 	}
 
 	m.editRequest = item.Request.Clone()
+	m.editRequestSnapshot = item.Request.Clone()
 	m.editItemName = item.Name
 	m.editOriginalName = item.Name
 	m.editFieldCursor = 0
@@ -1400,6 +1402,12 @@ func (m Model) saveEdit() (Model, error) {
 	return m, nil
 }
 
+// editStateChanged reports whether the request being edited differs from the
+// one edit mode was entered with.
+func (m Model) editStateChanged() bool {
+	return m.editItemName != m.editOriginalName || !reflect.DeepEqual(m.editRequest, m.editRequestSnapshot)
+}
+
 func (m Model) saveAllModifiedRequests() (Model, error) {
 	if len(m.modifiedCollections) == 0 {
 		m.statusMessage = "No unsaved changes"
@@ -1450,6 +1458,16 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.editFieldMode = false
 			m = m.refreshCurrentView()
 			m.statusMessage = "New request discarded"
+			return m, nil
+		}
+
+		if !m.editStateChanged() {
+			m = m.saveCurrentPathParams()
+			m.mode = m.previousMode
+			m.editType = EditTypeNone
+			m.editFieldMode = false
+			m = m.refreshCurrentView()
+			m.statusMessage = "No changes"
 			return m, nil
 		}
 

@@ -146,6 +146,7 @@ type Model struct {
 
 	editType             EditType
 	editRequest          *postman.Request
+	editRequestSnapshot  *postman.Request
 	editVariable         *postman.Variable
 	editEnvVariable      *postman.EnvVariable
 	editItemName         string
