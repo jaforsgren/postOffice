@@ -346,6 +346,7 @@ Every collection, script and workflow that runs in the TUI also runs without it,
 - `--output text|json|junit` picks the report format (default `text`). `json` is one object with a summary and every request's status, HTTP status, duration, tests, errors and console output. `junit` writes one `<testsuite>` per request with one `<testcase>` per `pm.test`, plus a `request` testcase for request-level failures and skips.
 - `--report <file>` writes the `json`/`junit` report to a file and prints the text report.
 - Variable changes made by scripts are **not** written back to the collection or environment files unless you pass `--persist`. `--persist` refuses OpenAPI files, which saving would overwrite.
+- `-n, --iterations <n>`, `-d, --data <file.csv|json>` and `--bail` are the same run options as `:runopts` in the TUI: run the request, folder or workflow several times, drive iterations from a data file (one row per iteration, values available as `{{key}}` and `pm.iterationData`), and stop at the first failed request, test or script. In multi-iteration runs each request is reported as `#n Folder/Request`.
 - `workflow run` finds the workflow's collection on its own: first the loaded collection (see `ls`) whose `workflows/` directory holds the file, otherwise the only Postman collection `.json` in the directory above `workflows/`. Pass `-c <collection.json>` when neither finds exactly one.
 
 **Exit codes**
