@@ -125,7 +125,7 @@ Every execution started from the TUI (HTTP, gRPC, Service Bus and AMQP, includin
 
 - Open it with `ctrl+y` or `:history` (`:hist`, `:hi`)
 - `enter` replays the entry with exactly the recorded resolved inputs. Variables are not re-resolved and pre-request/test scripts do not run
-- `d` shows a line diff (`-` history entry, `+` current response) of status, sorted headers and pretty-printed body
+- `=` shows a line diff (`-` history entry, `+` current response) of status, sorted headers and pretty-printed body
 
 History is persisted to `~/.postoffice_history.json` (capped at the 200 most recent entries). Because entries contain resolved secrets such as auth headers and connection strings, the file is written with owner-only permissions (`0600`).
 

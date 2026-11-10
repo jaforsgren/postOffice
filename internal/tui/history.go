@@ -22,6 +22,7 @@ const (
 	timestampLayout = "2006-01-02 15:04:05"
 
 	requestHistoryKey = "ctrl+y"
+	historyDiffKey    = "="
 )
 
 // requestSender sends an already built request, resolving variables first.

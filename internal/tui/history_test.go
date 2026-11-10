@@ -286,7 +286,7 @@ func TestHistoryDiff_RequiresCurrentResponse(t *testing.T) {
 	_ = m.requestHistory.Add(historyEntryFor("https://example.com"))
 	m, _ = m.openRequestHistory()
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(historyDiffKey)})
 
 	if m.mode != ModeHistory {
 		t.Errorf("mode = %v, want ModeHistory", m.mode)
@@ -302,7 +302,7 @@ func TestHistoryDiff_ShowsChangesAndCloses(t *testing.T) {
 	m.lastResponse = &internalhttp.Response{Status: "500 Internal Server Error", StatusCode: 500, Body: `{"value":1}`}
 	m, _ = m.openRequestHistory()
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(historyDiffKey)})
 
 	if m.mode != ModeHistoryDiff {
 		t.Fatalf("mode = %v, want ModeHistoryDiff", m.mode)

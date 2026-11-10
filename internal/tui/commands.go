@@ -280,9 +280,9 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeHistory},
 		},
 		{
-			Keys:        []string{"d"},
+			Keys:        []string{historyDiffKey},
 			Description: "Diff with current response",
-			ShortHelp:   "d",
+			ShortHelp:   historyDiffKey,
 			Handler:     Model.showHistoryDiff,
 			AvailableIn: []ViewMode{ModeHistory},
 		},

@@ -25,7 +25,7 @@ func (m Model) renderHistoryView() string {
 
 	entries := m.requestHistory.Entries()
 	title := titleStyle.Render(fmt.Sprintf("Request History (%d/%d)", len(entries), history.MaxEntries))
-	help := helpStyle.Render("(enter: replay | d: diff vs current | esc: back)")
+	help := helpStyle.Render("(enter: replay | " + historyDiffKey + ": diff vs current | esc: back)")
 	lines := []string{title + " " + help, ""}
 
 	if len(entries) == 0 {
