@@ -84,7 +84,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.mode == ModeResponse {
-			m.configureViewport(&m.responseViewport, strings.Join(m.buildResponseLines(), "\n"))
+			m.configureViewport(&m.responseViewport, strings.Join(m.responseViewLines(), "\n"))
 		}
 
 		return m, nil
@@ -203,7 +203,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if key == "esc" || key == "h" || key == "backspace" || key == "q" {
 				return m.handleNormalMode(msg)
 			}
-			if key == resendStepKey && m.mode == ModeResponse && m.previousMode == ModeWorkflowDetail {
+			if m.mode == ModeResponse && (key == resendStepKey || key == saveResponseKey) {
 				return m.handleNormalMode(msg)
 			}
 			if (m.mode == ModeResponse || m.mode == ModeInfo) && (key == yankPrefixKey || key == openRequestReportKey) {
@@ -231,8 +231,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-// resendStepKey reruns the workflow step whose response is on screen.
+// resendStepKey resends the request, or reruns the workflow step, whose
+// response is on screen.
 const resendStepKey = "ctrl+r"
+
+const saveResponseKey = "s"
 
 func (m Model) handleCommandMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
@@ -2991,11 +2994,12 @@ func (m Model) showWorkflowStepResponse() (Model, tea.Cmd) {
 		m.lastTestResult = execution.TestResult
 	}
 	m.lastExecutedItemID = m.collection.Info.Name + "/" + step.Request
+	m.responsePanelItem = nil
 	m.scrollOffset = 0
 	m.previousMode = ModeWorkflowDetail
 	m.mode = ModeResponse
 
-	m.configureViewport(&m.responseViewport, strings.Join(m.buildResponseLines(), "\n"))
+	m.configureViewport(&m.responseViewport, strings.Join(m.responseViewLines(), "\n"))
 	m.statusMessage = fmt.Sprintf("Response for %s (esc to return, ctrl+r to resend the step)", step.ID)
 	return m, nil
 }

@@ -270,10 +270,10 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		},
 		{
 			Keys:        []string{"ctrl+r"},
-			Description: "View/Resend response (workflows: run)",
+			Description: "Resend request (workflows: run)",
 			ShortHelp:   "ctrl+r",
 			Handler:     handleResponseViewKey,
-			AvailableIn: []ViewMode{ModeRequests, ModeResponse, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
+			AvailableIn: []ViewMode{ModeResponse, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
 		},
 		{
 			Keys:        []string{"R"},
@@ -556,9 +556,9 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeResponse, ModeInfo},
 		},
 		{
-			Keys:        []string{"s"},
+			Keys:        []string{saveResponseKey},
 			Description: "Save response",
-			ShortHelp:   "s",
+			ShortHelp:   saveResponseKey,
 			Handler:     handleSaveResponseKey,
 			AvailableIn: []ViewMode{ModeResponse},
 		},
@@ -980,8 +980,9 @@ func handleEnterKey(m Model) (Model, tea.Cmd) {
 			m.lastResponse = savedResponseToHTTPResponse(sr)
 			m.lastTestResult = nil
 			m.viewingSavedResponse = true
+			m.responsePanelItem = nil
 			m.scrollOffset = 0
-			m.configureViewport(&m.responseViewport, strings.Join(m.buildResponseLines(), "\n"))
+			m.configureViewport(&m.responseViewport, strings.Join(m.responseViewLines(), "\n"))
 			m.mode = ModeResponse
 			m.statusMessage = fmt.Sprintf("Viewing saved: %s  %s", sr.SavedAt.Format("2006-01-02 15:04:05"), sr.Status)
 		}
@@ -1055,37 +1056,8 @@ func handleResponseViewKey(m Model) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	if m.mode == ModeResponse {
-		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
-			item := m.currentItems[m.cursor]
-			if item.IsRequest() {
-				return m.executeRequest(item, m.breadcrumb)
-			}
-		}
-	} else if m.mode == ModeRequests {
-		if len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
-			item := m.currentItems[m.cursor]
-			if item.IsRequest() {
-				itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, m.folderPathForCursor(), item.Name)
-				if exec, exists := m.requestExecutions[itemID]; exists && exec.Response != nil {
-					m.lastResponse = exec.Response
-					m.lastTestResult = exec.TestResult
-					m.lastExecutedItemID = itemID
-
-					m.scrollOffset = 0
-					m.previousMode = m.mode
-					m.mode = ModeResponse
-
-					m.configureViewport(&m.responseViewport, strings.Join(m.buildResponseLines(), "\n"))
-
-					m.statusMessage = "Showing response (ctrl+r to resend, q to close)"
-				} else {
-					m.statusMessage = "No response available for this request. Execute it first with ctrl+e"
-				}
-			} else {
-				m.statusMessage = "Cannot view response for folders"
-			}
-		}
+	if m.mode == ModeResponse && m.responsePanelItem != nil {
+		return m.executeRequest(*m.responsePanelItem, m.requestsViewFolderPath())
 	}
 	return m, nil
 }
@@ -1093,6 +1065,9 @@ func handleResponseViewKey(m Model) (Model, tea.Cmd) {
 func handleInfoKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeWorkflowDetail {
 		return m.showWorkflowStepInfo()
+	}
+	if item, ok := m.selectedItem(); ok && m.mode == ModeRequests && item.IsRequest() {
+		return m.openRequestPanel(item), nil
 	}
 	if m.mode == ModeRequests && len(m.currentItems) > 0 && m.cursor < len(m.currentItems) {
 		m.currentInfoItem = &m.currentItems[m.cursor]
