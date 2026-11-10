@@ -94,13 +94,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Done {
 			runLabel := fmt.Sprintf("Workflow %q", msg.State.WorkflowName)
 			if msg.State.Status == workflow.StatusSuccess {
-				m.statusMessage = fmt.Sprintf("%s completed", runLabel)
+				m.statusMessage = fmt.Sprintf("%s completed — %s", runLabel, msg.State.Summary)
 			} else {
 				errMsg := msg.State.Error
 				if errMsg == "" {
 					errMsg = msg.State.Status
 				}
-				m.statusMessage = fmt.Sprintf("%s %s: %s", runLabel, msg.State.Status, errMsg)
+				m.statusMessage = fmt.Sprintf("%s %s: %s — %s", runLabel, msg.State.Status, errMsg, msg.State.Summary)
 			}
 			m.workflowChan = nil
 			if m.collection != nil {
@@ -3028,27 +3028,37 @@ func (m Model) runWorkflowScript(wf *workflow.Workflow, script, runLabel string)
 		m.workflowState.StepIndex[s.ID] = ss
 	}
 
+	environment, opts, err := m.runConfig()
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Cannot run %s: %v", runLabel, err)
+		m.statusIsError = true
+		return m, nil
+	}
+
 	if m.mode != ModeWorkflowDetail {
 		m.previousMode = m.mode
 		m.mode = ModeWorkflowDetail
 		m.workflowStepCursor = 0
 	}
 	m.statusMessage = "Running " + runLabel
+	if !m.runSettings.isDefault() {
+		m.statusMessage += " (" + m.runSettings.describe() + ")"
+	}
 
 	runWf := *wf
 	runWf.Script = script
-	return m.launchRun(func(runner *workflow.Runner, onChange func(workflow.ExecutionState)) workflow.ExecutionState {
-		return runner.Run(&runWf, onChange)
+	return m.launchRun(environment, func(runner *workflow.Runner, onChange func(workflow.ExecutionState)) workflow.ExecutionState {
+		return runner.Run(&runWf, opts, onChange)
 	})
 }
 
-// launchRun runs a workflow in a goroutine, streaming
+// launchRun runs a workflow against environment in a goroutine, streaming
 // state snapshots to the TUI until it finishes.
-func (m Model) launchRun(run func(*workflow.Runner, func(workflow.ExecutionState)) workflow.ExecutionState) (Model, tea.Cmd) {
+func (m Model) launchRun(environment *postman.Environment, run func(*workflow.Runner, func(workflow.ExecutionState)) workflow.ExecutionState) (Model, tea.Cmd) {
 	progressChan := make(chan workflow.ExecutionState, workflowProgressBuffer)
 	m.workflowChan = progressChan
 
-	runner := workflow.NewRunner(m.collection, m.environment, m.executor)
+	runner := workflow.NewRunner(m.collection, environment, m.executor)
 
 	return m, tea.Batch(
 		func() tea.Msg {

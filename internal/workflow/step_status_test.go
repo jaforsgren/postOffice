@@ -88,7 +88,7 @@ func runSteps(t *testing.T, workflowScript string, items ...postman.Item) (Execu
 	}
 	wf.Script = "export default async function (wf, pm) {\n" + workflowScript + "\n}"
 
-	state := NewRunner(collection, nil, internalhttp.NewExecutor()).Run(wf, nil)
+	state := NewRunner(collection, nil, internalhttp.NewExecutor()).Run(wf, ExecutionOptions{}, nil)
 	return state, collection
 }
 
@@ -254,7 +254,7 @@ func TestRun_TimeInsideStepsDoesNotCountAgainstTheScriptTimeout(t *testing.T) {
 	runner := NewRunner(collection, nil, internalhttp.NewExecutor())
 	runner.scriptTimeout = scriptTimeout
 
-	state := runner.Run(wf, nil)
+	state := runner.Run(wf, ExecutionOptions{}, nil)
 
 	if state.Status != StatusSuccess {
 		t.Errorf("workflow = %s (%s), want %s", state.Status, state.Error, StatusSuccess)
@@ -265,7 +265,7 @@ func TestRun_SpinningWorkflowScriptTimesOut(t *testing.T) {
 	runner := NewRunner(&postman.Collection{}, nil, internalhttp.NewExecutor())
 	runner.scriptTimeout = 50 * time.Millisecond
 
-	state := runner.Run(&Workflow{ID: "spin", Script: "export default async function (wf, pm) {\nwhile (true) {}\n}"}, nil)
+	state := runner.Run(&Workflow{ID: "spin", Script: "export default async function (wf, pm) {\nwhile (true) {}\n}"}, ExecutionOptions{}, nil)
 
 	if state.Status != StatusFailed || !strings.Contains(state.Error, "timed out") {
 		t.Errorf("workflow = %s (%q), want a timeout", state.Status, state.Error)

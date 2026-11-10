@@ -77,6 +77,9 @@ func (m Model) renderWorkflowDetail() string {
 		meta += fmt.Sprintf("  v%d", wf.Version)
 	}
 	headerLines = append(headerLines, dimStyle.Render(meta))
+	if m.workflowState.WorkflowID == wf.ID && isRunFinished(m.workflowState.Status) {
+		headerLines = append(headerLines, dimStyle.Render(m.workflowState.Summary.String()))
+	}
 	headerLines = append(headerLines, "")
 
 	if len(wf.Steps) == 0 {
@@ -181,7 +184,7 @@ func (m Model) renderWorkflowDetail() string {
 // wf has not run.
 func (m Model) workflowRunIndicator(wf *workflow.Workflow) string {
 	if m.workflowChan != nil {
-		return " " + workflowStatusStyle(workflow.StatusRunning).Render("● running")
+		return " " + workflowStatusStyle(workflow.StatusRunning).Render("● running"+iterationLabel(m.workflowState))
 	}
 	if m.workflowState.WorkflowID == wf.ID && m.workflowState.Status != "" {
 		return " " + workflowStatusStyle(m.workflowState.Status).Render("["+m.workflowState.Status+"]")
@@ -253,7 +256,10 @@ const (
 func runReportLines(state workflow.ExecutionState, style runStyler) []string {
 	var lines []string
 
-	lines = append(lines, style.title(state.WorkflowName)+" "+style.status(state.Status, "["+state.Status+"]"))
+	lines = append(lines, style.title(state.WorkflowName)+" "+style.status(state.Status, "["+state.Status+iterationLabel(state)+"]"))
+	if isRunFinished(state.Status) {
+		lines = append(lines, style.subtle(state.Summary.String()))
+	}
 	lines = append(lines, "")
 
 	stepLogs, workflowLogs := groupLogsByStep(state)
@@ -263,8 +269,8 @@ func runReportLines(state workflow.ExecutionState, style runStyler) []string {
 	} else {
 		lines = append(lines, style.heading("Steps:"))
 		for _, ss := range state.Steps {
-			lines = append(lines, runReportStepLine(ss, style))
-			logs := stepLogs[ss.ID]
+			lines = append(lines, runReportStepLine(ss, state.IsMultiIteration(), style))
+			logs := stepLogs[stepRunKeyOf(ss)]
 			for _, msg := range logs {
 				lines = append(lines, runReportLogIndent+styleLogMessage(msg, style))
 			}
@@ -290,7 +296,13 @@ func runReportLines(state workflow.ExecutionState, style runStyler) []string {
 	return lines
 }
 
-func runReportStepLine(ss *workflow.StepState, style runStyler) string {
+// runReportStepLine is one step's report line. In a multi-iteration run the
+// step is prefixed with its iteration, since each iteration lists every step.
+func runReportStepLine(ss *workflow.StepState, showIteration bool, style runStyler) string {
+	stepID := ss.ID
+	if showIteration {
+		stepID = fmt.Sprintf(iterationStepPrefixFormat, ss.Iteration) + stepID
+	}
 	detail := ""
 	if ss.Total > 1 {
 		detail = fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total)
@@ -301,25 +313,37 @@ func runReportStepLine(ss *workflow.StepState, style runStyler) string {
 	return fmt.Sprintf("%s%s %-20s %s%s",
 		runReportStepIndent,
 		stepIcon(ss.Status),
-		ss.ID,
+		stepID,
 		style.status(ss.Status, ss.Status),
 		style.subtle(detail),
 	)
 }
 
-// groupLogsByStep splits the run's logs into each step's own, in order, and
-// those of the workflow script, which also takes logs of steps not listed.
-func groupLogsByStep(state workflow.ExecutionState) (map[string][]string, []string) {
-	listed := make(map[string]bool, len(state.Steps))
+// stepRunKey identifies one step's run in one iteration: logs group by it so
+// each iteration's output stays under that iteration's step.
+type stepRunKey struct {
+	stepID    string
+	iteration int
+}
+
+func stepRunKeyOf(ss *workflow.StepState) stepRunKey {
+	return stepRunKey{stepID: ss.ID, iteration: ss.Iteration}
+}
+
+// groupLogsByStep splits the run's logs into each step run's own, in order,
+// and those of the workflow script, which also takes logs of steps not listed.
+func groupLogsByStep(state workflow.ExecutionState) (map[stepRunKey][]string, []string) {
+	listed := make(map[stepRunKey]bool, len(state.Steps))
 	for _, ss := range state.Steps {
-		listed[ss.ID] = true
+		listed[stepRunKeyOf(ss)] = true
 	}
 
-	stepLogs := make(map[string][]string)
+	stepLogs := make(map[stepRunKey][]string)
 	var workflowLogs []string
 	for _, entry := range state.Logs {
-		if listed[entry.StepID] {
-			stepLogs[entry.StepID] = append(stepLogs[entry.StepID], entry.Message)
+		key := stepRunKey{stepID: entry.StepID, iteration: entry.Iteration}
+		if listed[key] {
+			stepLogs[key] = append(stepLogs[key], entry.Message)
 		} else {
 			workflowLogs = append(workflowLogs, entry.Message)
 		}
@@ -336,6 +360,22 @@ func styleLogMessage(msg string, style runStyler) string {
 	default:
 		return style.subtle(msg)
 	}
+}
+
+// iterationStepPrefixFormat tells apart one step's runs in different iterations.
+const iterationStepPrefixFormat = "#%d "
+
+// isRunFinished reports whether a run reached a final status and has a summary.
+func isRunFinished(status string) bool {
+	return status == workflow.StatusSuccess || status == workflow.StatusFailed || status == workflow.StatusStopped
+}
+
+// iterationLabel is " · iteration i/n" for multi-iteration runs, else "".
+func iterationLabel(state workflow.ExecutionState) string {
+	if !state.IsMultiIteration() {
+		return ""
+	}
+	return fmt.Sprintf(" · iteration %d/%d", state.Iteration, state.Iterations)
 }
 
 func workflowStatusStyle(status string) lipgloss.Style {

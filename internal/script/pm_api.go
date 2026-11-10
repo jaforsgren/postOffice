@@ -71,12 +71,20 @@ func setupPmAPI(vm *goja.Runtime, ctx *ExecutionContext, result *TestResult, pha
 		return err
 	}
 
-	info, err := newInfoObject(vm, ctx.Info, phase)
+	info, err := newInfoObject(vm, ctx.Info, ctx.Iteration, phase)
 	if err != nil {
 		return err
 	}
 	if err := pmObj.Set("info", info); err != nil {
 		return fmt.Errorf("failed to set pm.info: %w", err)
+	}
+
+	iterationData, err := newIterationDataObject(vm, ctx.Iteration.Data)
+	if err != nil {
+		return err
+	}
+	if err := pmObj.Set("iterationData", iterationData); err != nil {
+		return fmt.Errorf("failed to set pm.iterationData: %w", err)
 	}
 
 	execution, err := newExecutionObject(vm, phase, result)
@@ -216,10 +224,15 @@ func setupVariableAPIs(vm *goja.Runtime, pmObj *goja.Object, ctx *ExecutionConte
 		set:   makeEnvVariableSetter(&ctx.EnvironmentVars),
 		unset: makeUnsetter(&ctx.EnvironmentVars, func(v postman.EnvVariable) string { return v.Key }),
 	}
-	// pm.variables resolves environment before collection and writes to the
-	// collection scope, the closest postOffice has to Postman's local scope.
+	// pm.variables resolves iteration data, then environment, then collection,
+	// and writes to the collection scope, the closest postOffice has to
+	// Postman's local scope. Gotcha: unlike Postman's local scope, a write
+	// does not shadow a data value, so get() keeps returning the data value.
 	merged := variableScope{
 		get: func(key string) (string, bool) {
+			if value, ok := ctx.Iteration.Data.value(key); ok {
+				return value, true
+			}
 			if value, ok := environment.get(key); ok {
 				return value, true
 			}

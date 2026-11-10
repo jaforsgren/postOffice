@@ -80,7 +80,7 @@ func (e *Executor) Execute(
 			resp.Duration = time.Since(start)
 			return resp, scriptResult
 		}
-		variables = postman.GetAllVariables(scope.Collection, scope.FolderPath, scope.Environment)
+		variables = scope.Variables()
 	}
 
 	httpReq, err := e.buildRequest(requestToSend, variables)

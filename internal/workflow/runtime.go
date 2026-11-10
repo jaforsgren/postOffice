@@ -35,8 +35,11 @@ type Runner struct {
 	grpcExecutor *internalgrpc.Executor
 
 	wfSteps []Step
+	options ExecutionOptions
+	// iteration is the pass in progress; every request in it sees its data row.
+	iteration script.Iteration
 	// anyStepFailed fails the whole run at the end, while still letting the
-	// workflow script carry on after a failed step.
+	// workflow script carry on after a failed step (unless StopOnFailure).
 	anyStepFailed bool
 	ctx           *script.ExecutionContext
 	state         ExecutionState
@@ -66,39 +69,94 @@ func NewRunner(
 	}
 }
 
-// ErrStepsFailed is the run error when the workflow script finished but at
-// least one step failed.
-var ErrStepsFailed = errors.New("one or more steps failed")
+var (
+	// ErrStepsFailed is the run error when the workflow script finished but at
+	// least one step failed.
+	ErrStepsFailed = errors.New("one or more steps failed")
+	// ErrWorkflowTimeout is the run error when one iteration's script runs too long.
+	ErrWorkflowTimeout = errors.New("workflow timed out")
+	// ErrScriptFailed is the run error when the workflow script itself throws.
+	ErrScriptFailed = errors.New("script error")
+)
 
-// Run executes wf, calling onChange after each state change.
-func (r *Runner) Run(wf *Workflow, onChange func(ExecutionState)) ExecutionState {
+// Run executes wf once per iteration of opts, calling onChange after each
+// state change. Collection and environment variables carry over between
+// iterations; each iteration gets a fresh script VM and its own step states.
+func (r *Runner) Run(wf *Workflow, opts ExecutionOptions, onChange func(ExecutionState)) ExecutionState {
 	r.onChange = onChange
 	r.status = StatusRunning
 	r.anyStepFailed = false
+	r.options = opts
 	r.wfSteps = wf.Steps
-	r.state = r.buildInitialState(wf)
+	r.state = ExecutionState{
+		WorkflowID:   wf.ID,
+		WorkflowName: wf.Name,
+		Status:       StatusRunning,
+		StepIndex:    make(map[string]*StepState),
+		Iterations:   opts.IterationCount(),
+	}
+	if err := opts.Validate(); err != nil {
+		return r.finalize(StatusFailed, err.Error())
+	}
 	r.ctx = &script.ExecutionContext{}
 	r.syncFromCollection()
-	r.notifyProgress()
 
+	for index := range r.state.Iterations {
+		r.beginIteration(index)
+		if err := r.runIteration(wf); err != nil {
+			return r.finalize(StatusFailed, err.Error())
+		}
+		if r.status == StatusFailed || r.status == StatusStopped {
+			return r.finalize(r.status, r.state.Error)
+		}
+	}
+
+	if r.anyStepFailed {
+		return r.finalize(StatusFailed, ErrStepsFailed.Error())
+	}
+	return r.finalize(StatusSuccess, "")
+}
+
+// beginIteration selects the iteration's data row and adds a pending state
+// for each declared step, so the run view lists every iteration's steps.
+func (r *Runner) beginIteration(index int) {
+	r.iteration = r.options.iteration(index)
+	r.ctx.Iteration = r.iteration
+	r.state.Iteration = index + 1
+	for _, s := range r.wfSteps {
+		r.addStepState(&StepState{ID: s.ID, Request: s.Request, Status: StatusPending})
+	}
+	r.notifyProgress()
+}
+
+func (r *Runner) addStepState(ss *StepState) {
+	ss.Iteration = r.state.Iteration
+	r.state.Steps = append(r.state.Steps, ss)
+	r.state.StepIndex[ss.ID] = ss
+}
+
+// runIteration runs the workflow script once in a fresh VM. Steps that fail
+// (or wf.fail/wf.stop) are reported through r.status, not the returned error,
+// which is reserved for the script itself not running to completion.
+func (r *Runner) runIteration(wf *Workflow) error {
 	r.vm = goja.New()
 
 	if err := r.setupPmAPI(); err != nil {
-		return r.finalize(StatusFailed, fmt.Sprintf("pm API setup failed: %v", err))
+		return fmt.Errorf("pm API setup failed: %w", err)
 	}
 
 	// After the pm API, which installs its own console: the workflow's must win
 	// so console output lands in the run log.
 	if err := r.setupConsole(); err != nil {
-		return r.finalize(StatusFailed, fmt.Sprintf("console setup failed: %v", err))
+		return fmt.Errorf("console setup failed: %w", err)
 	}
 
 	if err := script.SetupCryptoJS(r.vm); err != nil {
-		return r.finalize(StatusFailed, fmt.Sprintf("CryptoJS setup failed: %v", err))
+		return fmt.Errorf("CryptoJS setup failed: %w", err)
 	}
 
 	if err := r.setupWFAPI(); err != nil {
-		return r.finalize(StatusFailed, fmt.Sprintf("wf API setup failed: %v", err))
+		return fmt.Errorf("wf API setup failed: %w", err)
 	}
 
 	transformed := transformScript(wf.Script)
@@ -118,42 +176,13 @@ func (r *Runner) Run(wf *Workflow, onChange func(ExecutionState)) ExecutionState
 	r.scriptTimer.Stop()
 
 	if r.timedOut.Load() {
-		return r.finalize(StatusFailed, fmt.Sprintf("workflow timed out after %v", r.scriptTimeout))
+		return fmt.Errorf("%w after %v", ErrWorkflowTimeout, r.scriptTimeout)
 	}
 
-	if err != nil {
-		if r.status == StatusFailed || r.status == StatusStopped {
-			return r.finalize(r.status, r.state.Error)
-		}
-		return r.finalize(StatusFailed, fmt.Sprintf("script error: %v", err))
+	if err != nil && r.status != StatusFailed && r.status != StatusStopped {
+		return fmt.Errorf("%w: %v", ErrScriptFailed, err)
 	}
-
-	if r.status == StatusFailed || r.status == StatusStopped {
-		return r.finalize(r.status, r.state.Error)
-	}
-	if r.anyStepFailed {
-		return r.finalize(StatusFailed, ErrStepsFailed.Error())
-	}
-	return r.finalize(StatusSuccess, "")
-}
-
-func (r *Runner) buildInitialState(wf *Workflow) ExecutionState {
-	state := ExecutionState{
-		WorkflowID:   wf.ID,
-		WorkflowName: wf.Name,
-		Status:       StatusRunning,
-		StepIndex:    make(map[string]*StepState),
-	}
-	for _, s := range wf.Steps {
-		ss := &StepState{
-			ID:      s.ID,
-			Request: s.Request,
-			Status:  StatusPending,
-		}
-		state.Steps = append(state.Steps, ss)
-		state.StepIndex[s.ID] = ss
-	}
-	return state
+	return nil
 }
 
 func (r *Runner) finalize(status, errMsg string) ExecutionState {
@@ -166,9 +195,41 @@ func (r *Runner) finalize(status, errMsg string) ExecutionState {
 			ss.Status = StatusSkipped
 		}
 	}
+	r.summarizeSteps()
 
 	r.notifyProgress()
 	return r.state
+}
+
+// summarizeSteps counts every iteration's final step statuses into the
+// summary; test counts accumulate as steps finish (see countTests).
+func (r *Runner) summarizeSteps() {
+	summary := &r.state.Summary
+	summary.StepsPassed, summary.StepsFailed, summary.StepsSkipped = 0, 0, 0
+	for _, ss := range r.state.Steps {
+		switch ss.Status {
+		case StatusSuccess:
+			summary.StepsPassed++
+		case StatusFailed:
+			summary.StepsFailed++
+		case StatusSkipped:
+			summary.StepsSkipped++
+		}
+	}
+}
+
+// countTests adds a finished step's test results to the summary.
+func (r *Runner) countTests(result *script.TestResult) {
+	if result == nil {
+		return
+	}
+	for _, test := range result.Tests {
+		if test.Passed {
+			r.state.Summary.TestsPassed++
+		} else {
+			r.state.Summary.TestsFailed++
+		}
+	}
 }
 
 func (r *Runner) notifyProgress() {
@@ -182,6 +243,9 @@ func (r *Runner) notifyProgress() {
 		Error:        r.state.Error,
 		Logs:         append([]LogEntry{}, r.state.Logs...),
 		StepIndex:    make(map[string]*StepState),
+		Iteration:    r.state.Iteration,
+		Iterations:   r.state.Iterations,
+		Summary:      r.state.Summary,
 	}
 	for _, ss := range r.state.Steps {
 		cp := *ss
@@ -197,7 +261,7 @@ func (r *Runner) addLog(msg string) {
 }
 
 func (r *Runner) addStepLog(stepID, msg string) {
-	r.state.Logs = append(r.state.Logs, LogEntry{StepID: stepID, Message: msg})
+	r.state.Logs = append(r.state.Logs, LogEntry{StepID: stepID, Iteration: r.state.Iteration, Message: msg})
 }
 
 // syncToCollection writes workflow-script variable changes to the live collection/environment
@@ -373,10 +437,8 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 	ss, ok := r.state.StepIndex[stepID]
 	if !ok {
 		// Step not declared in YAML — create a transient entry for tracking.
-		requestPath := r.findRequestPath(stepID)
-		ss = &StepState{ID: stepID, Request: requestPath, Status: StatusPending}
-		r.state.Steps = append(r.state.Steps, ss)
-		r.state.StepIndex[stepID] = ss
+		ss = &StepState{ID: stepID, Request: r.findRequestPath(stepID), Status: StatusPending}
+		r.addStepState(ss)
 	}
 
 	requestPath := ss.Request
@@ -415,9 +477,10 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 
 	var responses []*StepResponse
 	var last *StepResponse
-	// The last attempt decides the status: with repeat/until, earlier attempts
-	// failing while a poll waits for a result is expected.
+	// The last attempt decides the status and the counted tests: with
+	// repeat/until, earlier attempts failing while a poll waits is expected.
 	status := StatusSuccess
+	var lastScripts *script.TestResult
 
 	for i := 0; i < repeat; i++ {
 		ss.Progress = i + 1
@@ -430,6 +493,7 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 			r.failStep(ss)
 			return nil, execErr
 		}
+		lastScripts = outcome.scripts
 		stepResp := outcome.step
 		responses = append(responses, stepResp)
 		last = stepResp
@@ -441,6 +505,7 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 			break
 		}
 	}
+	r.countTests(lastScripts)
 
 	if wfStep != nil && wfStep.PostScript != "" && last != nil {
 		if err := r.runStepScript(wfStep.PostScript, stepID, last); err != nil {
@@ -524,9 +589,16 @@ func (r *Runner) recordOutcome(outcome itemOutcome) string {
 	}
 }
 
+// failStep marks ss failed. With StopOnFailure it also fails the run, which
+// makes every later wf.run() return skipped and ends the iteration loop.
 func (r *Runner) failStep(ss *StepState) {
 	ss.Status = StatusFailed
 	r.anyStepFailed = true
+	if r.options.StopOnFailure && r.status == StatusRunning {
+		r.status = StatusFailed
+		r.state.Error = fmt.Sprintf("%v: step %q", ErrStoppedOnFailure, ss.ID)
+		r.addLog("[STOP] " + r.state.Error)
+	}
 	r.notifyProgress()
 }
 
@@ -620,9 +692,10 @@ func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcom
 		FolderPath:  folderPathOf(requestPath),
 		Item:        item,
 		Sender:      r.httpExecutor.SendRequest,
+		Iteration:   r.iteration,
 	}
 
-	variables := r.getVariables()
+	variables := scope.Variables()
 
 	if item.IsGRPC() {
 		return r.executeGRPC(item, scope, variables), nil
@@ -676,7 +749,7 @@ func (r *Runner) executeMessageBus(item *postman.Item, scope script.RequestScope
 		return itemOutcome{step: &StepResponse{}, raw: &http.Response{Skipped: true, Status: http.SkippedStatus}, scripts: preResult}, nil
 	}
 
-	variables := r.getVariables()
+	variables := scope.Variables()
 
 	var resp *http.Response
 	switch protocol {
@@ -720,10 +793,6 @@ func (r *Runner) executeGRPC(item *postman.Item, scope script.RequestScope, vari
 	}
 
 	return itemOutcome{step: stepResp, raw: resp, scripts: scriptResult}
-}
-
-func (r *Runner) getVariables() []postman.VariableSource {
-	return postman.GetAllVariables(r.collection, nil, r.environment)
 }
 
 // --- JavaScript helpers ---

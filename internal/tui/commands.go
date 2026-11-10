@@ -199,6 +199,14 @@ func (cr *CommandRegistry) registerCommands() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeInfo, ModeJSON},
 		},
 		{
+			Name:        "runopts",
+			Aliases:     []string{"ro"},
+			Description: "Run options for workflow/folder runs: stop on|off, iterations <n>, env <name>|active, data <file>|off, reset",
+			ShortHelp:   ":runopts",
+			Handler:     handleRunOptsCommand,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
+		},
+		{
 			Name:        "wf",
 			Aliases:     []string{"workflow", "workflows"},
 			Description: "Manage and run workflows (:wf [run|new] <name>)",

@@ -99,6 +99,7 @@ Press `:` to enter command mode:
 - `:wf` — browse workflows
 - `:wf run <id>` — run a workflow by ID
 - `:wf new <id>` — create a new workflow
+- `:runopts` or `:ro` — show or set run options for workflow and folder runs (see [Run options](#run-options))
 - `:w` — save changes to file
 - `:wq` — save changes and quit
 - `:changes` or `:ch` — show unsaved changes
@@ -139,7 +140,8 @@ Supported sandbox APIs:
 - `pm.response` — `code`, `status`, `responseTime`, `responseSize`, `json()`, `text()`, `headers.get/has/toObject/all/each`, `to.have.status/header/jsonBody`, `to.be.ok/error`
 - `pm.request` — `method`, `url.toString()/getPath()`, `headers.get/has/add/upsert/remove`, `body.raw`, `body.update(...)`; pre-request changes are applied to the request that is sent
 - `pm.variables`, `pm.collectionVariables`, `pm.environment` — `get/set/has/unset`, plus `pm.environment.name`
-- `pm.info` — `requestName`, `requestId`, `eventName`
+- `pm.info` — `requestName`, `requestId`, `eventName`, `iteration` (0-based), `iterationCount`
+- `pm.iterationData` — `get/has/toObject` on the current data-file row (see [Run options](#run-options))
 - `pm.execution.skipRequest()`; `pm.execution.setNextRequest(name | id | null)` is accepted but ignored, since runs always go in order
 - `pm.sendRequest(urlOrOptions, callback)` or `await pm.sendRequest(...)`; `{{variables}}` are not resolved, as in Postman
 - `setTimeout`/`clearTimeout`, `console.*`, `CryptoJS` (HmacSHA256, Base64, Utf8), `atob`/`btoa`
@@ -216,10 +218,24 @@ script: |
 
 **Run a folder as a workflow:** in the requests view, put the cursor on a folder and press `ctrl+e`, then `y` to confirm (any other key cancels). Every request in the folder runs in collection order, depth-first through subfolders, in the workflow progress view. The first run saves the folder as `workflows/<slug>.yaml` (name `policies/TEST`, id `policies-test`), and the folder gets a ⚡ marker in the requests list. Later runs reuse the saved workflow. If the folder's requests changed, an unedited saved workflow is regenerated, while a hand-edited one is kept as-is. Postman runner flow control (`pm.execution.setNextRequest`) is ignored, so the requests always run strictly in order. In the run view, `L` opens the full run report (steps, test results and console output) in your editor.
 
+### Run options
+
+Like Postman's Collection Runner, workflow and folder runs take options. Set them with `:runopts`; they last for the session and apply to every run you start (a folder run's `y/n` prompt lists any that differ from the defaults):
+
+- `:runopts` — show the current options
+- `:runopts stop on|off` — end the run at the first failed step (a request error, a failing test or a script error); remaining steps show as skipped. Default: off, keep going
+- `:runopts iterations <n>` — run the workflow `n` times; `0` (default) means one iteration per data row, or one without a data file
+- `:runopts env <name>|active` — run against another loaded environment without switching the active one
+- `:runopts data <file.csv|file.json>|off` — data-driven run: a CSV file with a header row, or a JSON array of objects. Iteration `i` uses row `i` (the last row is reused if there are more iterations than rows). A row's values are `{{variables}}` that take precedence over environment and collection variables, and are available to scripts as `pm.iterationData.get(key)` (JSON values keep their types)
+- `:runopts reset` — back to the defaults
+
+Collection and environment variables carry over from one iteration to the next. With several iterations, the run report (`L`) prefixes each step with its iteration (`#2 login`) and the detail view shows the iteration in progress. When a run ends, the detail view, the run report and the status line show a summary: steps passed/failed/skipped and tests passed/failed.
+
 **TUI commands:**
 - `:wf` — browse available workflows
 - `:wf run <id>` — run a workflow by ID
 - `:wf new <id>` — create a new workflow skeleton
+- `:runopts` — run options (above)
 
 **Workflow list keys:**
 - `enter` — open workflow detail

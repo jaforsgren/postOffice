@@ -95,10 +95,14 @@ func (m Model) buildStepPanelLines(width int) []string {
 	if ss.Total > 1 {
 		lines = append(lines, subtleStyle.Render(fmt.Sprintf("attempt %d/%d", ss.Progress, ss.Total)))
 	}
+	// StepIndex holds the latest iteration's state, so the panel shows that iteration.
+	if m.workflowState.IsMultiIteration() {
+		lines = append(lines, subtleStyle.Render(fmt.Sprintf("iteration %d/%d", ss.Iteration, m.workflowState.Iterations)))
+	}
 
 	lines = append(lines, "", lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11")).Render("LOGS"))
 	stepLogs, _ := groupLogsByStep(m.workflowState)
-	if logs := stepLogs[ss.ID]; len(logs) > 0 {
+	if logs := stepLogs[stepRunKeyOf(ss)]; len(logs) > 0 {
 		for _, msg := range logs {
 			lines = append(lines, styleLogMessage(msg, styledRunStyler))
 		}
