@@ -37,6 +37,7 @@ type EventLoop struct {
 	timeout time.Duration
 	nextID  int64
 	pending []scheduledJob
+	segment *time.Timer
 }
 
 func newEventLoop(vm *goja.Runtime, timeout time.Duration) *EventLoop {
@@ -119,10 +120,24 @@ func (l *EventLoop) Drain() []error {
 	return errs
 }
 
+// waitOutsideSegment runs a blocking host call (e.g. HTTP) with the segment
+// timer paused, so a slow server is not mistaken for a runaway script. The
+// timer restarts afresh afterwards; the host call bounds its own wait.
+func (l *EventLoop) waitOutsideSegment(wait func()) {
+	if l.segment == nil {
+		wait()
+		return
+	}
+	l.segment.Stop()
+	wait()
+	l.segment.Reset(l.timeout)
+}
+
 func (l *EventLoop) guard(run func() error) error {
-	timer := time.AfterFunc(l.timeout, func() { l.vm.Interrupt(ErrScriptTimeout) })
+	l.segment = time.AfterFunc(l.timeout, func() { l.vm.Interrupt(ErrScriptTimeout) })
 	err := run()
-	timer.Stop()
+	l.segment.Stop()
+	l.segment = nil
 	l.vm.ClearInterrupt()
 
 	var interrupted *goja.InterruptedError

@@ -63,6 +63,28 @@ func TestTimeout_AppliesPerSegmentNotToWaiting(t *testing.T) {
 	}
 }
 
+func TestTimeout_SendRequestWaitDoesNotCountAgainstTheSegment(t *testing.T) {
+	const segmentTimeout = 100 * time.Millisecond
+	const slowServerDelay = 150 * time.Millisecond
+	ctx := &ExecutionContext{SendRequest: func(SendRequestSpec) (*ResponseData, error) {
+		time.Sleep(slowServerDelay)
+		return &ResponseData{StatusCode: 200}, nil
+	}}
+
+	result := NewRuntimeWithTimeout(segmentTimeout).ExecutePreRequestScript(jsScript(
+		"pm.sendRequest('https://api.example.com/first', () => {",
+		"  pm.sendRequest('https://api.example.com/second', (err, res) => pm.collectionVariables.set('code', String(res.code)));",
+		"});",
+	), ctx)
+
+	if len(result.Errors) > 0 {
+		t.Fatalf("expected slow HTTP not to count against the timeout, got %v", result.Errors)
+	}
+	if len(ctx.CollectionVars) != 1 || ctx.CollectionVars[0].Value != "200" {
+		t.Errorf("expected the nested callback to run, got %+v", ctx.CollectionVars)
+	}
+}
+
 func TestSendRequest_CallbackRunsAfterScriptWithResponse(t *testing.T) {
 	var sent SendRequestSpec
 	ctx := &ExecutionContext{

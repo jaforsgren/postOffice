@@ -96,7 +96,7 @@ func sendRequestSpecFromJS(vm *goja.Runtime, arg goja.Value) SendRequestSpec {
 }
 
 // installSendRequest registers pm.sendRequest. The HTTP call happens
-// immediately, but the callback is queued on the event loop so it runs after
+// immediately (outside the segment timeout), but the callback is queued on the event loop so it runs after
 // the calling script, as it does in Postman. Without a callback it returns a
 // Promise, so `await pm.sendRequest(...)` works too.
 func installSendRequest(vm *goja.Runtime, pmObj *goja.Object, ctx *ExecutionContext, loop *EventLoop) error {
@@ -106,7 +106,7 @@ func installSendRequest(vm *goja.Runtime, pmObj *goja.Object, ctx *ExecutionCont
 		var resp *ResponseData
 		err := ErrSendRequestUnavailable
 		if ctx.SendRequest != nil {
-			resp, err = ctx.SendRequest(spec)
+			loop.waitOutsideSegment(func() { resp, err = ctx.SendRequest(spec) })
 		}
 
 		var errValue, respValue goja.Value = goja.Null(), goja.Null()
