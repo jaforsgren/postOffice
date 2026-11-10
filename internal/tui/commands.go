@@ -245,25 +245,11 @@ func (cr *CommandRegistry) registerCommands() {
 func (cr *CommandRegistry) registerKeyBindings() {
 	cr.keyBindings = []*KeyBinding{
 		{
-			Keys:        []string{"q", "ctrl+c"},
-			Description: "Quit application",
-			ShortHelp:   "q",
-			Handler:     handleQuitKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeEnvironments, ModeVariables},
-		},
-		{
 			Keys:        []string{"q"},
 			Description: "Quit application",
 			ShortHelp:   "q",
 			Handler:     handleQuitKey,
-			AvailableIn: []ViewMode{ModeRequests},
-		},
-		{
-			Keys:        []string{"ctrl+c"},
-			Description: "Copy request as curl",
-			ShortHelp:   "ctrl+c",
-			Handler:     handleCopyCurlKey,
-			AvailableIn: []ViewMode{ModeRequests},
+			AvailableIn: []ViewMode{ModeCollections, ModeEnvironments, ModeVariables, ModeRequests},
 		},
 		{
 			Keys:        []string{"ctrl+v"},

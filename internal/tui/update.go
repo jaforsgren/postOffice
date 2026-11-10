@@ -195,6 +195,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+	if msg.String() == quitKey {
+		return handleQuitKey(m)
+	}
 	if m.pendingFolderRun != nil {
 		return m.handleFolderRunConfirmKeys(msg)
 	}
@@ -259,6 +262,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // resendStepKey resends the request, or reruns the workflow step, whose
 // response is on screen.
 const resendStepKey = "ctrl+r"
+
+// quitKey quits from every view, including text inputs and prompts.
+const quitKey = "ctrl+c"
 
 const saveResponseKey = "s"
 

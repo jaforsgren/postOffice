@@ -182,10 +182,6 @@ func (m Model) handleYankKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m.yank(key), nil
 }
 
-func handleCopyCurlKey(m Model) (Model, tea.Cmd) {
-	return m.yank(yankRequestKey), nil
-}
-
 func (m Model) yank(key string) Model {
 	target, err := m.currentYankTarget()
 	if err != nil {
