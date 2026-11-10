@@ -58,6 +58,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if err := m.parser.SaveCollection(msg.Collection.Info.Name); err != nil {
 				m.statusMessage = fmt.Sprintf("Warning: failed to save collection variables: %v", err)
 			}
+			m = m.reloadMergedCollection()
 		}
 
 		if m.mode == ModeVariables {
@@ -867,16 +868,15 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 	variables := m.variablesAt(folderPath)
 
 	executor := m.executorFor(item)
-	collection := m.collection
-	scopeCollection, scopePath := m.collectionScope(folderPath)
+	collection, collectionPath := m.collectionScope(folderPath)
 	environment := m.environment
 	environmentName := m.environmentName()
 	itemCopy := item
 
 	scope := &script.RequestScope{
-		Collection:  scopeCollection,
+		Collection:  collection,
 		Environment: environment,
-		FolderPath:  slices.Clone(scopePath),
+		FolderPath:  slices.Clone(collectionPath),
 		Item:        &itemCopy,
 	}
 
@@ -934,15 +934,14 @@ func (m Model) executeProtocolItem(
 		Timestamp: time.Now(),
 	}
 
-	collection := m.collection
-	scopeCollection, scopePath := m.collectionScope(folderPath)
+	collection, collectionPath := m.collectionScope(folderPath)
 	environment := m.environment
 	environmentName := m.environmentName()
 	itemCopy := item
 	scope := script.RequestScope{
-		Collection:  scopeCollection,
+		Collection:  collection,
 		Environment: environment,
-		FolderPath:  slices.Clone(scopePath),
+		FolderPath:  slices.Clone(collectionPath),
 		Item:        &itemCopy,
 		Sender:      m.executor.SendRequest,
 	}
@@ -961,7 +960,7 @@ func (m Model) executeProtocolItem(
 			}
 		}
 
-		variables := postman.GetAllVariables(scopeCollection, scopePath, environment)
+		variables := postman.GetAllVariables(collection, collectionPath, environment)
 		resp := send(request, variables)
 		return RequestCompleteMsg{
 			ItemID:          itemID,

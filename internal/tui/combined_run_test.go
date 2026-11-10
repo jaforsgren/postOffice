@@ -121,3 +121,25 @@ func TestCombinedView_RequestKeepsItsOwnCollectionsVariables(t *testing.T) {
 		t.Errorf("expected A's own variable at %v, got %+v", m.breadcrumb, vars)
 	}
 }
+
+func TestCombinedView_ScriptSetCollectionVariablePersistsToTheOwningCollection(t *testing.T) {
+	server, _ := requestPathServer(t)
+	m, pathA, pathB := combinedRunModel(t, server.URL)
+	m, msg := runCombinedOrders(t, m)
+
+	updated, _ := m.Update(msg)
+	m = updated.(Model)
+
+	if strings.Contains(m.statusMessage, "failed to save") {
+		t.Fatalf("expected the variables to save, got %q", m.statusMessage)
+	}
+	if !fileContains(t, pathB, combinedSetVarName) {
+		t.Error("expected Collection B's file to hold the script-set variable")
+	}
+	if fileContains(t, pathA, combinedSetVarName) {
+		t.Error("expected Collection A's file untouched")
+	}
+	if !slices.ContainsFunc(m.collection.Variables, func(v postman.Variable) bool { return v.Key == combinedSetVarName }) {
+		t.Error("expected the combined view to show the new variable")
+	}
+}
