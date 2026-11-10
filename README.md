@@ -98,7 +98,6 @@ Press `:` to enter command mode:
 - `:wf` — browse workflows
 - `:wf run <id>` — run a workflow by ID
 - `:wf new <id>` — create a new workflow
-- `:run` or `:runner` — run every request in the current folder (collection runner)
 - `:w` — save changes to file
 - `:wq` — save changes and quit
 - `:changes` or `:ch` — show unsaved changes
@@ -140,15 +139,11 @@ Supported sandbox APIs:
 - `pm.request` — `method`, `url.toString()/getPath()`, `headers.get/has/add/upsert/remove`, `body.raw`, `body.update(...)`; pre-request changes are applied to the request that is sent
 - `pm.variables`, `pm.collectionVariables`, `pm.environment` — `get/set/has/unset`, plus `pm.environment.name`
 - `pm.info` — `requestName`, `requestId`, `eventName`
-- `pm.execution.skipRequest()` and `pm.execution.setNextRequest(name | id | null)` (honoured by `:run`)
+- `pm.execution.skipRequest()`; `pm.execution.setNextRequest(name | id | null)` is accepted but ignored, since runs always go in order
 - `pm.sendRequest(urlOrOptions, callback)` or `await pm.sendRequest(...)`; `{{variables}}` are not resolved, as in Postman
 - `setTimeout`/`clearTimeout`, `console.*`, `CryptoJS` (HmacSHA256, Base64, Utf8), `atob`/`btoa`
 
 Each synchronous piece of a script (its body or one callback) may run for 5 seconds; waiting on timers and `pm.sendRequest` does not count, but all pending callbacks must finish within 2 minutes.
-
-### Collection Runner
-
-`:run` runs every request under the current folder (the whole collection at the top level) in order, like Postman's Collection Runner. `pm.execution.setNextRequest` jumps to another request in the run by name or id, and `null` ends the run; a run stops after 1000 requests to catch setNextRequest loops. Progress, test results and console output appear in the run view: `enter` re-runs, `esc` returns to the requests, `L` opens the full run report in your editor.
 
 ## Editing Requests
 
@@ -218,7 +213,7 @@ script: |
   }
 ```
 
-**Run a folder as a workflow:** in the requests view, put the cursor on a folder and press `ctrl+e`, then `y` to confirm (any other key cancels). Every request in the folder runs in collection order, depth-first through subfolders, in the workflow progress view. The first run saves the folder as `workflows/<slug>.yaml` (name `policies/TEST`, id `policies-test`), and the folder gets a ⚡ marker in the requests list. Later runs reuse the saved workflow. If the folder's requests changed, an unedited saved workflow is regenerated, while a hand-edited one is kept as-is. Postman runner flow control (`pm.execution.setNextRequest` / `skipRequest`) is not supported, so the requests always run strictly in order.
+**Run a folder as a workflow:** in the requests view, put the cursor on a folder and press `ctrl+e`, then `y` to confirm (any other key cancels). Every request in the folder runs in collection order, depth-first through subfolders, in the workflow progress view. The first run saves the folder as `workflows/<slug>.yaml` (name `policies/TEST`, id `policies-test`), and the folder gets a ⚡ marker in the requests list. Later runs reuse the saved workflow. If the folder's requests changed, an unedited saved workflow is regenerated, while a hand-edited one is kept as-is. Postman runner flow control (`pm.execution.setNextRequest`) is ignored, so the requests always run strictly in order. In the run view, `L` opens the full run report (steps, test results and console output) in your editor.
 
 **TUI commands:**
 - `:wf` — browse available workflows

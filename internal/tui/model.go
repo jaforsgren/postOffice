@@ -198,16 +198,12 @@ type Model struct {
 	grpcSelectedService int
 	grpcReflectPhase    GRPCReflectPhase
 
-	workflows          []*workflow.Workflow
-	workflowCursor     int
-	workflowStepCursor int
-	activeWorkflow     *workflow.Workflow
-	workflowState      workflow.ExecutionState
-	workflowChan       <-chan workflow.ExecutionState
-	// isCollectionRun is true when ModeWorkflowRun shows a collection run of
-	// collectionRunFolder (empty = whole collection) rather than a workflow.
-	isCollectionRun        bool
-	collectionRunFolder    []string
+	workflows              []*workflow.Workflow
+	workflowCursor         int
+	workflowStepCursor     int
+	activeWorkflow         *workflow.Workflow
+	workflowState          workflow.ExecutionState
+	workflowChan           <-chan workflow.ExecutionState
 	workflowViewport       viewport.Model
 	addingWorkflowStep     bool
 	editingWorkflowStepIdx int

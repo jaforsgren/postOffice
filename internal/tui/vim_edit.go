@@ -320,7 +320,7 @@ type VimRunViewCompleteMsg struct {
 	Err      error
 }
 
-// openRunInEditor shows the current workflow or collection run as plain text
+// openRunInEditor shows the current workflow run as plain text
 // in the editor, for searching and copying through long logs. It is a
 // snapshot: a run still in progress keeps going and is not re-exported.
 func (m Model) openRunInEditor() (Model, tea.Cmd) {

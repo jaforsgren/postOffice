@@ -236,7 +236,7 @@ func (m Model) buildWorkflowRunLines() []string {
 	return runReportLines(m.workflowState, styledRunStyler)
 }
 
-// runReportLines lays out a workflow or collection run: header, one line per
+// runReportLines lays out a workflow run: header, one line per
 // step (with the request and HTTP result once it has run), logs and error.
 func runReportLines(state workflow.ExecutionState, style runStyler) []string {
 	var lines []string

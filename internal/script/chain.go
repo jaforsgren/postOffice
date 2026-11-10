@@ -9,7 +9,7 @@ import (
 const requestPathSeparator = "/"
 
 // RequestPath is the "folder/sub/request" path that identifies a request
-// without a Postman id, in pm.info.requestId and collection runs.
+// without a Postman id, in pm.info.requestId.
 func RequestPath(folderPath []string, name string) string {
 	return strings.Join(append(append([]string{}, folderPath...), name), requestPathSeparator)
 }

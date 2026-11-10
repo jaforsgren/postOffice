@@ -122,8 +122,8 @@ func TestBuildCommandHelpEntries_SortedWithAliases(t *testing.T) {
 	if !slices.IsSortedFunc(entries, func(a, b helpEntry) int { return strings.Compare(a.key, b.key) }) {
 		t.Errorf("expected commands sorted by name, got %v", entries)
 	}
-	if !slices.ContainsFunc(entries, func(e helpEntry) bool { return e.key == ":run / :runner" }) {
-		t.Errorf("expected :run with its :runner alias, got %v", entries)
+	if !slices.ContainsFunc(entries, func(e helpEntry) bool { return e.key == ":collections / :c / :col" }) {
+		t.Errorf("expected :collections with its aliases, got %v", entries)
 	}
 }
 
