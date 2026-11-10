@@ -1,11 +1,13 @@
 package workflow
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
@@ -194,5 +196,78 @@ func TestRunStep_LastAttemptOfPollDecidesStatus(t *testing.T) {
 	}
 	if state.Status != StatusSuccess {
 		t.Errorf("workflow status = %s (%s), want %s", state.Status, state.Error, StatusSuccess)
+	}
+}
+
+const retrySelfScript = "if (pm.response.code !== 200) { pm.execution.setNextRequest(pm.info.requestId); }"
+
+func TestRunStep_SetNextRequestOnItselfRetriesUntilReady(t *testing.T) {
+	server := statusServer(t)
+
+	state, _ := runSteps(t, "", statusRequest("flaky", server.URL+"/"+flakyPath, testEvent(retrySelfScript, passingTest)))
+
+	if got := state.StepIndex["flaky"].Status; got != StatusSuccess {
+		t.Errorf("a retried request whose last attempt passes should succeed, got %s", got)
+	}
+	if got := state.StepIndex["flaky"].LastResponse.StatusCode; got != http.StatusOK {
+		t.Errorf("last response = %d, want %d", got, http.StatusOK)
+	}
+}
+
+func TestRunStep_EndlessSetNextRequestOnItselfFails(t *testing.T) {
+	server := statusServer(t)
+
+	state, _ := runSteps(t, "", statusRequest("loop", server.URL+"/"+okPath, testEvent("pm.execution.setNextRequest(pm.info.requestName);")))
+
+	if got := state.StepIndex["loop"].Status; got != StatusFailed {
+		t.Errorf("a request that always retries itself should fail, got %s", got)
+	}
+}
+
+func TestRunStep_SetNextRequestToAnotherRequestIsIgnored(t *testing.T) {
+	server := statusServer(t)
+
+	state, _ := runSteps(t, "",
+		statusRequest("first", server.URL+"/"+okPath, testEvent("pm.execution.setNextRequest('third');")),
+		statusRequest("second", server.URL+"/"+okPath),
+	)
+
+	if got := state.StepIndex["second"].Status; got != StatusSuccess {
+		t.Errorf("the workflow script, not setNextRequest, should decide the order, got %s", got)
+	}
+}
+
+func TestRun_TimeInsideStepsDoesNotCountAgainstTheScriptTimeout(t *testing.T) {
+	const scriptTimeout = 100 * time.Millisecond
+	const sleepMs = 150
+	slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(scriptTimeout)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(slowServer.Close)
+	collection := &postman.Collection{Items: []postman.Item{statusRequest("slow", slowServer.URL)}}
+	wf := &Workflow{
+		ID:     "slow",
+		Steps:  []Step{{ID: "slow", Request: "slow"}},
+		Script: fmt.Sprintf("export default async function (wf, pm) {\nawait wf.run(\"slow\");\nwf.sleep(%d);\nawait wf.run(\"slow\");\n}", sleepMs),
+	}
+	runner := NewRunner(collection, nil, internalhttp.NewExecutor())
+	runner.scriptTimeout = scriptTimeout
+
+	state := runner.Run(wf, nil)
+
+	if state.Status != StatusSuccess {
+		t.Errorf("workflow = %s (%s), want %s", state.Status, state.Error, StatusSuccess)
+	}
+}
+
+func TestRun_SpinningWorkflowScriptTimesOut(t *testing.T) {
+	runner := NewRunner(&postman.Collection{}, nil, internalhttp.NewExecutor())
+	runner.scriptTimeout = 50 * time.Millisecond
+
+	state := runner.Run(&Workflow{ID: "spin", Script: "export default async function (wf, pm) {\nwhile (true) {}\n}"}, nil)
+
+	if state.Status != StatusFailed || !strings.Contains(state.Error, "timed out") {
+		t.Errorf("workflow = %s (%q), want a timeout", state.Status, state.Error)
 	}
 }

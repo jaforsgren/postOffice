@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/dop251/goja"
@@ -17,8 +18,13 @@ import (
 )
 
 const (
+	// defaultScriptTimeout bounds each stretch of workflow script between steps.
+	// Time inside steps and wf.sleep is not counted: requests bound themselves.
 	defaultScriptTimeout = 30 * time.Second
 	requestPathSeparator = "/"
+	// maxSelfRetries stops a request whose script always calls
+	// pm.execution.setNextRequest on itself from looping forever.
+	maxSelfRetries = 100
 )
 
 // Runner executes a workflow against a collection and environment.
@@ -40,6 +46,9 @@ type Runner struct {
 	onChange      func(ExecutionState)
 	// currentStepID attributes logs to the step being run; empty between steps.
 	currentStepID string
+	scriptTimeout time.Duration
+	scriptTimer   *time.Timer
+	timedOut      atomic.Bool
 }
 
 // NewRunner creates a runner bound to the given collection and environment.
@@ -49,10 +58,11 @@ func NewRunner(
 	httpExecutor *http.Executor,
 ) *Runner {
 	return &Runner{
-		collection:   collection,
-		environment:  environment,
-		httpExecutor: httpExecutor,
-		grpcExecutor: internalgrpc.NewExecutor(),
+		collection:    collection,
+		environment:   environment,
+		httpExecutor:  httpExecutor,
+		grpcExecutor:  internalgrpc.NewExecutor(),
+		scriptTimeout: defaultScriptTimeout,
 	}
 }
 
@@ -93,16 +103,11 @@ func (r *Runner) Run(wf *Workflow, onChange func(ExecutionState)) ExecutionState
 
 	transformed := transformScript(wf.Script)
 
-	done := make(chan struct{})
-	timeoutChan := make(chan struct{})
-	go func() {
-		select {
-		case <-time.After(defaultScriptTimeout):
-			r.vm.Interrupt("workflow timeout")
-			close(timeoutChan)
-		case <-done:
-		}
-	}()
+	r.timedOut.Store(false)
+	r.scriptTimer = time.AfterFunc(r.scriptTimeout, func() {
+		r.timedOut.Store(true)
+		r.vm.Interrupt("workflow timeout")
+	})
 
 	_, err := r.vm.RunString(transformed)
 	if err == nil {
@@ -110,12 +115,10 @@ func (r *Runner) Run(wf *Workflow, onChange func(ExecutionState)) ExecutionState
 			r.addLog(fmt.Sprintf("[SCRIPT ERROR] %v", callbackErr))
 		}
 	}
-	close(done)
+	r.scriptTimer.Stop()
 
-	select {
-	case <-timeoutChan:
-		return r.finalize(StatusFailed, fmt.Sprintf("workflow timed out after %v", defaultScriptTimeout))
-	default:
+	if r.timedOut.Load() {
+		return r.finalize(StatusFailed, fmt.Sprintf("workflow timed out after %v", r.scriptTimeout))
 	}
 
 	if err != nil {
@@ -328,7 +331,7 @@ func (r *Runner) setupWFAPI() error {
 		}
 		ms := call.Arguments[0].ToInteger()
 		if ms > 0 {
-			time.Sleep(time.Duration(ms) * time.Millisecond)
+			r.outsideScriptTimeout(func() { time.Sleep(time.Duration(ms) * time.Millisecond) })
 		}
 		return goja.Undefined()
 	}); err != nil {
@@ -420,12 +423,13 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 		ss.Progress = i + 1
 		r.notifyProgress()
 
-		outcome, execErr := r.executeItem(item, requestPath)
+		var outcome itemOutcome
+		var execErr error
+		r.outsideScriptTimeout(func() { outcome, status, execErr = r.executeItemWithSelfRetries(item, requestPath) })
 		if execErr != nil {
 			r.failStep(ss)
 			return nil, execErr
 		}
-		status = r.recordOutcome(outcome)
 		stepResp := outcome.step
 		responses = append(responses, stepResp)
 		last = stepResp
@@ -458,6 +462,36 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 		Responses: responses,
 		Last:      last,
 	}, nil
+}
+
+// outsideScriptTimeout runs wait with the workflow script timer paused.
+func (r *Runner) outsideScriptTimeout(wait func()) {
+	if r.scriptTimer == nil || !r.scriptTimer.Stop() {
+		wait()
+		return
+	}
+	wait()
+	r.scriptTimer.Reset(r.scriptTimeout)
+}
+
+// executeItemWithSelfRetries re-sends the request while its scripts call
+// pm.execution.setNextRequest on itself, as a Postman Runner does for polling
+// reads. Jumps to other requests are ignored: the workflow script owns the order.
+func (r *Runner) executeItemWithSelfRetries(item *postman.Item, requestPath string) (itemOutcome, string, error) {
+	for attempt := 0; ; attempt++ {
+		outcome, err := r.executeItem(item, requestPath)
+		if err != nil {
+			return outcome, StatusFailed, err
+		}
+		status := r.recordOutcome(outcome)
+		if !outcome.retrySelf {
+			return outcome, status, nil
+		}
+		if attempt == maxSelfRetries {
+			r.addLog(fmt.Sprintf("[RETRY LIMIT] %q called setNextRequest on itself more than %d times", item.Name, maxSelfRetries))
+			return outcome, StatusFailed, nil
+		}
+	}
 }
 
 // recordOutcome logs a request's test results and console output and returns
@@ -572,6 +606,8 @@ type itemOutcome struct {
 	step    *StepResponse
 	raw     *http.Response
 	scripts *script.TestResult
+	// retrySelf is set when the request's scripts asked to run it again.
+	retrySelf bool
 }
 
 func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcome, error) {
@@ -620,7 +656,8 @@ func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcom
 		r.addLog(fmt.Sprintf("[HTTP ERROR] %v", resp.Error))
 	}
 
-	return itemOutcome{step: stepResp, raw: resp, scripts: scriptResult}, nil
+	retrySelf := scriptResult != nil && scriptResult.NextRequest.Set && scope.IsAddressedBy(scriptResult.NextRequest.Name)
+	return itemOutcome{step: stepResp, raw: resp, scripts: scriptResult, retrySelf: retrySelf}, nil
 }
 
 func (r *Runner) executeMessageBus(item *postman.Item, scope script.RequestScope, protocol string) (itemOutcome, error) {

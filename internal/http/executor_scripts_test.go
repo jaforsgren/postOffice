@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -170,5 +171,26 @@ func TestSendRequest_SendsSpecVerbatim(t *testing.T) {
 	}
 	if gotPath != "/{{notResolved}}" || gotBody != "{}" || gotContentType != defaultContentType {
 		t.Errorf("server got path %q body %q content type %q", gotPath, gotBody, gotContentType)
+	}
+}
+
+func TestExecute_ResponseTimeExcludesPreRequestScripts(t *testing.T) {
+	const preRequestBusyMs = 200
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer server.Close()
+
+	req := &postman.Request{Method: "GET", URL: postman.URL{Raw: server.URL}}
+	item := &postman.Item{Name: "slow setup", Request: req, Events: []postman.Event{
+		prerequest(fmt.Sprintf("const until = Date.now() + %d; while (Date.now() < until) {}", preRequestBusyMs)),
+		testEvent(fmt.Sprintf("pm.test('fast response', () => pm.expect(pm.response.responseTime).to.be.below(%d));", preRequestBusyMs)),
+	}}
+
+	resp, result := NewExecutor().Execute(req, scopeFor(&postman.Collection{}, item), nil)
+
+	if len(result.Tests) != 1 || !result.Tests[0].Passed {
+		t.Errorf("expected responseTime to exclude the pre-request script, got %+v", result.Tests)
+	}
+	if resp.Duration.Milliseconds() < preRequestBusyMs {
+		t.Errorf("expected the step duration to still include the pre-request script, got %v", resp.Duration)
 	}
 }

@@ -104,6 +104,8 @@ func (e *Executor) Execute(
 		httpReq.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	}
 
+	// Postman's responseTime covers only the HTTP exchange, not the pre-request scripts.
+	sentAt := time.Now()
 	httpResp, err := e.client.Do(httpReq)
 	if err != nil {
 		resp.Error = fmt.Errorf("request failed: %w", err)
@@ -124,6 +126,7 @@ func (e *Executor) Execute(
 	}
 
 	resp.Body = string(body)
+	responseTime := time.Since(sentAt)
 	resp.Duration = time.Since(start)
 
 	if scriptRun != nil {
@@ -132,7 +135,7 @@ func (e *Executor) Execute(
 			Status:       resp.Status,
 			Body:         resp.Body,
 			Headers:      resp.Headers,
-			ResponseTime: resp.Duration.Milliseconds(),
+			ResponseTime: responseTime.Milliseconds(),
 		}
 		scriptResult.Merge(scriptRun.Test(script.NewRequestData(requestToSend), responseData))
 	}

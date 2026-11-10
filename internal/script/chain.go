@@ -70,6 +70,15 @@ func (s RequestScope) info() RequestInfo {
 	return RequestInfo{RequestName: s.Item.Name, RequestID: id}
 }
 
+// IsAddressedBy reports whether a pm.execution.setNextRequest argument names
+// this request: by its name, its Postman id, or its folder path.
+func (s RequestScope) IsAddressedBy(name string) bool {
+	if s.Item == nil || name == "" {
+		return false
+	}
+	return name == s.Item.Name || name == s.info().RequestID
+}
+
 // RequestRun executes one request's scripts. Both phases share a VM, so
 // implicit globals a pre-request script defines (SAPI's `sapi` helpers) are
 // still there in the test phase, as in Postman's per-request sandbox. Each
