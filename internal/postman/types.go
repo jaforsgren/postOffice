@@ -38,6 +38,9 @@ type Header struct {
 	Type  string `json:"type,omitempty"`
 }
 
+// BodyModeRaw marks a body whose content is sent verbatim from Raw.
+const BodyModeRaw = "raw"
+
 type Body struct {
 	Mode string `json:"mode"`
 	Raw  string `json:"raw,omitempty"`

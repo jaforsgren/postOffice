@@ -3,7 +3,9 @@ package grpc
 import (
 	"context"
 	"fmt"
+	nethttp "net/http"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc"
 	rpb "google.golang.org/grpc/reflection/grpc_reflection_v1"
@@ -12,8 +14,54 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
+	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
 )
+
+const (
+	// MethodLabel is the request method recorded for gRPC calls.
+	MethodLabel = "GRPC"
+
+	invokeTimeout = 30 * time.Second
+	statusOK      = "OK"
+)
+
+// Invoke resolves variables in the URL and body of req, executes the unary call
+// and reports the outcome in the same Response shape as the other executors.
+func Invoke(req *postman.Request, variables []postman.VariableSource) *internalhttp.Response {
+	resolved := *req
+	resolved.URL.Raw = postman.ResolveVariables(req.URL.Raw, variables)
+	if req.Body != nil {
+		resolved.Body = &postman.Body{
+			Mode: req.Body.Mode,
+			Raw:  postman.ResolveVariables(req.Body.Raw, variables),
+		}
+	}
+
+	resp := &internalhttp.Response{
+		RequestMethod: MethodLabel,
+		RequestURL:    resolved.URL.Raw,
+	}
+	if resolved.Body != nil {
+		resp.RequestBody = resolved.Body.Raw
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), invokeTimeout)
+	defer cancel()
+
+	start := time.Now()
+	body, err := ExecuteRequest(ctx, &resolved)
+	resp.Duration = time.Since(start)
+	if err != nil {
+		resp.Error = err
+		return resp
+	}
+
+	resp.StatusCode = nethttp.StatusOK
+	resp.Status = statusOK
+	resp.Body = body
+	return resp
+}
 
 // ExecuteRequest executes the gRPC request described by req.
 // The request URL must use grpc:// or grpcs:// scheme with the format:

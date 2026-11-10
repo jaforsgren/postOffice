@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -502,8 +501,8 @@ func (r *Runner) executeItem(item *postman.Item) (*StepResponse, *http.Response,
 	variables := r.getVariables()
 
 	if item.IsGRPC() {
-		stepResp, err := r.executeGRPC(item, variables)
-		return stepResp, nil, err
+		stepResp, resp := r.executeGRPC(item, variables)
+		return stepResp, resp, nil
 	}
 
 	if item.IsServiceBus() {
@@ -578,39 +577,24 @@ func (r *Runner) executeMessageBus(item *postman.Item, protocol string) (*StepRe
 	return stepResp, resp, nil
 }
 
-func (r *Runner) executeGRPC(item *postman.Item, variables []postman.VariableSource) (*StepResponse, error) {
-	rawURL := postman.ResolveVariables(item.Request.URL.Raw, variables)
+func (r *Runner) executeGRPC(item *postman.Item, variables []postman.VariableSource) (*StepResponse, *http.Response) {
+	resp := internalgrpc.Invoke(item.Request, variables)
+	elapsed := resp.Duration.Milliseconds()
 
-	resolvedReq := *item.Request
-	resolvedReq.URL.Raw = rawURL
-	if item.Request.Body != nil {
-		resolvedReq.Body = &postman.Body{
-			Mode: item.Request.Body.Mode,
-			Raw:  postman.ResolveVariables(item.Request.Body.Raw, variables),
-		}
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	start := time.Now()
-	respJSON, err := internalgrpc.ExecuteRequest(ctx, &resolvedReq)
-	elapsed := time.Since(start).Milliseconds()
-
-	if err != nil {
-		r.addLog(fmt.Sprintf("[gRPC ERROR] %v", err))
+	if resp.Error != nil {
+		r.addLog(fmt.Sprintf("[gRPC ERROR] %v", resp.Error))
 		return &StepResponse{
 			Code: 0,
-			Body: fmt.Sprintf(`{"error":%q}`, err.Error()),
+			Body: fmt.Sprintf(`{"error":%q}`, resp.Error.Error()),
 			Time: elapsed,
-		}, nil
+		}, resp
 	}
 
 	return &StepResponse{
-		Code: 200,
-		Body: respJSON,
+		Code: resp.StatusCode,
+		Body: resp.Body,
 		Time: elapsed,
-	}, nil
+	}, resp
 }
 
 func (r *Runner) getVariables() []postman.VariableSource {
