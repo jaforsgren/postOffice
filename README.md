@@ -253,12 +253,14 @@ Unedited workflows can regenerate when folder contents change. Hand-edited workf
 
 a               Add step
 e/E             Edit request/scripts
-u               Run up to step
-f               Run from step
-r               Run step
-R               Run all
+<               Run up to step
+>               Run from step
+x               Run step
+R, ctrl+e       Run all
+.               Repeat the last partial run
+r               Reload workflows from disk
 enter           Step response
-tab             Step panel
+|               Step panel ([ / ] scroll it)
 i               Step info
 ctrl+d          Delete step
 L               Open run report

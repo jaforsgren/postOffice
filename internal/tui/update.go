@@ -2878,7 +2878,7 @@ func (m Model) openWorkflowDetail(wf *workflow.Workflow) (Model, tea.Cmd) {
 	if steps == 0 {
 		m.statusMessage = fmt.Sprintf("%s — no steps defined  <:wf new> to scaffold", wf.Name)
 	} else {
-		m.statusMessage = fmt.Sprintf("%s — %d step(s)  j/k navigate  u/f/r partial run  "+runKey+"/R full run  enter response  tab step panel", wf.Name, steps)
+		m.statusMessage = fmt.Sprintf("%s — %d step(s)  j/k navigate  %s/%s/%s up to/from/step  %s/R full run  enter response  %s step panel", wf.Name, steps, runUpToStepKey, runFromStepKey, runStepOnlyKey, runKey, stepPanelKey)
 	}
 	return m, nil
 }

@@ -138,17 +138,17 @@ func TestGroupLogsByStep_KeepsIterationsApart(t *testing.T) {
 	}
 }
 
-func TestStepPanel_TabTogglesInWorkflowDetail(t *testing.T) {
+func TestStepPanel_PipeTogglesInWorkflowDetail(t *testing.T) {
 	m := panelTestModel()
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(stepPanelKey)})
 	if !m.workflowStepPanelOpen {
-		t.Fatal("expected tab to open the step panel")
+		t.Fatal("expected | to open the step panel")
 	}
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(stepPanelKey)})
 	if m.workflowStepPanelOpen {
-		t.Fatal("expected second tab to close the step panel")
+		t.Fatal("expected a second | to close the step panel")
 	}
 }
 
@@ -217,15 +217,15 @@ func TestStepPanel_ScrollStopsAtLastPage(t *testing.T) {
 	}
 
 	for range maxScroll + 5 {
-		m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}})
+		m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(stepPanelDownKey)})
 	}
 	if m.workflowStepPanelScroll != maxScroll {
 		t.Errorf("scroll = %d, want it to stop at %d", m.workflowStepPanelScroll, maxScroll)
 	}
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(stepPanelUpKey)})
 	if m.workflowStepPanelScroll != maxScroll-1 {
-		t.Errorf("scroll after K = %d, want %d", m.workflowStepPanelScroll, maxScroll-1)
+		t.Errorf("scroll after [ = %d, want %d", m.workflowStepPanelScroll, maxScroll-1)
 	}
 
 	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})

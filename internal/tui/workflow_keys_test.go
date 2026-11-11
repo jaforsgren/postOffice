@@ -13,7 +13,7 @@ const fullWorkflowScript = "export default async function (wf, pm) { await wf.ru
 
 var (
 	runKeyMsg = tea.KeyMsg{Type: tea.KeyCtrlE}
-	enterKey = tea.KeyMsg{Type: tea.KeyEnter}
+	enterKey  = tea.KeyMsg{Type: tea.KeyEnter}
 )
 
 func workflowKeysTestModel() Model {
@@ -27,10 +27,10 @@ func TestStartWorkflowPartial_KeepsTheFullWorkflowActive(t *testing.T) {
 	m := workflowKeysTestModel()
 	wf := m.activeWorkflow
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(runStepOnlyKey)})
 
 	if m.workflowChan == nil {
-		t.Fatal("expected r to start a run")
+		t.Fatal("expected x to start a run")
 	}
 	if m.activeWorkflow != wf || m.activeWorkflow.Script != fullWorkflowScript {
 		t.Error("a partial run must not replace the active workflow or its script")

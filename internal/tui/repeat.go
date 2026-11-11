@@ -13,7 +13,8 @@ const (
 )
 
 // handleRepeatLastActionKey repeats the last repeatable action (execute,
-// delete, duplicate, favorite, expand) on the item now under the cursor.
+// delete, duplicate, favorite, expand, or a partial workflow run) on the
+// item or step now under the cursor.
 func handleRepeatLastActionKey(m Model) (Model, tea.Cmd) {
 	if m.lastRepeatableKey == "" {
 		m.statusMessage = "Nothing to repeat"

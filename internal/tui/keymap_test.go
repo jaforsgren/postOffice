@@ -74,3 +74,26 @@ func TestNumberKeys_SwitchViews(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkflowDetail_PartialRunsAreRepeatable(t *testing.T) {
+	m := workflowKeysTestModel()
+	m, _ = pressKey(m, runes(runStepOnlyKey))
+	m.workflowChan = nil
+
+	m, _ = pressKey(m, runes(repeatLastActionKey))
+
+	if m.workflowChan == nil {
+		t.Errorf("expected . to run the step again (%s)", m.statusMessage)
+	}
+}
+
+func TestWorkflowDetail_RefreshKeepsTheOpenWorkflow(t *testing.T) {
+	m := workflowKeysTestModel()
+	open := m.activeWorkflow
+
+	m, _ = pressKey(m, runes(refreshWorkflowsKey))
+
+	if m.mode != ModeWorkflowDetail || m.activeWorkflow != open {
+		t.Errorf("expected to stay in the open workflow, got %v (%s)", m.mode, m.statusMessage)
+	}
+}
