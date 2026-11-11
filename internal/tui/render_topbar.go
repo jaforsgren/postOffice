@@ -435,7 +435,7 @@ func (m Model) renderStatusBar() string {
 	case ModeHistory:
 		help = "enter: replay | d: diff vs current | esc: back | j/k: navigate"
 	case ModeDependencyGraph:
-		help = "enter: jump to request | " + runWithPrerequisitesKey + ": run with prerequisites | esc: back | j/k: navigate"
+		help = "enter/r/" + runWithPrerequisitesKey + ": run with prerequisites | l: jump to request | esc: back | j/k: navigate"
 	default:
 		help = "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
 	}

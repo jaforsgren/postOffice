@@ -363,9 +363,9 @@ Unknown paths and cycles are reported and block `P` until fixed.
 
 ```
 Execution order (P sends the numbered requests, – are skipped):
-▶  1. Users/List (stale: not run this session)
+   1. Users/List (stale: not run this session)
    –. Auth/Login (fresh)
-   2. Users/Get User target
+▶  2. Users/Get User target
 
 Requires:
    Users/Get User
@@ -377,7 +377,7 @@ Requires:
 - The execution order is every transitive prerequisite in the order `P` runs them. Numbered rows are sent; `–` rows are fresh or only needed by fresh requests.
 - Each requires edge shows its rules and status: fresh, stale with the reason, failed (red) or missing. A request already expanded is not expanded again, and an edge back up the path is marked `↻ cycle`.
 - Cycles and unknown paths are listed under Problems before anything runs; the execution order is left out while the graph has a cycle.
-- `j`/`k` select a request, `enter` jumps to it in the requests view, `P` runs the target with its prerequisites (the graph updates as they complete) and `esc`/`q` go back.
+- The cursor opens on the target. `j`/`k` select a request; `enter`, `r`, `P` or `ctrl+e` run the selected request after its stale prerequisites (the graph stays open and updates as they complete), `l`/`→` jump to it in the requests view and `esc`/`q` go back.
 
 In the combined view, a request's dependencies come from its own collection's file.
 

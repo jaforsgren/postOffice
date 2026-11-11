@@ -180,12 +180,9 @@ func TestDependencyGraph_MissingPrerequisiteIsNotSelectable(t *testing.T) {
 
 func TestDependencyGraph_EnterJumpsToSelectedRequest(t *testing.T) {
 	m := newDependencyGraphTestModel(t, newRecordingServer(t, nil), depDiamondGraph)
-	m, _ = pressKey(m, runes("j"))
-	if got := selectableGraphPaths(m)[m.dependencyGraph.cursor]; got != depLoginPath {
-		t.Fatalf("expected the second selectable row to be %s, got %s", depLoginPath, got)
-	}
+	m = cursorOnGraphRequest(t, m, depLoginPath)
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = pressKey(m, runes("l"))
 
 	if m.mode != ModeRequests || !reflect.DeepEqual(m.breadcrumb, []string{"Auth"}) {
 		t.Fatalf("expected the requests view in Auth, got mode %v breadcrumb %v", m.mode, m.breadcrumb)
@@ -199,7 +196,9 @@ func TestDependencyGraph_CursorStaysWithinSelectableRows(t *testing.T) {
 	m := newDependencyGraphTestModel(t, newRecordingServer(t, nil), depDiamondGraph)
 	count := len(selectableGraphPaths(m))
 
-	m, _ = pressKey(m, runes("k"))
+	for range count + 2 {
+		m, _ = pressKey(m, runes("k"))
+	}
 	if m.dependencyGraph.cursor != 0 {
 		t.Errorf("expected the cursor to stop at the first row, got %d", m.dependencyGraph.cursor)
 	}
@@ -217,7 +216,58 @@ func TestDependencyGraph_RendersSelectedRow(t *testing.T) {
 
 	view := ansi.Strip(m.renderDependencyGraphView())
 
-	if !strings.Contains(view, "Dependency Graph: Get User") || !strings.Contains(view, "▶    1. "+depListPath) {
-		t.Errorf("expected the title and the cursor on the first step, got:\n%s", view)
+	if !strings.Contains(view, "Dependency Graph: Get User") || !strings.Contains(view, "▶    4. "+depGetUserPath) {
+		t.Errorf("expected the title and the cursor on the target step, got:\n%s", view)
+	}
+}
+
+// cursorOnGraphRequest moves the graph cursor to the first row naming requestPath.
+func cursorOnGraphRequest(t *testing.T, m Model, requestPath string) Model {
+	t.Helper()
+	cursor := slices.Index(selectableGraphPaths(m), requestPath)
+	if cursor < 0 {
+		t.Fatalf("no selectable row for %s", requestPath)
+	}
+	m.dependencyGraph.cursor = cursor
+	return m
+}
+
+func TestDependencyGraph_OpensWithTheCursorOnTheTarget(t *testing.T) {
+	m := newDependencyGraphTestModel(t, newRecordingServer(t, nil), depDiamondGraph)
+
+	if got := selectableGraphPaths(m)[m.dependencyGraph.cursor]; got != depGetUserPath {
+		t.Errorf("expected the cursor on %s, got %s", depGetUserPath, got)
+	}
+}
+
+func TestDependencyGraph_RunKeysRunTheChainOfTheSelectedRequest(t *testing.T) {
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyEnter}, runes("r"), runes(runWithPrerequisitesKey), {Type: tea.KeyCtrlE}} {
+		t.Run(key.String(), func(t *testing.T) {
+			server := newRecordingServer(t, nil)
+			m := newDependencyGraphTestModel(t, server, depGraphWithLogin)
+
+			m, cmd := pressKey(m, key)
+			m = drainCommands(t, m, cmd)
+
+			if got, want := server.recordedHits(), []string{depLoginRoute, depUserRoute}; !reflect.DeepEqual(got, want) {
+				t.Errorf("hits = %v, want %v (status: %s)", got, want, m.statusMessage)
+			}
+			if m.mode != ModeDependencyGraph {
+				t.Errorf("expected to stay in the graph, got mode %v", m.mode)
+			}
+		})
+	}
+}
+
+func TestDependencyGraph_RunningAPrerequisiteRunsOnlyItsOwnChain(t *testing.T) {
+	server := newRecordingServer(t, nil)
+	m := newDependencyGraphTestModel(t, server, depDiamondGraph)
+	m = cursorOnGraphRequest(t, m, depLoginPath)
+
+	m, cmd := pressKey(m, tea.KeyMsg{Type: tea.KeyEnter})
+	drainCommands(t, m, cmd)
+
+	if got, want := server.recordedHits(), []string{depListRoute, depLoginRoute}; !reflect.DeepEqual(got, want) {
+		t.Errorf("hits = %v, want %v", got, want)
 	}
 }

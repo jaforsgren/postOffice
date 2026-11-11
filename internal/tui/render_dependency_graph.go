@@ -23,6 +23,8 @@ const (
 	dependencyGraphOrderTitle    = "Execution order (" + runWithPrerequisitesKey + " sends the numbered requests, – are skipped):"
 	dependencyGraphTreeTitle     = "Requires:"
 	dependencyGraphProducesTitle = "Produces:"
+
+	dependencyGraphHelp = "(enter/r/" + runWithPrerequisitesKey + ": run with prerequisites | l: jump to request | esc: back)"
 )
 
 // dependencyGraphRow is one line of the graph view; requestPath is set on lines
@@ -38,7 +40,7 @@ func (m Model) renderDependencyGraphView() string {
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
 	title := titleStyle.Render("Dependency Graph: " + m.dependencyGraph.target.Name)
-	help := helpStyle.Render("(enter: jump to request | " + runWithPrerequisitesKey + ": run with prerequisites | esc: back)")
+	help := helpStyle.Render(dependencyGraphHelp)
 	lines := []string{title + " " + help, ""}
 
 	rows := m.dependencyGraphRows()
