@@ -1,6 +1,7 @@
 package postman
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -572,5 +573,47 @@ func TestResolveVariables_EdgeCases(t *testing.T) {
 				t.Errorf("Expected '%s', got '%s'", tt.expected, result)
 			}
 		})
+	}
+}
+
+func TestVariableDefinitions_KeepsShadowedDefinitionsInPrecedenceOrder(t *testing.T) {
+	collection := &Collection{
+		Info:      Info{Name: "API"},
+		Variables: []Variable{{Key: "claim_id", Value: "collection"}},
+		Items:     []Item{{Name: "Claims", Variables: []Variable{{Key: "claim_id", Value: "folder"}}, Items: []Item{{Name: "Get"}}}},
+	}
+	environment := &Environment{Name: "Local", Values: []EnvVariable{
+		{Key: "claim_id", Value: "environment", Enabled: true},
+		{Key: "disabled", Value: "x", Enabled: false},
+	}}
+
+	got := VariableDefinitions(collection, []string{"Claims"}, environment)
+
+	want := []VariableSource{
+		{Key: "claim_id", Value: "environment", Source: "Environment: Local"},
+		{Key: "claim_id", Value: "collection", Source: "Collection: API"},
+		{Key: "claim_id", Value: "folder", Source: "Folder: Claims"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("VariableDefinitions = %+v, want %+v", got, want)
+	}
+	if visible := GetAllVariables(collection, []string{"Claims"}, environment); len(visible) != 1 || visible[0].Value != "environment" {
+		t.Errorf("GetAllVariables should keep only the environment definition, got %+v", visible)
+	}
+}
+
+func TestAllSavedResponses(t *testing.T) {
+	parser := NewParser()
+	saved := SavedResponse{Status: "200 OK", Body: `{"persona_id": "p-1"}`}
+	if err := parser.SaveResponse("API/Users/Get", saved); err != nil {
+		t.Fatal(err)
+	}
+
+	all, err := parser.AllSavedResponses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := all["API/Users/Get"]; len(got) != 1 || got[0].Body != saved.Body {
+		t.Errorf("AllSavedResponses = %+v", all)
 	}
 }

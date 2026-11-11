@@ -41,6 +41,11 @@ func (p *Parser) GetSavedResponses(itemID string) ([]SavedResponse, error) {
 	return store[itemID], nil
 }
 
+// AllSavedResponses returns every saved response keyed by request item ID.
+func (p *Parser) AllSavedResponses() (map[string][]SavedResponse, error) {
+	return p.loadSavedResponseStore()
+}
+
 func (p *Parser) DeleteSavedResponse(itemID string, index int) error {
 	store, err := p.loadSavedResponseStore()
 	if err != nil {

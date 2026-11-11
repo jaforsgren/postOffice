@@ -168,9 +168,11 @@ Path parameters such as `/users/:id` have dedicated fields.
 
 Values persist during the session.
 
-Type `{{` for variable autocomplete.
+Type `{{` for variable autocomplete. Variables whose name starts with what you typed come first, then those containing it (`{{claim` suggests `{{claim_id}}` and `{{my_claim_type}}`). Each suggestion shows its resolved value, its scope (environment, collection or folder) and any definitions it shadows, e.g. `Environment: Local · shadows Collection: SAPI = abc`.
 
-Press `Tab` to insert or cycle through suggestions. Resolved values are shown in the editor.
+Outside `{{ }}`, a word of three or more characters suggests values of matching JSON fields seen in request history (responses received and requests sent), saved responses and request bodies saved in the collection, newest first. Matching ignores case, `_` and `-`, so `persona_` suggests the values of `persona_id` and `personaId`, each with where it was seen.
+
+Press `Tab` to insert the selected suggestion (a variable replaces the `{{…`, a value replaces the typed word) and `Tab` again to replace it with the next one. Resolved values are shown in the editor.
 
 Use `V` to edit a request's variables at their source.
 

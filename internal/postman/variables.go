@@ -15,64 +15,68 @@ type VariableSource struct {
 var variablePattern = regexp.MustCompile(`\{\{([^}]+)\}\}`)
 var pathParamSegmentPattern = regexp.MustCompile(`:([\w]+)`)
 
-// GetAllVariables collects variables from environment, collection, and folder scopes in
-// precedence order (environment overrides collection, collection overrides folders).
+// GetAllVariables returns the variables visible at breadcrumb, one per key, in
+// precedence order: environment, then collection, then the folders on breadcrumb.
 func GetAllVariables(collection *Collection, breadcrumb []string, environment *Environment) []VariableSource {
 	var variables []VariableSource
 	seen := make(map[string]bool)
+	for _, variable := range VariableDefinitions(collection, breadcrumb, environment) {
+		if !seen[variable.Key] {
+			seen[variable.Key] = true
+			variables = append(variables, variable)
+		}
+	}
+	return variables
+}
+
+// VariableDefinitions returns every definition visible at breadcrumb in
+// precedence order, including the ones a higher-precedence scope shadows.
+func VariableDefinitions(collection *Collection, breadcrumb []string, environment *Environment) []VariableSource {
+	var variables []VariableSource
 
 	if environment != nil {
 		for _, envVar := range environment.Values {
-			if envVar.Enabled && !seen[envVar.Key] {
+			if envVar.Enabled {
 				variables = append(variables, VariableSource{
 					Key:     envVar.Key,
 					Value:   envVar.Value,
 					Choices: envVar.Choices,
 					Source:  "Environment: " + environment.Name,
 				})
-				seen[envVar.Key] = true
 			}
 		}
 	}
 
-	if collection != nil {
-		for _, collVar := range collection.Variables {
-			if !seen[collVar.Key] {
-				variables = append(variables, VariableSource{
-					Key:     collVar.Key,
-					Value:   collVar.Value,
-					Choices: collVar.Choices,
-					Source:  "Collection: " + collection.Info.Name,
-				})
-				seen[collVar.Key] = true
-			}
-		}
+	if collection == nil {
+		return variables
+	}
+	for _, collVar := range collection.Variables {
+		variables = append(variables, VariableSource{
+			Key:     collVar.Key,
+			Value:   collVar.Value,
+			Choices: collVar.Choices,
+			Source:  "Collection: " + collection.Info.Name,
+		})
+	}
 
-		if len(breadcrumb) > 0 {
-			current := collection.Items
-			for i, crumbName := range breadcrumb {
-				for _, item := range current {
-					if item.Name == crumbName && item.IsFolder() {
-						folderPath := strings.Join(breadcrumb[:i+1], " / ")
-						for _, folderVar := range item.Variables {
-							if !seen[folderVar.Key] {
-								variables = append(variables, VariableSource{
-									Key:     folderVar.Key,
-									Value:   folderVar.Value,
-									Choices: folderVar.Choices,
-									Source:  "Folder: " + folderPath,
-								})
-								seen[folderVar.Key] = true
-							}
-						}
-						current = item.Items
-						break
-					}
+	current := collection.Items
+	for i, crumbName := range breadcrumb {
+		for _, item := range current {
+			if item.Name == crumbName && item.IsFolder() {
+				folderPath := strings.Join(breadcrumb[:i+1], " / ")
+				for _, folderVar := range item.Variables {
+					variables = append(variables, VariableSource{
+						Key:     folderVar.Key,
+						Value:   folderVar.Value,
+						Choices: folderVar.Choices,
+						Source:  "Folder: " + folderPath,
+					})
 				}
+				current = item.Items
+				break
 			}
 		}
 	}
-
 	return variables
 }
 

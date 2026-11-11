@@ -1281,9 +1281,7 @@ func (m Model) enterEditMode(item postman.Item, folderPath []string) Model {
 			m.pathParams[k] = v
 		}
 	}
-	m.varSuggestions = nil
-	m.varSuggestionActive = false
-	m.varSuggestionCursor = 0
+	m = m.startFieldCompletion()
 
 	if item.IsGRPC() {
 		endpoint, service, method, tls := parseGRPCURL(item.Request.URL.Raw)
@@ -1718,9 +1716,7 @@ func (m Model) enterNewItemEditMode(requestType string) Model {
 	m.mode = ModeEdit
 	m.scrollOffset = 0
 	m.pathParams = make(map[string]string)
-	m.varSuggestions = nil
-	m.varSuggestionActive = false
-	m.varSuggestionCursor = 0
+	m = m.startFieldCompletion()
 
 	if editType == EditTypeGRPCRequest {
 		m.grpcEditEndpoint = ""
@@ -1908,9 +1904,7 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.editFieldInput.SetValue("")
 		}
 		m.editFieldMode = false
-		m.varSuggestionActive = false
-		m.varSuggestions = nil
-		m.varSuggestionCursor = 0
+		m.fieldCompletion = fieldCompletion{}
 		m.statusMessage = "Field updated (use :w to save to file)"
 		return m, nil
 
@@ -1940,8 +1934,7 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.editFieldMode = false
-			m.varSuggestionActive = false
-			m.varSuggestions = nil
+			m.fieldCompletion = fieldCompletion{}
 			m.editFieldTextArea.Blur()
 			m.statusMessage = "Field updated (use :w to save to file)"
 			return m, nil
@@ -1949,40 +1942,12 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyTab:
-		if m.varSuggestionActive && len(m.varSuggestions) > 0 {
-			selected := m.varSuggestions[m.varSuggestionCursor]
+		if m.fieldCompletion.active() {
 			if isMultiLineField {
-				value := m.editFieldTextArea.Value()
-				idx := strings.LastIndex(value, "{{")
-				if idx != -1 {
-					m.editFieldTextArea.SetValue(value[:idx] + "{{" + selected.Key + "}}")
-				}
+				m.editFieldTextArea.SetValue(m.fieldCompletion.cycle(m.editFieldTextArea.Value()))
 			} else {
-				currentVal := m.editFieldInput.Value()
-				idx := strings.LastIndex(currentVal, "{{")
-				if idx != -1 {
-					m.editFieldInput.SetValue(currentVal[:idx] + "{{" + selected.Key + "}}")
-					m.editFieldInput.CursorEnd()
-				}
-			}
-			m.varSuggestionCursor = (m.varSuggestionCursor + 1) % len(m.varSuggestions)
-			// Re-check: after inserting {{key}}, the closing }} means no active suggestion
-			var checkVal string
-			if isMultiLineField {
-				checkVal = m.editFieldTextArea.Value()
-			} else {
-				checkVal = m.editFieldInput.Value()
-			}
-			prefix, active := detectVarPrefix(checkVal)
-			m.varSuggestionActive = active
-			if active {
-				m.varSuggestions = m.computeVarSuggestions(prefix)
-				if m.varSuggestionCursor >= len(m.varSuggestions) {
-					m.varSuggestionCursor = 0
-				}
-			} else {
-				m.varSuggestions = nil
-				m.varSuggestionCursor = 0
+				m.editFieldInput.SetValue(m.fieldCompletion.cycle(m.editFieldInput.Value()))
+				m.editFieldInput.CursorEnd()
 			}
 		}
 		return m, nil
@@ -2019,9 +1984,7 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.editFieldMode = false
-			m.varSuggestionActive = false
-			m.varSuggestions = nil
-			m.varSuggestionCursor = 0
+			m.fieldCompletion = fieldCompletion{}
 			m.editFieldInput.Blur()
 			m.statusMessage = "Field updated (use :w to save to file)"
 			return m, nil
@@ -2032,30 +1995,10 @@ func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		if isMultiLineField {
 			m.editFieldTextArea, cmd = m.editFieldTextArea.Update(msg)
-			prefix, active := detectVarPrefix(m.editFieldTextArea.Value())
-			m.varSuggestionActive = active
-			if active {
-				m.varSuggestions = m.computeVarSuggestions(prefix)
-				if m.varSuggestionCursor >= len(m.varSuggestions) {
-					m.varSuggestionCursor = 0
-				}
-			} else {
-				m.varSuggestions = nil
-				m.varSuggestionCursor = 0
-			}
+			m.fieldCompletion = m.completeField(m.editFieldTextArea.Value())
 		} else {
 			m.editFieldInput, cmd = m.editFieldInput.Update(msg)
-			prefix, active := detectVarPrefix(m.editFieldInput.Value())
-			m.varSuggestionActive = active
-			if active {
-				m.varSuggestions = m.computeVarSuggestions(prefix)
-				if m.varSuggestionCursor >= len(m.varSuggestions) {
-					m.varSuggestionCursor = 0
-				}
-			} else {
-				m.varSuggestions = nil
-				m.varSuggestionCursor = 0
-			}
+			m.fieldCompletion = m.completeField(m.editFieldInput.Value())
 		}
 		return m, cmd
 	}
@@ -3098,22 +3041,6 @@ func detectVarPrefix(value string) (prefix string, active bool) {
 		return "", false
 	}
 	return afterOpen, true
-}
-
-// computeVarSuggestions returns variables matching the given prefix from the current context.
-func (m Model) computeVarSuggestions(prefix string) []postman.VariableSource {
-	all := m.variablesAt(m.breadcrumb)
-	if prefix == "" {
-		return all
-	}
-	lowerPrefix := strings.ToLower(prefix)
-	var filtered []postman.VariableSource
-	for _, v := range all {
-		if strings.HasPrefix(strings.ToLower(v.Key), lowerPrefix) {
-			filtered = append(filtered, v)
-		}
-	}
-	return filtered
 }
 
 // applyPathParamsToReq returns a copy of req with :paramName replaced by stored values.

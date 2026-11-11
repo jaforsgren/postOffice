@@ -7,6 +7,7 @@ import (
 	"postOffice/internal/postman"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func (m Model) renderEditPopup(availableHeight int) string {
@@ -199,8 +200,8 @@ func (m Model) buildGRPCEditFields() []string {
 			lines = append(lines, "    "+valueStyle.Render(vLine))
 		}
 
-		if i == m.editFieldCursor && m.editFieldMode && m.varSuggestionActive {
-			lines = append(lines, m.buildVarSuggestionsDisplay()...)
+		if i == m.editFieldCursor && m.editFieldMode && m.fieldCompletion.active() {
+			lines = append(lines, m.buildFieldCompletionDisplay()...)
 		}
 
 		// Hint for the Service/Method field
@@ -273,8 +274,8 @@ func (m Model) buildEditFields() []string {
 		}
 
 		// Variable autocomplete dropdown
-		if isSelected && m.editFieldMode && m.varSuggestionActive {
-			lines = append(lines, m.buildVarSuggestionsDisplay()...)
+		if isSelected && m.editFieldMode && m.fieldCompletion.active() {
+			lines = append(lines, m.buildFieldCompletionDisplay()...)
 		}
 
 		// Resolved URL preview below URL field
@@ -345,47 +346,41 @@ func (m Model) buildRequestFieldDefs() []editFieldDef {
 	return fields
 }
 
-func (m Model) buildVarSuggestionsDisplay() []string {
-	if len(m.varSuggestions) == 0 {
-		return nil
+const (
+	maxCompletionRows         = 5
+	maxCompletionLabelWidth   = 60
+	completionVariablesHeader = "Variables (Tab to insert, Tab again for the next):"
+	completionValuesHeader    = "Values seen in requests and responses (Tab to insert, Tab again for the next):"
+)
+
+// buildFieldCompletionDisplay renders the autocomplete dropdown, scrolled so the
+// selected suggestion stays visible while Tab cycles through them.
+func (m Model) buildFieldCompletionDisplay() []string {
+	completion := m.fieldCompletion
+	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
+
+	header := completionVariablesHeader
+	if completion.kind == completionFieldValues {
+		header = completionValuesHeader
 	}
+	lines := []string{"    " + dim.Render(header)}
 
-	var lines []string
-	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	lines = append(lines, "    "+headerStyle.Render("Variables (Tab to insert):"))
-
-	maxShow := 5
-	if len(m.varSuggestions) < maxShow {
-		maxShow = len(m.varSuggestions)
-	}
-
-	for i := 0; i < maxShow; i++ {
-		v := m.varSuggestions[i]
-		varStr := "{{" + v.Key + "}}"
-
-		resolvedDisplay := ""
-		if v.Value != "" {
-			val := v.Value
-			if len(val) > 35 {
-				val = val[:32] + "..."
-			}
-			resolvedDisplay = " = " + val
-		}
-
-		if i == m.varSuggestionCursor {
-			style := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
-			lines = append(lines, "    > "+style.Render(varStr+resolvedDisplay))
+	startIdx, endIdx := calculateVisibleWindow(completion.cursor, len(completion.items), maxCompletionRows)
+	for i := startIdx; i < endIdx; i++ {
+		item := completion.items[i]
+		label := ansi.Truncate(item.label, maxCompletionLabelWidth, "…")
+		detail := dim.Render("  " + item.detail)
+		if i == completion.cursor {
+			lines = append(lines, "    > "+selectedStyle.Render(label)+detail)
 		} else {
-			style := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-			lines = append(lines, "      "+style.Render(varStr+resolvedDisplay))
+			lines = append(lines, "      "+dim.Render(label)+detail)
 		}
 	}
 
-	if len(m.varSuggestions) > maxShow {
-		dim := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-		lines = append(lines, "      "+dim.Render(fmt.Sprintf("... and %d more", len(m.varSuggestions)-maxShow)))
+	if hidden := len(completion.items) - (endIdx - startIdx); hidden > 0 {
+		lines = append(lines, "      "+dim.Render(fmt.Sprintf("... and %d more", hidden)))
 	}
-
 	return lines
 }
 

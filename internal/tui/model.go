@@ -8,6 +8,7 @@ import (
 	"postOffice/internal/postman"
 	"postOffice/internal/protocol"
 	"postOffice/internal/script"
+	"postOffice/internal/suggest"
 	"postOffice/internal/workflow"
 	"time"
 
@@ -173,9 +174,8 @@ type Model struct {
 	pathParams        map[string]string
 	requestPathParams map[string]map[string]string
 
-	varSuggestions      []postman.VariableSource
-	varSuggestionCursor int
-	varSuggestionActive bool
+	fieldCompletion fieldCompletion
+	fieldValueIndex *suggest.Index
 
 	editScript          *postman.Script
 	editScriptType      ScriptType
