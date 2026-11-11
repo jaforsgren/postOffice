@@ -272,6 +272,68 @@ func (p *Parser) SyncMergedCollection(merged *Collection) {
 	}
 }
 
+// SyncMergedEnvironment writes changes made to a MergedEnvironment copy (by
+// scripts, say) back to the active environments it combines, and returns the
+// names of those that changed, in precedence order. A changed key goes to the
+// first active environment defining it, the one it resolves from; a new key
+// to the first active environment. A key missing from merged is removed from
+// every active environment, since any one left would resolve again.
+func (p *Parser) SyncMergedEnvironment(merged *Environment) []string {
+	var active []*Environment
+	for _, name := range p.activeEnvironments {
+		if environment, exists := p.environments[name]; exists {
+			active = append(active, environment)
+		}
+	}
+	if len(active) == 0 {
+		return nil
+	}
+
+	changed := make(map[string]bool)
+	mergedKeys := make(map[string]bool, len(merged.Values))
+	for _, variable := range merged.Values {
+		mergedKeys[variable.Key] = true
+		owner, index := firstDefining(active, variable.Key)
+		if owner == nil {
+			active[0].Values = append(active[0].Values, variable)
+			changed[active[0].Name] = true
+			continue
+		}
+		if !sameEnvVariable(owner.Values[index], variable) {
+			owner.Values[index] = variable
+			changed[owner.Name] = true
+		}
+	}
+	for _, environment := range active {
+		count := len(environment.Values)
+		environment.Values = slices.DeleteFunc(environment.Values, func(v EnvVariable) bool { return !mergedKeys[v.Key] })
+		if len(environment.Values) != count {
+			changed[environment.Name] = true
+		}
+	}
+
+	var names []string
+	for _, environment := range active {
+		if changed[environment.Name] {
+			names = append(names, environment.Name)
+		}
+	}
+	return names
+}
+
+func firstDefining(environments []*Environment, key string) (*Environment, int) {
+	for _, environment := range environments {
+		if index := slices.IndexFunc(environment.Values, func(v EnvVariable) bool { return v.Key == key }); index >= 0 {
+			return environment, index
+		}
+	}
+	return nil, -1
+}
+
+func sameEnvVariable(a, b EnvVariable) bool {
+	return a.Value == b.Value && a.Enabled == b.Enabled && a.Type == b.Type && slices.Equal(a.Choices, b.Choices)
+}
+
 // MergedEnvironment combines every active environment into one, in
 // activation order (earlier environments take precedence on key conflicts).
 // It returns nil if no environments are active. The result's Name is not a

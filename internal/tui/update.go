@@ -65,14 +65,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.reloadMergedCollection()
 		}
 
-		if m.mode == ModeVariables {
-			m = m.loadVariablesList()
-		}
-
 		if msg.Environment != nil && msg.TestResult != nil {
-			if err := m.parser.SaveEnvironment(msg.Environment.Name); err != nil {
+			if err := m.saveScriptEnvironment(msg.Environment); err != nil {
 				m.statusMessage = fmt.Sprintf("Warning: failed to save environment variables: %v", err)
 			}
+			m = m.reloadActiveEnvironment()
+		}
+
+		if m.mode == ModeVariables {
+			m = m.loadVariablesList()
 		}
 
 		if msg.Response.Skipped {

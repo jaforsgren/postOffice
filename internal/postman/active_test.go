@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -260,5 +261,90 @@ func TestSyncMergedCollection_IgnoresInactiveCollections(t *testing.T) {
 
 	if b, _ := p.GetCollection("Collection B"); len(b.Items) != 1 {
 		t.Errorf("expected an inactive collection left alone, got %+v", b.Items)
+	}
+}
+
+// syncTestParser has Dev and Shared active, both defining host, as in
+// TestMergedEnvironment_FirstActivatedTakesPrecedence.
+func syncTestParser(t *testing.T) *Parser {
+	t.Helper()
+	p := NewParser()
+	for _, environment := range []*Environment{
+		{Name: "Dev", Values: []EnvVariable{{Key: "host", Value: "dev", Enabled: true}, {Key: "only_dev", Value: "1", Enabled: true}}},
+		{Name: "Shared", Values: []EnvVariable{{Key: "host", Value: "shared", Enabled: true}, {Key: "only_shared", Value: "1", Enabled: true}}},
+	} {
+		if _, err := p.LoadEnvironment(createTempEnvironment(t, environment)); err != nil {
+			t.Fatal(err)
+		}
+		p.ToggleActiveEnvironment(environment.Name)
+	}
+	return p
+}
+
+func envValue(p *Parser, name, key string) (string, bool) {
+	environment, _ := p.GetEnvironment(name)
+	for _, variable := range environment.Values {
+		if variable.Key == key {
+			return variable.Value, true
+		}
+	}
+	return "", false
+}
+
+func TestSyncMergedEnvironment_ChangedKeyGoesToTheEnvironmentItResolvesFrom(t *testing.T) {
+	p := syncTestParser(t)
+	merged := p.MergedEnvironment()
+	merged.Values[0].Value = "changed"
+
+	changed := p.SyncMergedEnvironment(merged)
+
+	if dev, _ := envValue(p, "Dev", "host"); dev != "changed" {
+		t.Errorf("expected Dev's host changed, got %q", dev)
+	}
+	if shared, _ := envValue(p, "Shared", "host"); shared != "shared" {
+		t.Errorf("expected Shared's shadowed host left alone, got %q", shared)
+	}
+	if len(changed) != 1 || changed[0] != "Dev" {
+		t.Errorf("changed = %v, want [Dev]", changed)
+	}
+}
+
+func TestSyncMergedEnvironment_NewKeyGoesToTheFirstActiveEnvironment(t *testing.T) {
+	p := syncTestParser(t)
+	merged := p.MergedEnvironment()
+	merged.Values = append(merged.Values, EnvVariable{Key: "token", Value: "t", Enabled: true})
+
+	changed := p.SyncMergedEnvironment(merged)
+
+	if token, ok := envValue(p, "Dev", "token"); !ok || token != "t" {
+		t.Errorf("expected the token added to Dev, got %q (defined %v)", token, ok)
+	}
+	if len(changed) != 1 || changed[0] != "Dev" {
+		t.Errorf("changed = %v, want [Dev]", changed)
+	}
+}
+
+func TestSyncMergedEnvironment_RemovedKeyLeavesEveryActiveEnvironment(t *testing.T) {
+	p := syncTestParser(t)
+	merged := p.MergedEnvironment()
+	merged.Values = slices.DeleteFunc(merged.Values, func(v EnvVariable) bool { return v.Key == "host" })
+
+	changed := p.SyncMergedEnvironment(merged)
+
+	for _, name := range []string{"Dev", "Shared"} {
+		if _, ok := envValue(p, name, "host"); ok {
+			t.Errorf("expected host removed from %s", name)
+		}
+	}
+	if len(changed) != 2 {
+		t.Errorf("changed = %v, want both environments", changed)
+	}
+}
+
+func TestSyncMergedEnvironment_UnchangedCopyChangesNothing(t *testing.T) {
+	p := syncTestParser(t)
+
+	if changed := p.SyncMergedEnvironment(p.MergedEnvironment()); len(changed) != 0 {
+		t.Errorf("changed = %v, want none", changed)
 	}
 }

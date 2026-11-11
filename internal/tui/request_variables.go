@@ -187,9 +187,28 @@ func (m Model) reloadMergedCollection() Model {
 	return m
 }
 
+// saveScriptEnvironment saves the variables a request's scripts set in
+// environment. A merged environment is a copy, and reloading it from the
+// loaded environments drops its changes, so they are written back to those
+// first.
+func (m Model) saveScriptEnvironment(environment *postman.Environment) error {
+	if loaded, exists := m.parser.GetEnvironment(environment.Name); exists && loaded == environment {
+		return m.parser.SaveEnvironment(environment.Name)
+	}
+	for _, name := range m.parser.SyncMergedEnvironment(environment) {
+		if err := m.parser.SaveEnvironment(name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // reloadActiveEnvironment points m.environment back at the loaded
 // environment(s) after one of them changed.
 func (m Model) reloadActiveEnvironment() Model {
+	if m.environment == nil {
+		return m
+	}
 	if m.mergedEnvironmentActive {
 		m.environment = m.parser.MergedEnvironment()
 		return m
