@@ -105,6 +105,7 @@ Press `:` to enter command mode.
 :wf             Workflows
 :ro             Run options
 :changes        Unsaved changes
+:session        Restore the last session
 :hist           Request history
 :t              Timing breakdown (response view)
 :w              Save

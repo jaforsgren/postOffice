@@ -125,3 +125,23 @@ func TestOpenLocation_OnCapitalO(t *testing.T) {
 		t.Errorf("expected the file revealed (%s)", m.statusMessage)
 	}
 }
+
+func TestSessionCommand_RestoresTheLastSession(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m, _, _ := combinedModel(t)
+	m = cursorOn(t, openFolder(t, m, combinedB), ordersFolder)
+	if err := m.parser.SaveState(); err != nil {
+		t.Fatal(err)
+	}
+	m.saveSession()
+	m.mode = ModeCollections
+	m = m.loadCollectionsList()
+
+	m = pressKeys(t, m, runes(":"))
+	m.commandInput.SetValue("session")
+	m = pressKeys(t, m, enterKey)
+
+	if m.mode != ModeRequests || len(m.breadcrumb) != 1 || m.breadcrumb[0] != combinedB {
+		t.Errorf("expected the saved session back, got %v at %v (%s)", m.mode, m.breadcrumb, m.statusMessage)
+	}
+}

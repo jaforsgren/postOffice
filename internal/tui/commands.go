@@ -153,6 +153,14 @@ func (cr *CommandRegistry) registerCommands() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables},
 		},
 		{
+			Name:        "session",
+			Aliases:     []string{"restore"},
+			Description: "Restore the last session (collection, folder, cursor)",
+			ShortHelp:   ":session",
+			Handler:     handleSessionCommand,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables},
+		},
+		{
 			Name:        "duplicate",
 			Aliases:     []string{"dup"},
 			Description: "Duplicate selected request",
@@ -335,13 +343,6 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			ShortHelp:   "/",
 			Handler:     handleSearchKey,
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments},
-		},
-		{
-			Keys:        []string{"s"},
-			Description: "Restore session",
-			ShortHelp:   "s",
-			Handler:     handleRestoreSessionKey,
-			AvailableIn: []ViewMode{ModeCollections},
 		},
 		{
 			Keys:        []string{"esc", "left", "backspace", "h"},
@@ -1271,11 +1272,8 @@ func handleSearchKey(m Model) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func handleRestoreSessionKey(m Model) (Model, tea.Cmd) {
-	if m.mode == ModeCollections {
-		m = m.restoreSession()
-	}
-	return m, nil
+func handleSessionCommand(m Model, args []string) (Model, tea.Cmd) {
+	return m.restoreSession(), nil
 }
 
 func handleBackKey(m Model) (Model, tea.Cmd) {
