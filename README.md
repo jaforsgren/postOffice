@@ -320,7 +320,22 @@ requests:
 
 Requests are referenced by `Folder/Request` path, like workflow steps.
 
-A prerequisite is stale when it hasn't run successfully this session, or a variable it produces is unset or empty. Errors, non-2xx statuses, skipped sends and failed tests are not successful.
+A prerequisite is stale when it hasn't run successfully this session, a variable it produces is unset or empty, or a variable it used (`{{name}}` in its URL, headers or body, other than the ones it produces) has changed since it last succeeded. Errors, non-2xx statuses, skipped sends and failed tests are not successful.
+
+A `requires` entry can also be a mapping with freshness rules:
+
+```yaml
+requests:
+  Users/Get User:
+    requires:
+      - request: Auth/Login
+        max_age: 15m       # stale once the last success is older
+        refresh_on: [401]  # on 401: re-run Auth/Login, then retry Get User once
+      - request: Users/Create User
+        when_missing: [userId]  # run only while userId is unset, even if it never ran this session
+```
+
+`max_age` takes Go durations (`90s`, `15m`, `1h`) and cannot be combined with `when_missing`. `refresh_on` applies to `P` runs, including requests whose prerequisites are all fresh. Unknown keys are errors, so a misspelt rule is not ignored.
 
 ```
 P         Run stale prerequisites in dependency order, then the request
@@ -333,7 +348,7 @@ Request info (`i`) shows the dependency tree.
 
 ```
 Get User
-     ├── requires → Auth/Login (stale)
+     ├── requires → Auth/Login [max_age 15m, refresh_on 401] (stale: ran 16m ago, max_age 15m)
      └── produces → userId (unset)
 ```
 

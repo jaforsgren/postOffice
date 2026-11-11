@@ -705,7 +705,7 @@ func (m Model) openVimForDependencies() (Model, tea.Cmd) {
 	}
 
 	if item, ok := m.selectedItem(); ok && item.IsRequest() {
-		if err := scaffoldDependencyEntry(scope, scope.requestPath(viewFolderPath, item.Name)); err != nil {
+		if err := dependency.AddRequest(scope.filePath, scope.requestPath(viewFolderPath, item.Name)); err != nil {
 			m.statusMessage = fmt.Sprintf("Cannot edit dependencies: %v", err)
 			return m, nil
 		}
@@ -714,18 +714,6 @@ func (m Model) openVimForDependencies() (Model, tea.Cmd) {
 	return m, tea.ExecProcess(exec.Command(editorBin(), scope.filePath), func(err error) tea.Msg {
 		return VimDependenciesEditCompleteMsg{ViewFolderPath: viewFolderPath, Err: err}
 	})
-}
-
-func scaffoldDependencyEntry(scope dependencyScope, requestPath string) error {
-	graph, err := scope.loadGraph()
-	if err != nil {
-		return err
-	}
-	if _, declared := graph.Requests[requestPath]; declared {
-		return nil
-	}
-	graph.Requests[requestPath] = dependency.Node{Requires: []string{}, Produces: []string{}}
-	return dependency.Save(graph, scope.filePath)
 }
 
 func (m Model) applyVimDependenciesEdit(msg VimDependenciesEditCompleteMsg) Model {

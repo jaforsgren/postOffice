@@ -38,6 +38,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.completeCancelledRequest(msg).continuePrerequisiteRun(msg)
 		}
 		m = m.forgetInFlightRequest(msg.ItemID)
+		sending := m.requestExecutions[msg.ItemID]
 		m.lastResponse = msg.Response
 		m.lastTestResult = msg.TestResult
 		m.lastExecutedItemID = msg.ItemID
@@ -67,6 +68,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m = m.reloadActiveEnvironment()
 		}
+		m.requestExecutions[msg.ItemID].Inputs = m.completedRequestInputs(sending, msg.Collection)
 
 		if m.mode == ModeVariables {
 			m = m.loadVariablesList()
@@ -857,17 +859,19 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 		requestToExecute = applyPathParamsToReq(requestToExecute, stored)
 	}
 
+	collection, collectionPath := m.collectionScope(folderPath)
+
 	m.requestExecutions[itemID] = &RequestExecution{
 		Status:     statusSending,
 		Timestamp:  time.Now(),
 		Duration:   0,
 		Response:   nil,
 		TestResult: nil,
+		Inputs:     sentRequestInputs(requestToExecute, collectionPath),
 	}
 
 	variables := m.variablesAt(folderPath)
 
-	collection, collectionPath := m.collectionScope(folderPath)
 	environment := m.environment
 	environmentName := m.environmentName()
 	itemCopy := item

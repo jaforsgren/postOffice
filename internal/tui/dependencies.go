@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"postOffice/internal/dependency"
@@ -81,38 +82,100 @@ func (s dependencyScope) loadValidGraph() (*dependency.Graph, error) {
 
 // sessionDependencyState answers dependency staleness questions from the TUI session.
 type sessionDependencyState struct {
-	scope      dependencyScope
-	executions map[string]*RequestExecution
-	identify   func(collectionName string, folderPath []string, requestName string) string
-	variables  []postman.VariableSource
+	scope       dependencyScope
+	executions  map[string]*RequestExecution
+	identify    func(collectionName string, folderPath []string, requestName string) string
+	environment *postman.Environment
+	variables   []postman.VariableSource
 }
 
 func (m Model) dependencyState(scope dependencyScope) sessionDependencyState {
 	return sessionDependencyState{
-		scope:      scope,
-		executions: m.requestExecutions,
-		identify:   m.getRequestIdentifierByPath,
-		variables:  postman.GetAllVariables(scope.collection, nil, m.environment),
+		scope:       scope,
+		executions:  m.requestExecutions,
+		identify:    m.getRequestIdentifierByPath,
+		environment: m.environment,
+		variables:   postman.GetAllVariables(scope.collection, nil, m.environment),
 	}
 }
 
-func (s sessionDependencyState) RanSuccessfully(requestPath string) bool {
+func (s sessionDependencyState) execution(requestPath string) (*RequestExecution, bool) {
 	names := postman.SplitItemPath(requestPath)
 	if len(names) == 0 {
-		return false
+		return nil, false
 	}
 	last := len(names) - 1
 	execution, exists := s.executions[s.identify(s.scope.collection.Info.Name, names[:last], names[last])]
-	return exists && executionFailure(execution.Response, execution.TestResult) == ""
+	return execution, exists
+}
+
+func (s sessionDependencyState) LastSuccess(requestPath string) (time.Time, bool) {
+	execution, exists := s.execution(requestPath)
+	if !exists || executionFailure(execution.Response, execution.TestResult) != "" {
+		return time.Time{}, false
+	}
+	return execution.Timestamp, true
 }
 
 func (s sessionDependencyState) VariableSet(name string) bool {
-	for _, v := range s.variables {
-		if v.Key == name {
-			return v.Value != ""
+	return variableValue(s.variables, name) != ""
+}
+
+func (s sessionDependencyState) ChangedInputs(requestPath string) []string {
+	execution, exists := s.execution(requestPath)
+	if !exists || execution.Inputs.values == nil {
+		return nil
+	}
+	current := postman.GetAllVariables(s.scope.collection, execution.Inputs.folderPath, s.environment)
+	var changed []string
+	for _, name := range execution.Inputs.names {
+		if variableValue(current, name) != execution.Inputs.values[name] {
+			changed = append(changed, name)
 		}
 	}
-	return false
+	return changed
+}
+
+func (s sessionDependencyState) Now() time.Time {
+	return time.Now()
+}
+
+// variableValue returns the resolved value of name, or "" when it is not defined.
+func variableValue(variables []postman.VariableSource, name string) string {
+	for _, v := range variables {
+		if v.Key == name {
+			return v.Value
+		}
+	}
+	return ""
+}
+
+// requestInputs records the variables a request referenced, so a prerequisite
+// becomes stale once one of them changes. names and folderPath (relative to the
+// request's collection) are set when the request is sent, values when it completes.
+type requestInputs struct {
+	folderPath []string
+	names      []string
+	values     map[string]string
+}
+
+func sentRequestInputs(request *postman.Request, collectionFolderPath []string) requestInputs {
+	return requestInputs{folderPath: slices.Clone(collectionFolderPath), names: postman.ReferencedVariables(request)}
+}
+
+// completedRequestInputs resolves the inputs recorded on the sending execution
+// after the request ran, so values its own scripts set are not seen as later changes.
+func (m Model) completedRequestInputs(sending *RequestExecution, collection *postman.Collection) requestInputs {
+	if sending == nil || collection == nil || len(sending.Inputs.names) == 0 {
+		return requestInputs{}
+	}
+	inputs := sending.Inputs
+	variables := postman.GetAllVariables(collection, inputs.folderPath, m.environment)
+	inputs.values = make(map[string]string, len(inputs.names))
+	for _, name := range inputs.names {
+		inputs.values[name] = variableValue(variables, name)
+	}
+	return inputs
 }
 
 // executionFailure describes why an execution does not count as successful, or returns "" when it does:
@@ -143,6 +206,8 @@ type prerequisiteStep struct {
 	itemID         string
 	item           postman.Item
 	viewFolderPath []string
+	// isRetry marks the second attempt after a refresh_on status, which is never refreshed again.
+	isRetry bool
 }
 
 // prerequisiteRun tracks a chain of stale prerequisites; the last step is the requested target.
@@ -195,23 +260,35 @@ func (m Model) runWithPrerequisites(item postman.Item, viewFolderPath []string) 
 		m.statusMessage = "Cannot run prerequisites: " + err.Error()
 		return m, nil
 	}
-	if len(stale) == 0 {
+	if len(stale) == 0 && !hasRefreshRules(graph.Node(targetPath)) {
 		return m.executeRequest(item, viewFolderPath)
 	}
 
-	steps := make([]prerequisiteStep, 0, len(stale)+1)
-	for _, path := range stale {
-		prerequisite, folderPath, err := resolveItemPath(scope.collection, path)
-		if err != nil {
-			m.statusMessage = fmt.Sprintf("Cannot resolve prerequisite %q: %v", path, err)
-			return m, nil
-		}
-		steps = append(steps, m.newPrerequisiteStep(path, *prerequisite, scope.viewFolderPath(folderPath)))
+	steps, err := m.prerequisiteSteps(scope, stale)
+	if err != nil {
+		m.statusMessage = "Cannot run prerequisites: " + err.Error()
+		return m, nil
 	}
 	steps = append(steps, m.newPrerequisiteStep(targetPath, item, viewFolderPath))
 
 	m.prerequisiteRun = &prerequisiteRun{graph: graph, steps: steps}
 	return m.startPrerequisiteStep()
+}
+
+func hasRefreshRules(node dependency.Node) bool {
+	return slices.ContainsFunc(node.Requires, func(required dependency.Requirement) bool { return len(required.RefreshOn) > 0 })
+}
+
+func (m Model) prerequisiteSteps(scope dependencyScope, paths []string) ([]prerequisiteStep, error) {
+	steps := make([]prerequisiteStep, 0, len(paths)+1)
+	for _, path := range paths {
+		prerequisite, folderPath, err := resolveItemPath(scope.collection, path)
+		if err != nil {
+			return nil, fmt.Errorf("cannot resolve prerequisite %q: %w", path, err)
+		}
+		steps = append(steps, m.newPrerequisiteStep(path, *prerequisite, scope.viewFolderPath(folderPath)))
+	}
+	return steps, nil
 }
 
 func (m Model) newPrerequisiteStep(path string, item postman.Item, viewFolderPath []string) prerequisiteStep {
@@ -246,20 +323,31 @@ func (m Model) continuePrerequisiteRun(msg RequestCompleteMsg) (Model, tea.Cmd) 
 	}
 
 	step := run.currentStep()
-	switch {
-	case msg.Cancelled:
+	if msg.Cancelled {
 		return m.stopPrerequisiteRun(fmt.Sprintf("Cancelled %q", step.path)), nil
-	case run.atTarget():
-		m.prerequisiteRun = nil
-		m.statusMessage += fmt.Sprintf(" (after %d prerequisite(s))", run.prerequisiteCount())
-		return m, nil
-	}
-	if reason := executionFailure(msg.Response, msg.TestResult); reason != "" {
-		return m.stopPrerequisiteRun(fmt.Sprintf("Prerequisite %q failed (%s)", step.path, reason)), nil
 	}
 	scope, err := m.dependencyScopeAt(run.target().viewFolderPath)
 	if err != nil {
 		return m.stopPrerequisiteRun(err.Error()), nil
+	}
+	if !step.isRetry && msg.Response != nil && msg.Response.Error == nil {
+		refreshPaths, err := run.graph.RefreshPrerequisites(step.path, msg.Response.StatusCode, m.dependencyState(scope))
+		if err != nil {
+			return m.stopPrerequisiteRun(err.Error()), nil
+		}
+		if len(refreshPaths) > 0 {
+			return m.refreshPrerequisiteRun(scope, refreshPaths, msg.Response.StatusCode)
+		}
+	}
+	if run.atTarget() {
+		m.prerequisiteRun = nil
+		if count := run.prerequisiteCount(); count > 0 {
+			m.statusMessage += fmt.Sprintf(" (after %d prerequisite(s))", count)
+		}
+		return m, nil
+	}
+	if reason := executionFailure(msg.Response, msg.TestResult); reason != "" {
+		return m.stopPrerequisiteRun(fmt.Sprintf("Prerequisite %q failed (%s)", step.path, reason)), nil
 	}
 	if unset := run.graph.UnsetProducedVariables(step.path, m.dependencyState(scope)); len(unset) > 0 {
 		return m.stopPrerequisiteRun(fmt.Sprintf("Prerequisite %q did not set %s", step.path, strings.Join(unset, ", "))), nil
@@ -269,6 +357,30 @@ func (m Model) continuePrerequisiteRun(msg RequestCompleteMsg) (Model, tea.Cmd) 
 	next.current++
 	m.prerequisiteRun = &next
 	return m.startPrerequisiteStep()
+}
+
+// refreshPrerequisiteRun runs refreshPaths right after the current step, which
+// answered with a refresh_on status, followed by one retry of that step.
+func (m Model) refreshPrerequisiteRun(scope dependencyScope, refreshPaths []string, status int) (Model, tea.Cmd) {
+	run := m.prerequisiteRun
+	step := run.currentStep()
+	refreshSteps, err := m.prerequisiteSteps(scope, refreshPaths)
+	if err != nil {
+		return m.stopPrerequisiteRun(err.Error()), nil
+	}
+	retry := step
+	retry.isRetry = true
+
+	next := *run
+	next.steps = slices.Concat(run.steps[:run.current+1], refreshSteps, []prerequisiteStep{retry}, run.steps[run.current+1:])
+	next.current++
+	m.prerequisiteRun = &next
+
+	m, cmd := m.startPrerequisiteStep()
+	if cmd != nil {
+		m.statusMessage = fmt.Sprintf("%q answered %d, refreshing %s; %s", step.path, status, strings.Join(refreshPaths, ", "), m.statusMessage)
+	}
+	return m, cmd
 }
 
 func (m Model) stopPrerequisiteRun(reason string) Model {

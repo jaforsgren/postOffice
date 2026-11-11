@@ -84,6 +84,7 @@ type RequestExecution struct {
 	Duration   time.Duration
 	Response   *http.Response
 	TestResult *script.TestResult
+	Inputs     requestInputs
 }
 
 type RequestCompleteMsg struct {

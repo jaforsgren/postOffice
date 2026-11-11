@@ -2,6 +2,7 @@ package dependency
 
 import (
 	"errors"
+	"slices"
 	"sort"
 )
 
@@ -15,26 +16,6 @@ func (g *Graph) Node(requestPath string) Node {
 	return g.Requests[requestPath]
 }
 
-// IsStale reports whether a request must run again before its dependents:
-// it has not run successfully this session, or one of its produced variables is unset or empty.
-func (g *Graph) IsStale(requestPath string, state SessionState) bool {
-	if !state.RanSuccessfully(requestPath) {
-		return true
-	}
-	return len(g.UnsetProducedVariables(requestPath, state)) > 0
-}
-
-// UnsetProducedVariables returns the variables a request produces that are unset or empty.
-func (g *Graph) UnsetProducedVariables(requestPath string, state SessionState) []string {
-	var unset []string
-	for _, name := range g.Node(requestPath).Produces {
-		if !state.VariableSet(name) {
-			unset = append(unset, name)
-		}
-	}
-	return unset
-}
-
 // Validate checks that every key and requires entry names an existing request and
 // that the graph is acyclic. All missing references and the first cycle found are joined.
 func (g *Graph) Validate(requestExists func(requestPath string) bool) error {
@@ -46,13 +27,13 @@ func (g *Graph) Validate(requestExists func(requestPath string) bool) error {
 			errs = append(errs, &UnknownRequestError{Request: path})
 		}
 		for _, required := range g.Requests[path].Requires {
-			if !requestExists(required) {
-				errs = append(errs, &MissingPrerequisiteError{Request: required, RequiredBy: path})
+			if !requestExists(required.Request) {
+				errs = append(errs, &MissingPrerequisiteError{Request: required.Request, RequiredBy: path})
 			}
 		}
 	}
 
-	w := newWalker(g, func(string) bool { return true })
+	w := newWalker(g, func(string, Requirement) bool { return true })
 	for _, path := range paths {
 		if err := w.visit(path); err != nil {
 			errs = append(errs, err)
@@ -67,8 +48,35 @@ func (g *Graph) Validate(requestExists func(requestPath string) bool) error {
 // order (every request after the ones it requires), excluding target itself.
 // A fresh prerequisite is not descended into: its outputs are already available.
 func (g *Graph) StalePrerequisites(target string, state SessionState) ([]string, error) {
-	w := newWalker(g, func(path string) bool { return g.IsStale(path, state) })
+	w := newWalker(g, func(_ string, required Requirement) bool { return g.Staleness(required, state).IsStale() })
 	if err := w.visit(target); err != nil {
+		return nil, err
+	}
+	return w.order[:len(w.order)-1], nil
+}
+
+// RefreshPrerequisites returns what to run again before retrying requestPath after it
+// answered with status: every direct requirement listing status in refresh_on, fresh or
+// not, preceded by its own stale prerequisites, in execution order. It is empty when no
+// requirement refreshes on status.
+func (g *Graph) RefreshPrerequisites(requestPath string, status int, state SessionState) ([]string, error) {
+	refreshed := make(map[string]bool)
+	for _, required := range g.Node(requestPath).Requires {
+		if slices.Contains(required.RefreshOn, status) {
+			refreshed[required.Request] = true
+		}
+	}
+	if len(refreshed) == 0 {
+		return nil, nil
+	}
+
+	w := newWalker(g, func(parent string, required Requirement) bool {
+		if parent == requestPath {
+			return refreshed[required.Request]
+		}
+		return g.Staleness(required, state).IsStale()
+	})
+	if err := w.visit(requestPath); err != nil {
 		return nil, err
 	}
 	return w.order[:len(w.order)-1], nil
@@ -84,17 +92,17 @@ func (g *Graph) sortedPaths() []string {
 }
 
 // walker performs a depth-first post-order traversal over requires edges,
-// following only the prerequisites for which descend returns true.
+// following only the requirements of parent for which descend returns true.
 type walker struct {
 	graph    *Graph
-	descend  func(requestPath string) bool
+	descend  func(parent string, required Requirement) bool
 	visiting map[string]bool
 	visited  map[string]bool
 	stack    []string
 	order    []string
 }
 
-func newWalker(g *Graph, descend func(requestPath string) bool) *walker {
+func newWalker(g *Graph, descend func(parent string, required Requirement) bool) *walker {
 	return &walker{
 		graph:    g,
 		descend:  descend,
@@ -114,10 +122,10 @@ func (w *walker) visit(path string) error {
 	w.visiting[path] = true
 	w.stack = append(w.stack, path)
 	for _, required := range w.graph.Requests[path].Requires {
-		if !w.descend(required) {
+		if !w.descend(path, required) {
 			continue
 		}
-		if err := w.visit(required); err != nil {
+		if err := w.visit(required.Request); err != nil {
 			return err
 		}
 	}

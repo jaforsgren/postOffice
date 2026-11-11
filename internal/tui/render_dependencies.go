@@ -72,7 +72,11 @@ func (m Model) dependencyEdges(scope dependencyScope, graph *dependency.Graph, n
 	edges := make([]string, 0, len(node.Requires)+len(node.Produces))
 
 	for _, required := range node.Requires {
-		edges = append(edges, dependencyRequiresLabel+required+" "+prerequisiteStatus(scope, graph, required, state))
+		edge := dependencyRequiresLabel + required.Request
+		if rules := required.Rules(); rules != "" {
+			edge += " " + subtleStyle.Render("["+rules+"]")
+		}
+		edges = append(edges, edge+" "+prerequisiteStatus(scope, graph, required, state))
 	}
 	for _, name := range node.Produces {
 		status := dependencyStatusTag(dependencyOKStyle, variableSet)
@@ -84,15 +88,14 @@ func (m Model) dependencyEdges(scope dependencyScope, graph *dependency.Graph, n
 	return edges
 }
 
-func prerequisiteStatus(scope dependencyScope, graph *dependency.Graph, requestPath string, state dependency.SessionState) string {
-	switch {
-	case !scope.requestExists(requestPath):
+func prerequisiteStatus(scope dependencyScope, graph *dependency.Graph, required dependency.Requirement, state dependency.SessionState) string {
+	if !scope.requestExists(required.Request) {
 		return dependencyStatusTag(dependencyErrorStyle, prerequisiteMissing)
-	case graph.IsStale(requestPath, state):
-		return dependencyStatusTag(dependencyWarningStyle, prerequisiteStale)
-	default:
-		return dependencyStatusTag(dependencyOKStyle, prerequisiteFresh)
 	}
+	if staleness := graph.Staleness(required, state); staleness.IsStale() {
+		return dependencyStatusTag(dependencyWarningStyle, prerequisiteStale+": "+staleness.String())
+	}
+	return dependencyStatusTag(dependencyOKStyle, prerequisiteFresh)
 }
 
 func dependencyStatusTag(style lipgloss.Style, status string) string {

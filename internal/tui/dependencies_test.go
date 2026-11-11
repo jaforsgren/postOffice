@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"postOffice/internal/dependency"
 	"postOffice/internal/history"
@@ -398,5 +399,172 @@ func TestRunWithPrerequisites_CancelledPrerequisiteStopsChain(t *testing.T) {
 	}
 	if !strings.Contains(m.statusMessage, `Cancelled "Auth/Login"; stopped before "Users/Get User"`) {
 		t.Errorf("unexpected status: %s", m.statusMessage)
+	}
+}
+
+const usernameVar = "username"
+
+// runWithPrerequisitesToEnd presses P and runs every resulting command.
+func runWithPrerequisitesToEnd(t *testing.T, m Model) Model {
+	t.Helper()
+	m, cmd := pressKey(m, runes(runWithPrerequisitesKey))
+	return drainCommands(t, m, cmd)
+}
+
+func loginExecution(t *testing.T, m Model) *RequestExecution {
+	t.Helper()
+	execution, exists := m.requestExecutions[m.getRequestIdentifierByPath(depCollectionName, []string{"Auth"}, "Login")]
+	if !exists {
+		t.Fatal("expected a recorded login execution")
+	}
+	return execution
+}
+
+func TestRunWithPrerequisites_ExpiredPrerequisiteRunsAgain(t *testing.T) {
+	server := newRecordingServer(t, nil)
+	m, _ := newDependencyTestModel(t, dependencyTestCollection(server.URL, setTokenEvents()), `requests:
+  Users/Get User:
+    requires:
+      - request: Auth/Login
+        max_age: 15m
+  Auth/Login:
+    produces: [token]
+`)
+
+	m = runWithPrerequisitesToEnd(t, m)
+	loginExecution(t, m).Timestamp = time.Now().Add(-16 * time.Minute)
+	m = runWithPrerequisitesToEnd(t, m)
+
+	want := []string{depLoginRoute, depUserRoute, depLoginRoute, depUserRoute}
+	if got := server.recordedHits(); !reflect.DeepEqual(got, want) {
+		t.Errorf("hits = %v, want %v", got, want)
+	}
+}
+
+func TestRunWithPrerequisites_RefreshOnStatusRetriesOnce(t *testing.T) {
+	server := newRecordingServer(t, map[string]int{depUserRoute: nethttp.StatusUnauthorized})
+	m, _ := newDependencyTestModel(t, dependencyTestCollection(server.URL, setTokenEvents()), `requests:
+  Users/Get User:
+    requires:
+      - request: Auth/Login
+        refresh_on: [401]
+  Auth/Login:
+    produces: [token]
+`)
+
+	m = runWithPrerequisitesToEnd(t, m)
+
+	want := []string{depLoginRoute, depUserRoute, depLoginRoute, depUserRoute}
+	if got := server.recordedHits(); !reflect.DeepEqual(got, want) {
+		t.Errorf("hits = %v, want %v (status: %s)", got, want, m.statusMessage)
+	}
+	if m.prerequisiteRun != nil {
+		t.Error("expected the run to end after the single retry")
+	}
+}
+
+func TestRunWithPrerequisites_RefreshOnStatusAppliesWhenPrerequisitesAreFresh(t *testing.T) {
+	server := newRecordingServer(t, map[string]int{})
+	m, _ := newDependencyTestModel(t, dependencyTestCollection(server.URL, setTokenEvents()), `requests:
+  Users/Get User:
+    requires:
+      - request: Auth/Login
+        refresh_on: [401]
+  Auth/Login:
+    produces: [token]
+`)
+	m = runWithPrerequisitesToEnd(t, m)
+	// No request is in flight here, so the handler does not read the map concurrently.
+	server.statuses[depUserRoute] = nethttp.StatusUnauthorized
+
+	runWithPrerequisitesToEnd(t, m)
+
+	want := []string{depLoginRoute, depUserRoute, depUserRoute, depLoginRoute, depUserRoute}
+	if got := server.recordedHits(); !reflect.DeepEqual(got, want) {
+		t.Errorf("hits = %v, want %v", got, want)
+	}
+}
+
+func TestRunWithPrerequisites_WhenMissingSkipsPrerequisiteWhileVariableIsSet(t *testing.T) {
+	server := newRecordingServer(t, nil)
+	collection := dependencyTestCollection(server.URL, setTokenEvents())
+	collection.Variables = []postman.Variable{{Key: depTokenVar, Value: "persisted"}}
+	m, _ := newDependencyTestModel(t, collection, `requests:
+  Users/Get User:
+    requires:
+      - request: Auth/Login
+        when_missing: [token]
+`)
+
+	m = runWithPrerequisitesToEnd(t, m)
+
+	if got, want := server.recordedHits(), []string{depUserRoute}; !reflect.DeepEqual(got, want) {
+		t.Errorf("hits = %v, want %v", got, want)
+	}
+}
+
+func TestRunWithPrerequisites_ChangedInputMakesPrerequisiteStale(t *testing.T) {
+	server := newRecordingServer(t, nil)
+	collection := dependencyTestCollection(server.URL, setTokenEvents())
+	collection.Items[0].Items[0].Request.URL.Raw = server.URL + depLoginRoute + "?user={{" + usernameVar + "}}"
+	collection.Variables = []postman.Variable{{Key: usernameVar, Value: "alice"}}
+	m, _ := newDependencyTestModel(t, collection, depGraphWithLogin)
+
+	m = runWithPrerequisitesToEnd(t, m)
+	m = runWithPrerequisitesToEnd(t, m)
+	setCollectionVariable(t, m.collection, usernameVar, "bob")
+	m = runWithPrerequisitesToEnd(t, m)
+
+	want := []string{depLoginRoute, depUserRoute, depUserRoute, depLoginRoute, depUserRoute}
+	if got := server.recordedHits(); !reflect.DeepEqual(got, want) {
+		t.Errorf("hits = %v, want %v", got, want)
+	}
+}
+
+func setCollectionVariable(t *testing.T, collection *postman.Collection, key, value string) {
+	t.Helper()
+	for i := range collection.Variables {
+		if collection.Variables[i].Key == key {
+			collection.Variables[i].Value = value
+			return
+		}
+	}
+	t.Fatalf("collection variable %q not found", key)
+}
+
+func TestBuildDependenciesSection_ShowsRulesAndWhyStale(t *testing.T) {
+	server := newRecordingServer(t, nil)
+	m, _ := newDependencyTestModel(t, dependencyTestCollection(server.URL, nil), `requests:
+  Users/Get User:
+    requires:
+      - request: Auth/Login
+        max_age: 1h
+        refresh_on: [401]
+`)
+	m.currentInfoItem = &m.currentItems[0]
+
+	section := ansi.Strip(strings.Join(m.buildDependenciesSection(), "\n"))
+
+	want := dependencyRequiresLabel + depLoginPath + " [max_age 1h, refresh_on 401] (" + prerequisiteStale + ": not run this session)"
+	if !strings.Contains(section, want) {
+		t.Errorf("section missing %q:\n%s", want, section)
+	}
+}
+
+func TestOpenVimForDependencies_ScaffoldKeepsComments(t *testing.T) {
+	server := newRecordingServer(t, nil)
+	const commented = "# keep me\nrequests:\n  Auth/Login:\n    produces: [token]\n"
+	m, collectionPath := newDependencyTestModel(t, dependencyTestCollection(server.URL, nil), commented)
+
+	if _, cmd := m.openVimForDependencies(); cmd == nil {
+		t.Fatalf("expected editor command, status: %s", m.statusMessage)
+	}
+
+	content, err := os.ReadFile(dependency.FilePath(collectionPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(content), commented) || !strings.Contains(string(content), depGetUserPath+":") {
+		t.Errorf("expected the comment kept and the request added, got:\n%s", content)
 	}
 }

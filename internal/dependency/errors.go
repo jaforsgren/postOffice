@@ -34,3 +34,13 @@ type UnknownRequestError struct {
 func (e *UnknownRequestError) Error() string {
 	return fmt.Sprintf("dependency entry %q does not match a request in the collection", e.Request)
 }
+
+// InvalidRequirementError reports a malformed requires entry in the dependency file.
+type InvalidRequirementError struct {
+	Line   int
+	Reason string
+}
+
+func (e *InvalidRequirementError) Error() string {
+	return fmt.Sprintf("line %d: invalid requires entry: %s", e.Line, e.Reason)
+}

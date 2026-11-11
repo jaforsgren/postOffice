@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 )
 
 const (
@@ -15,61 +16,174 @@ const (
 )
 
 type fakeSession struct {
-	succeeded map[string]bool
+	succeeded map[string]time.Time
 	variables map[string]bool
+	changed   map[string][]string
+	now       time.Time
 }
 
-func (s fakeSession) RanSuccessfully(requestPath string) bool { return s.succeeded[requestPath] }
-func (s fakeSession) VariableSet(name string) bool            { return s.variables[name] }
+func (s fakeSession) LastSuccess(requestPath string) (time.Time, bool) {
+	at, ok := s.succeeded[requestPath]
+	return at, ok
+}
+func (s fakeSession) VariableSet(name string) bool              { return s.variables[name] }
+func (s fakeSession) ChangedInputs(requestPath string) []string { return s.changed[requestPath] }
+func (s fakeSession) Now() time.Time                            { return s.now }
+func (s fakeSession) succeed(requestPath string, ago time.Duration) {
+	s.succeeded[requestPath] = s.now.Add(-ago)
+}
 
 func newFakeSession() fakeSession {
-	return fakeSession{succeeded: map[string]bool{}, variables: map[string]bool{}}
+	return fakeSession{
+		succeeded: map[string]time.Time{},
+		variables: map[string]bool{},
+		changed:   map[string][]string{},
+		now:       time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+	}
+}
+
+func requires(paths ...string) []Requirement {
+	requirements := make([]Requirement, len(paths))
+	for i, path := range paths {
+		requirements[i] = Requirement{Request: path}
+	}
+	return requirements
 }
 
 // chainGraph: Get User → Profile → Login, Get User → Login.
 func chainGraph() *Graph {
 	return &Graph{Requests: map[string]Node{
 		loginPath:   {Produces: []string{tokenVar}},
-		profilePath: {Requires: []string{loginPath}, Produces: []string{userIDVar}},
-		getUserPath: {Requires: []string{profilePath, loginPath}},
+		profilePath: {Requires: requires(loginPath), Produces: []string{userIDVar}},
+		getUserPath: {Requires: requires(profilePath, loginPath)},
 	}}
 }
 
 func allExist(string) bool { return true }
 
-func TestIsStale(t *testing.T) {
-	g := chainGraph()
+func TestStaleness(t *testing.T) {
+	const maxAge = 15 * time.Minute
 	tests := []struct {
-		name      string
-		succeeded bool
-		tokenSet  bool
-		want      bool
+		name        string
+		requirement Requirement
+		arrange     func(s fakeSession)
+		want        Staleness
 	}{
-		{"never ran", false, true, true},
-		{"ran but produced variable empty", true, false, true},
-		{"ran and produced variable set", true, true, false},
+		{
+			name:        "never ran",
+			requirement: Requirement{Request: loginPath},
+			arrange:     func(s fakeSession) { s.variables[tokenVar] = true },
+			want:        Staleness{Reason: NeverRan},
+		},
+		{
+			name:        "ran but produced variable empty",
+			requirement: Requirement{Request: loginPath},
+			arrange:     func(s fakeSession) { s.succeed(loginPath, time.Minute) },
+			want:        Staleness{Reason: ProducedUnset, Variables: []string{tokenVar}},
+		},
+		{
+			name:        "ran and produced variable set",
+			requirement: Requirement{Request: loginPath},
+			arrange: func(s fakeSession) {
+				s.succeed(loginPath, time.Hour)
+				s.variables[tokenVar] = true
+			},
+			want: Staleness{},
+		},
+		{
+			name:        "older than max_age",
+			requirement: Requirement{Request: loginPath, MaxAge: maxAge},
+			arrange: func(s fakeSession) {
+				s.succeed(loginPath, maxAge+time.Second)
+				s.variables[tokenVar] = true
+			},
+			want: Staleness{Reason: Expired, Age: maxAge + time.Second, MaxAge: maxAge},
+		},
+		{
+			name:        "within max_age",
+			requirement: Requirement{Request: loginPath, MaxAge: maxAge},
+			arrange: func(s fakeSession) {
+				s.succeed(loginPath, maxAge)
+				s.variables[tokenVar] = true
+			},
+			want: Staleness{},
+		},
+		{
+			name:        "inputs changed since the last success",
+			requirement: Requirement{Request: loginPath},
+			arrange: func(s fakeSession) {
+				s.succeed(loginPath, time.Minute)
+				s.variables[tokenVar] = true
+				s.changed[loginPath] = []string{"username"}
+			},
+			want: Staleness{Reason: InputsChanged, Variables: []string{"username"}},
+		},
+		{
+			name:        "changed produced variable is not an input change",
+			requirement: Requirement{Request: loginPath},
+			arrange: func(s fakeSession) {
+				s.succeed(loginPath, time.Minute)
+				s.variables[tokenVar] = true
+				s.changed[loginPath] = []string{tokenVar}
+			},
+			want: Staleness{},
+		},
+		{
+			name:        "when_missing ignores that it never ran",
+			requirement: Requirement{Request: loginPath, WhenMissing: []string{tokenVar}},
+			arrange:     func(s fakeSession) { s.variables[tokenVar] = true },
+			want:        Staleness{},
+		},
+		{
+			name:        "when_missing variable unset",
+			requirement: Requirement{Request: loginPath, WhenMissing: []string{tokenVar, userIDVar}},
+			arrange: func(s fakeSession) {
+				s.succeed(loginPath, time.Minute)
+				s.variables[tokenVar] = true
+			},
+			want: Staleness{Reason: VariablesMissing, Variables: []string{userIDVar}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newFakeSession()
-			s.succeeded[loginPath] = tt.succeeded
-			s.variables[tokenVar] = tt.tokenSet
-			if got := g.IsStale(loginPath, s); got != tt.want {
-				t.Errorf("IsStale = %v, want %v", got, tt.want)
+			tt.arrange(s)
+			if got := chainGraph().Staleness(tt.requirement, s); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Staleness = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestIsStale_UndeclaredRequestDependsOnlyOnSuccess(t *testing.T) {
+func TestStaleness_UndeclaredRequestDependsOnlyOnSuccess(t *testing.T) {
 	g := NewGraph()
 	s := newFakeSession()
-	if !g.IsStale(loginPath, s) {
+	requirement := Requirement{Request: loginPath}
+	if !g.Staleness(requirement, s).IsStale() {
 		t.Error("expected request that never ran to be stale")
 	}
-	s.succeeded[loginPath] = true
-	if g.IsStale(loginPath, s) {
+	s.succeed(loginPath, time.Minute)
+	if g.Staleness(requirement, s).IsStale() {
 		t.Error("expected request without produced variables to be fresh after success")
+	}
+}
+
+func TestStaleness_String(t *testing.T) {
+	tests := []struct {
+		staleness Staleness
+		want      string
+	}{
+		{Staleness{}, "fresh"},
+		{Staleness{Reason: NeverRan}, "not run this session"},
+		{Staleness{Reason: Expired, Age: 62*time.Minute + 400*time.Millisecond, MaxAge: time.Hour}, "ran 1h2m ago, max_age 1h"},
+		{Staleness{Reason: ProducedUnset, Variables: []string{tokenVar}}, "token unset"},
+		{Staleness{Reason: InputsChanged, Variables: []string{"username", "password"}}, "inputs changed: username, password"},
+		{Staleness{Reason: VariablesMissing, Variables: []string{userIDVar}}, "userId missing"},
+	}
+	for _, tt := range tests {
+		if got := tt.staleness.String(); got != tt.want {
+			t.Errorf("String() = %q, want %q", got, tt.want)
+		}
 	}
 }
 
@@ -95,7 +209,7 @@ func TestStalePrerequisites_AllStaleInTopologicalOrder(t *testing.T) {
 
 func TestStalePrerequisites_SkipsFreshPrerequisites(t *testing.T) {
 	s := newFakeSession()
-	s.succeeded[loginPath] = true
+	s.succeed(loginPath, time.Minute)
 	s.variables[tokenVar] = true
 
 	got, err := chainGraph().StalePrerequisites(getUserPath, s)
@@ -109,11 +223,11 @@ func TestStalePrerequisites_SkipsFreshPrerequisites(t *testing.T) {
 
 func TestStalePrerequisites_DoesNotDescendIntoFreshPrerequisite(t *testing.T) {
 	s := newFakeSession()
-	s.succeeded[profilePath] = true
+	s.succeed(profilePath, time.Minute)
 	s.variables[userIDVar] = true
 	g := &Graph{Requests: map[string]Node{
-		profilePath: {Requires: []string{loginPath}, Produces: []string{userIDVar}},
-		getUserPath: {Requires: []string{profilePath}},
+		profilePath: {Requires: requires(loginPath), Produces: []string{userIDVar}},
+		getUserPath: {Requires: requires(profilePath)},
 	}}
 
 	got, err := g.StalePrerequisites(getUserPath, s)
@@ -137,8 +251,8 @@ func TestStalePrerequisites_NoDependencies(t *testing.T) {
 
 func TestStalePrerequisites_Cycle(t *testing.T) {
 	g := &Graph{Requests: map[string]Node{
-		loginPath:   {Requires: []string{getUserPath}},
-		getUserPath: {Requires: []string{loginPath}},
+		loginPath:   {Requires: requires(getUserPath)},
+		getUserPath: {Requires: requires(loginPath)},
 	}}
 
 	_, err := g.StalePrerequisites(getUserPath, newFakeSession())
@@ -162,7 +276,7 @@ func TestValidate_Valid(t *testing.T) {
 }
 
 func TestValidate_SelfDependencyIsCycle(t *testing.T) {
-	g := &Graph{Requests: map[string]Node{loginPath: {Requires: []string{loginPath}}}}
+	g := &Graph{Requests: map[string]Node{loginPath: {Requires: requires(loginPath)}}}
 	var cycleErr *CycleError
 	if err := g.Validate(allExist); !errors.As(err, &cycleErr) {
 		t.Fatalf("expected CycleError, got %v", err)
@@ -174,9 +288,9 @@ func TestValidate_SelfDependencyIsCycle(t *testing.T) {
 
 func TestValidate_CycleOutsideEntryPoint(t *testing.T) {
 	g := &Graph{Requests: map[string]Node{
-		"A": {Requires: []string{"B"}},
-		"B": {Requires: []string{"C"}},
-		"C": {Requires: []string{"B"}},
+		"A": {Requires: requires("B")},
+		"B": {Requires: requires("C")},
+		"C": {Requires: requires("B")},
 	}}
 	var cycleErr *CycleError
 	if err := g.Validate(allExist); !errors.As(err, &cycleErr) {
@@ -189,7 +303,7 @@ func TestValidate_CycleOutsideEntryPoint(t *testing.T) {
 
 func TestValidate_MissingReferences(t *testing.T) {
 	g := &Graph{Requests: map[string]Node{
-		getUserPath: {Requires: []string{"Auth/Logn"}},
+		getUserPath: {Requires: requires("Auth/Logn")},
 		"Typo/Req":  {},
 	}}
 	exists := func(path string) bool { return path == getUserPath }
@@ -209,5 +323,77 @@ func TestValidate_MissingReferences(t *testing.T) {
 	}
 	if unknown.Request != "Typo/Req" {
 		t.Errorf("unexpected unknown request: %+v", unknown)
+	}
+}
+
+func TestStalePrerequisites_ExpiredPrerequisiteRunsAgain(t *testing.T) {
+	s := newFakeSession()
+	s.succeed(loginPath, 2*time.Hour)
+	s.variables[tokenVar] = true
+	g := &Graph{Requests: map[string]Node{
+		loginPath:   {Produces: []string{tokenVar}},
+		getUserPath: {Requires: []Requirement{{Request: loginPath, MaxAge: time.Hour}}},
+	}}
+
+	got, err := g.StalePrerequisites(getUserPath, s)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := []string{loginPath}; !reflect.DeepEqual(got, want) {
+		t.Errorf("StalePrerequisites = %v, want %v", got, want)
+	}
+}
+
+func TestRefreshPrerequisites(t *testing.T) {
+	g := &Graph{Requests: map[string]Node{
+		loginPath:   {Requires: requires(profilePath), Produces: []string{tokenVar}},
+		getUserPath: {Requires: []Requirement{{Request: loginPath, RefreshOn: []int{401}}, {Request: "Users/List"}}},
+	}}
+	fresh := newFakeSession()
+	for _, path := range []string{loginPath, profilePath, "Users/List"} {
+		fresh.succeed(path, time.Minute)
+	}
+	fresh.variables[tokenVar] = true
+	staleProfile := newFakeSession()
+	staleProfile.succeed(loginPath, time.Minute)
+	staleProfile.variables[tokenVar] = true
+
+	tests := []struct {
+		name   string
+		status int
+		state  fakeSession
+		want   []string
+	}{
+		{"status not listed", 500, fresh, nil},
+		{"fresh prerequisite is forced", 401, fresh, []string{loginPath}},
+		{"stale prerequisites of the refreshed one come first", 401, staleProfile, []string{profilePath, loginPath}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := g.RefreshPrerequisites(getUserPath, tt.status, tt.state)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("RefreshPrerequisites = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRequirementRules(t *testing.T) {
+	tests := []struct {
+		requirement Requirement
+		want        string
+	}{
+		{Requirement{Request: loginPath}, ""},
+		{Requirement{Request: loginPath, MaxAge: time.Hour, RefreshOn: []int{401, 403}}, "max_age 1h, refresh_on 401/403"},
+		{Requirement{Request: loginPath, MaxAge: 90 * time.Second}, "max_age 1m30s"},
+		{Requirement{Request: loginPath, WhenMissing: []string{tokenVar, userIDVar}}, "when_missing token, userId"},
+	}
+	for _, tt := range tests {
+		if got := tt.requirement.Rules(); got != tt.want {
+			t.Errorf("Rules() = %q, want %q", got, tt.want)
+		}
 	}
 }
