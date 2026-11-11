@@ -97,3 +97,31 @@ func TestWorkflowDetail_RefreshKeepsTheOpenWorkflow(t *testing.T) {
 		t.Errorf("expected to stay in the open workflow, got %v (%s)", m.mode, m.statusMessage)
 	}
 }
+
+func TestJumpBack_ReturnsFromTheCollectionsList(t *testing.T) {
+	m, _, _ := combinedModel(t)
+	m = pressKeys(t, cursorOn(t, m, combinedB), enterKey)
+	m = pressKeys(t, m, runes(collectionsViewKey))
+
+	m = pressKeys(t, m, jumpBack())
+
+	if m.mode != ModeRequests || len(m.breadcrumb) != 1 || m.breadcrumb[0] != combinedB {
+		t.Errorf("expected back in %s, got %v at %v", combinedB, m.mode, m.breadcrumb)
+	}
+}
+
+func TestOpenLocation_OnCapitalO(t *testing.T) {
+	var opened string
+	original := openFileLocation
+	openFileLocation = func(path string) error { opened = path; return nil }
+	t.Cleanup(func() { openFileLocation = original })
+	m := environmentsModel(t, "dev")
+	m.mode = ModeEnvironments
+	m = m.loadEnvironmentsList()
+
+	m = pressKeys(t, m, runes(openLocationKey))
+
+	if opened == "" {
+		t.Errorf("expected the file revealed (%s)", m.statusMessage)
+	}
+}

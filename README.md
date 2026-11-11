@@ -44,8 +44,9 @@ enter     Open or execute
 h/esc     Go back
 /         Search
 |         Toggle split view
-ctrl+o    Jump back (previous folder or collection)
+ctrl+o    Jump back (previous folder or collection, also from other lists)
 ctrl+i    Jump forward (also tab)
+O         Reveal the collection/environment file (Finder/Explorer)
 r         Refresh
 ctrl+n    Next environment
 1-4       Collections / Requests / Environments / Variables

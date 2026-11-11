@@ -9,6 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// openLocationKey reveals the selected collection or environment file.
+const openLocationKey = "O"
+
 // openFileLocation reveals path in the platform's file manager: Finder on
 // macOS, Explorer on Windows. Other platforms fall back to opening the
 // containing directory, since there is no universal "reveal and select" command.

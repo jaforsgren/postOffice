@@ -16,6 +16,10 @@ const (
 	maxJumps = 100
 )
 
+// jumpModes are the views the jumplist keys work from: the requests view and
+// the views reached from it on the way to another collection.
+var jumpModes = []ViewMode{ModeRequests, ModeResponse, ModeInfo, ModeCollections, ModeEnvironments, ModeVariables}
+
 // jumpLocation is a place in the requests view: a collection (or the
 // combined view), a folder in it and the item under the cursor.
 type jumpLocation struct {
@@ -76,15 +80,20 @@ func (m Model) recordJump(before Model) Model {
 }
 
 func handleJumpBackKey(m Model) (Model, tea.Cmd) {
+	if m.jumpIndex == len(m.jumps) {
+		if current := m.currentJumpLocation(); current.isSet() {
+			// Keep where we jump back from, so jumping forward returns here.
+			m.jumps = append(m.jumps, current)
+		} else if m.lastJumpLocation.isSet() {
+			// From another view, the first jump back returns to where the
+			// requests view was left.
+			m.jumps = append(m.jumps, m.lastJumpLocation)
+			return m.jumpTo(len(m.jumps) - 1)
+		}
+	}
 	if m.jumpIndex == 0 {
 		m.statusMessage = "Already at the oldest jump"
 		return m, nil
-	}
-	if m.jumpIndex == len(m.jumps) {
-		// Keep where we jump back from, so jumping forward returns here.
-		if current := m.currentJumpLocation(); current.isSet() {
-			m.jumps = append(m.jumps, current)
-		}
 	}
 	return m.jumpTo(m.jumpIndex - 1)
 }
