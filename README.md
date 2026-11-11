@@ -12,6 +12,7 @@ Browse, edit, and execute HTTP and gRPC requests. Vim-style navigation. Built in
 - Request editing and variable autocomplete.
 - Pre-request scripts and tests.
 - JavaScript workflow automation.
+- Request dependencies with stale-prerequisite runs.
 - Data-driven collection runs.
 - Headless CLI for CI pipelines.
 - JUnit and JSON reports.
@@ -67,6 +68,8 @@ J         Raw JSON
 H         Saved responses
 V         Edit used variables
 ctrl+e    Re-execute / run folder
+P         Run stale prerequisites, then request
+L         Edit request dependencies
 ctrl+x    Cancel the request being sent
 z         Expand/collapse folder in place
 Z         Expand/collapse all folders
@@ -298,6 +301,45 @@ Variable changes carry over between iterations.
 Run summaries show passed, failed, and skipped steps and tests.
 
 See docs/workflows.md for details.
+
+## Request Dependencies
+
+Declare what a request `requires` and `produces`. Press `P` to run its stale prerequisites first.
+
+Dependencies live next to the collection, so the collection JSON stays Postman-importable. For `MyApi.postman_collection.json` the file is `MyApi.postman_collection.dependencies.yaml`.
+
+```yaml
+requests:
+  Users/Get User:
+    requires: [Auth/Login]
+    produces: [userId]
+  Auth/Login:
+    requires: []
+    produces: [token]
+```
+
+Requests are referenced by `Folder/Request` path, like workflow steps.
+
+A prerequisite is stale when it hasn't run successfully this session, or a variable it produces is unset or empty. Errors, non-2xx statuses, skipped sends and failed tests are not successful.
+
+```
+P         Run stale prerequisites in dependency order, then the request
+L         Edit the dependency file in $EDITOR (adds an entry for the selected request)
+```
+
+Fresh prerequisites are skipped. A failing or cancelled prerequisite stops the chain, and so does one that leaves a produced variable unset.
+
+Request info (`i`) shows the dependency tree.
+
+```
+Get User
+     ├── requires → Auth/Login (stale)
+     └── produces → userId (unset)
+```
+
+Unknown paths and cycles are reported and block `P` until fixed.
+
+In the combined view, a request's dependencies come from its own collection's file.
 
 ## gRPC
 
