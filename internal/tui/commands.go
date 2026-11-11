@@ -8,6 +8,7 @@ import (
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/workflow"
+	"slices"
 	"strings"
 	"time"
 
@@ -328,7 +329,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Info",
 			ShortHelp:   "i",
 			Handler:     handleInfoKey,
-			AvailableIn: []ViewMode{ModeRequests, ModeEnvironments, ModeChanges, ModeWorkflowDetail},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeChanges, ModeWorkflowDetail},
 		},
 		{
 			Keys:        []string{"J"},
@@ -342,7 +343,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Search",
 			ShortHelp:   "/",
 			Handler:     handleSearchKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments},
+			AvailableIn: searchableModes,
 		},
 		{
 			Keys:        []string{"esc", "left", "backspace", "h"},
@@ -1206,6 +1207,17 @@ func handleInfoKey(m Model) (Model, tea.Cmd) {
 		m.configureViewport(&m.infoViewport, strings.Join(m.buildItemInfoLines(), "\n"))
 
 		m.statusMessage = "Showing item info (q to close)"
+	} else if m.mode == ModeCollections && m.cursor < len(m.items) {
+		collection, exists := m.parser.GetCollection(m.items[m.cursor])
+		if !exists {
+			return m, nil
+		}
+		m.currentInfoItem = &postman.Item{Name: collection.Info.Name, Description: collection.Info.Description, Items: collection.Items}
+		m.scrollOffset = 0
+		m.previousMode = m.mode
+		m.mode = ModeInfo
+		m.configureViewport(&m.infoViewport, strings.Join(m.buildItemInfoLines(), "\n"))
+		m.statusMessage = "Showing collection info (q to close)"
 	} else if m.mode == ModeEnvironments && m.environment != nil {
 		m.scrollOffset = 0
 		m.envVarCursor = 0
@@ -1260,12 +1272,14 @@ func handleJSONKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleSearchKey(m Model) (Model, tea.Cmd) {
-	if m.mode == ModeCollections || m.mode == ModeRequests || m.mode == ModeEnvironments {
+	if slices.Contains(searchableModes, m.mode) {
 		m.searchMode = true
 		m.searchInput.SetValue("")
 		m.searchInput.Focus()
 		m.allItems = m.items
 		m.allCurrentItems = m.currentItems
+		m.allVariables = m.variables
+		m.allWorkflows = m.workflows
 		m.statusMessage = "Enter search query (Esc to cancel, Enter to confirm)"
 		return m, m.searchInput.Focus()
 	}
@@ -1380,11 +1394,7 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.searchActive {
-		m.searchActive = false
-		m.searchInput.SetValue("")
-		m.items = m.allItems
-		m.currentItems = m.allCurrentItems
-		m.cursor = 0
+		m = m.clearSearch()
 		m.statusMessage = "Search cleared"
 		return m, nil
 	}

@@ -146,7 +146,11 @@ type Model struct {
 	allItems            []string
 	allCurrentItems     []postman.Item
 	allCurrentItemPaths [][]string
-	environment         *postman.Environment
+	// allVariables and allWorkflows hold the Variables and Workflows lists
+	// while a search filters them.
+	allVariables []postman.VariableSource
+	allWorkflows []*workflow.Workflow
+	environment  *postman.Environment
 	// mergedCollectionActive/mergedEnvironmentActive mark m.collection/m.environment
 	// as the synthetic, read-only result of Parser.MergedCollection/MergedEnvironment
 	// rather than a real loaded one — used to block edits against it.

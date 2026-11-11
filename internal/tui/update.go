@@ -344,21 +344,18 @@ func (m Model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyEsc:
 		m.searchMode = false
-		m.searchInput.SetValue("")
 		m.searchInput.Blur()
-		m.searchActive = false
-		m.items = m.allItems
-		m.currentItems = m.allCurrentItems
-		m.cursor = 0
+		m = m.clearSearch()
 		m.statusMessage = "Search cancelled"
 		return m, nil
 
 	case tea.KeyEnter:
 		m.searchMode = false
 		m.searchInput.Blur()
-		m.searchActive = len(m.items) > 0 && m.searchInput.Value() != ""
-		if len(m.items) > 0 {
-			m.statusMessage = fmt.Sprintf("Found %d results (press Esc to clear search)", len(m.items))
+		results := m.searchResultCount()
+		m.searchActive = results > 0 && m.searchInput.Value() != ""
+		if results > 0 {
+			m.statusMessage = fmt.Sprintf("Found %d results (press Esc to clear search)", results)
 		} else {
 			m.statusMessage = "No results found"
 		}
@@ -1244,6 +1241,9 @@ func (m Model) filterItems() Model {
 	if searchQuery == "" {
 		m.items = m.allItems
 		m.currentItems = m.allCurrentItems
+		m.variables = m.allVariables
+		m.workflows = m.allWorkflows
+		m.workflowCursor = 0
 		m.filteredItems = []string{}
 		m.filteredIndices = []int{}
 		m.cursor = 0
@@ -1270,6 +1270,12 @@ func (m Model) filterItems() Model {
 			m.filteredIndices = indices
 			m.items = m.filteredItems
 		}
+	} else if m.mode == ModeVariables {
+		m.variables = filterVariables(m.allVariables, query)
+		m.items = variableKeys(m.variables)
+	} else if m.mode == ModeWorkflows {
+		m.workflows = filterWorkflows(m.allWorkflows, query)
+		m.workflowCursor = 0
 	}
 
 	m.cursor = 0
@@ -1311,11 +1317,7 @@ func (m Model) loadEnvironment(path string) Model {
 
 func (m Model) loadVariablesList() Model {
 	m.variables = m.variablesAt(m.breadcrumb)
-
-	m.items = []string{}
-	for _, variable := range m.variables {
-		m.items = append(m.items, variable.Key)
-	}
+	m.items = variableKeys(m.variables)
 
 	m.cursor = 0
 	m.breadcrumb = []string{}

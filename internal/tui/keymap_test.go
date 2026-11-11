@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"postOffice/internal/workflow"
 )
 
 func ctrlC() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyCtrlC} }
@@ -145,3 +146,46 @@ func TestSessionCommand_RestoresTheLastSession(t *testing.T) {
 		t.Errorf("expected the saved session back, got %v at %v (%s)", m.mode, m.breadcrumb, m.statusMessage)
 	}
 }
+
+func TestSearch_FiltersVariables(t *testing.T) {
+	m, _, _ := requestVariablesModel(t)
+	m.mode = ModeVariables
+	m = m.loadVariablesList()
+
+	m = pressKeys(t, m, runes("/"), runes("claim"), enterKey)
+
+	if len(m.variables) != 1 || m.variables[0].Key != "claim_id" {
+		t.Fatalf("expected only claim_id, got %+v", m.variables)
+	}
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if len(m.variables) != 2 {
+		t.Errorf("expected esc to show every variable again, got %+v", m.variables)
+	}
+}
+
+func TestSearch_FiltersWorkflows(t *testing.T) {
+	m := workflowKeysTestModel()
+	m.mode = ModeWorkflows
+	m.workflows = append(m.workflows, &workflowLike)
+
+	m = pressKeys(t, m, runes("/"), runes("other"), enterKey)
+
+	if len(m.workflows) != 1 || m.workflows[0].ID != workflowLike.ID {
+		t.Errorf("expected only %s, got %d workflows", workflowLike.ID, len(m.workflows))
+	}
+}
+
+func TestInfo_ShowsTheSelectedCollection(t *testing.T) {
+	m, _, _ := combinedModel(t)
+	m.mode = ModeCollections
+	m = m.loadCollectionsList()
+	m = cursorOnItem(t, m, combinedB)
+
+	m = pressKeys(t, m, runes("i"))
+
+	if m.mode != ModeInfo || m.currentInfoItem == nil || m.currentInfoItem.Name != combinedB {
+		t.Errorf("expected %s's info, got %v (%+v)", combinedB, m.mode, m.currentInfoItem)
+	}
+}
+
+var workflowLike = workflow.Workflow{ID: "other-flow", Name: "Other flow"}

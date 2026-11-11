@@ -42,7 +42,8 @@ j/k       Move up/down
 g/G       First/last item
 enter     Open or execute
 h/esc     Go back
-/         Search
+/         Search (collections, requests, environments, variables, workflows)
+i         Info (also on a collection)
 |         Toggle split view
 ctrl+o    Jump back (previous folder or collection, also from other lists)
 ctrl+i    Jump forward (also tab)
