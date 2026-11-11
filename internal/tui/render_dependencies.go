@@ -19,6 +19,8 @@ const (
 	prerequisiteMissing = "missing"
 	variableSet         = "set"
 	variableUnset       = "unset"
+
+	noDependenciesHint = "none (" + editDependenciesKey + " in the requests list to declare)"
 )
 
 var (
@@ -29,7 +31,7 @@ var (
 
 // buildDependenciesSection renders the info item's requires/produces as a small tree.
 // The item sits at m.breadcrumb, as for the Info view's variable resolution.
-// Requests without declared dependencies, and collections without a known file, render nothing.
+// Collections without a known file render nothing, since there is nowhere to declare dependencies.
 func (m Model) buildDependenciesSection() []string {
 	scope, err := m.dependencyScopeAt(m.breadcrumb)
 	if err != nil {
@@ -44,17 +46,17 @@ func (m Model) buildDependenciesSection() []string {
 
 	node := graph.Node(scope.requestPath(m.breadcrumb, m.currentInfoItem.Name))
 	if len(node.Requires) == 0 && len(node.Produces) == 0 {
-		return nil
-	}
-
-	lines = append(lines, "  "+m.currentInfoItem.Name)
-	edges := m.dependencyEdges(scope, graph, node)
-	for i, edge := range edges {
-		branch := dependencyTreeBranch
-		if i == len(edges)-1 {
-			branch = dependencyTreeLastBranch
+		lines = append(lines, "  "+subtleStyle.Render(noDependenciesHint))
+	} else {
+		lines = append(lines, "  "+m.currentInfoItem.Name)
+		edges := m.dependencyEdges(scope, graph, node)
+		for i, edge := range edges {
+			branch := dependencyTreeBranch
+			if i == len(edges)-1 {
+				branch = dependencyTreeLastBranch
+			}
+			lines = append(lines, dependencyTreeIndent+branch+edge)
 		}
-		lines = append(lines, dependencyTreeIndent+branch+edge)
 	}
 
 	if err := graph.Validate(scope.requestExists); err != nil {

@@ -13,8 +13,10 @@ import (
 	"postOffice/internal/history"
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
+	"postOffice/internal/workflow"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -287,13 +289,34 @@ func TestBuildDependenciesSection_RendersTree(t *testing.T) {
 	}
 }
 
-func TestBuildDependenciesSection_EmptyWithoutDeclaration(t *testing.T) {
+func TestBuildDependenciesSection_HintsWithoutDeclaration(t *testing.T) {
 	server := newRecordingServer(t, nil)
 	m, _ := newDependencyTestModel(t, dependencyTestCollection(server.URL, nil), "")
 	m.currentInfoItem = &m.currentItems[0]
 
-	if section := m.buildDependenciesSection(); len(section) != 0 {
-		t.Errorf("expected no section, got %v", section)
+	section := ansi.Strip(strings.Join(m.buildDependenciesSection(), "\n"))
+
+	if !strings.Contains(section, "Dependencies:") || !strings.Contains(section, noDependenciesHint) {
+		t.Errorf("expected the section with the declare hint, got:\n%s", section)
+	}
+}
+
+func TestShowWorkflowStepInfo_RendersTheStepRequestDependencies(t *testing.T) {
+	server := newRecordingServer(t, nil)
+	m, _ := newDependencyTestModel(t, dependencyTestCollection(server.URL, nil), depGraphWithLogin)
+	m = m.navigateUp()
+	m.width, m.height = splitTestWidth, splitTestHeight
+	m.mode = ModeWorkflowDetail
+	m.activeWorkflow = &workflow.Workflow{ID: "deps-wf", Steps: []workflow.Step{{ID: "get-user", Request: "Users/Get User"}}}
+
+	m, _ = m.showWorkflowStepInfo()
+
+	info := ansi.Strip(m.infoViewport.View())
+	if !strings.Contains(info, dependencyRequiresLabel+depLoginPath) {
+		t.Errorf("expected the step request's dependency tree, got:\n%s", info)
+	}
+	if len(m.breadcrumb) != 0 {
+		t.Errorf("expected the requests view breadcrumb to stay at the top level, got %v", m.breadcrumb)
 	}
 }
 

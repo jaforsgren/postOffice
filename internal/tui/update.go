@@ -2890,7 +2890,7 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 	}
 
 	step := m.activeWorkflow.Steps[m.workflowStepCursor]
-	item, _, err := m.resolveStepItem(step.Request)
+	item, folderPath, err := m.resolveStepItem(step.Request)
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Cannot find request %q: %v", step.Request, err)
 		return m, nil
@@ -2901,7 +2901,11 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 	m.previousMode = ModeWorkflowDetail
 	m.mode = ModeInfo
 
-	lines := m.buildItemInfoLines()
+	// The info sections resolve variables and dependencies at the breadcrumb,
+	// which points at the requests view, not at the step's request.
+	stepInfoModel := m
+	stepInfoModel.breadcrumb = m.workflowViewPath(folderPath)
+	lines := stepInfoModel.buildItemInfoLines()
 	if ss := m.runStepState(step.ID); ss != nil {
 		lines = append(lines, "")
 		lines = append(lines, m.stepLogLines(ss)...)
