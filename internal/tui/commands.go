@@ -733,6 +733,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeEnvironments},
 		},
 	}
+	cr.keyBindings = append(cr.keyBindings, viewSwitchBindings()...)
 }
 
 func handleToggleActiveCollectionKey(m Model) (Model, tea.Cmd) {

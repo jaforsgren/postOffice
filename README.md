@@ -48,6 +48,7 @@ ctrl+o    Jump back (previous folder or collection)
 ctrl+i    Jump forward (also tab)
 r         Refresh
 ctrl+n    Next environment
+1-4       Collections / Requests / Environments / Variables
 ?         Help
 q         Quit
 ```

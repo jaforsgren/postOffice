@@ -59,3 +59,18 @@ func TestQ_LeavesEnvironmentsForCollections(t *testing.T) {
 		t.Errorf("expected the collections list, got %v", m.mode)
 	}
 }
+
+func TestNumberKeys_SwitchViews(t *testing.T) {
+	m, _, _ := combinedModel(t)
+	m.mode = ModeResponse
+
+	for _, step := range []struct {
+		key  string
+		want ViewMode
+	}{{environmentsViewKey, ModeEnvironments}, {variablesViewKey, ModeVariables}, {collectionsViewKey, ModeCollections}, {requestsViewKey, ModeRequests}} {
+		m = pressKeys(t, m, runes(step.key))
+		if m.mode != step.want {
+			t.Fatalf("%s: expected %v, got %v", step.key, step.want, m.mode)
+		}
+	}
+}
