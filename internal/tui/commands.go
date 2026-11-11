@@ -591,6 +591,20 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
+			Keys:        []string{nextFolderKey},
+			Description: "Jump to next folder",
+			ShortHelp:   "shift+↑/↓",
+			Handler:     handleNextFolderKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{previousFolderKey},
+			Description: "Jump to previous folder",
+			ShortHelp:   "shift+↑/↓",
+			Handler:     handlePreviousFolderKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Keys:        []string{repeatLastActionKey},
 			Description: "Repeat last action",
 			ShortHelp:   repeatLastActionKey,

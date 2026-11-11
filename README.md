@@ -70,6 +70,7 @@ ctrl+e    Re-execute / run folder
 ctrl+x    Cancel the request being sent
 z         Expand/collapse folder in place
 Z         Expand/collapse all folders
+shift+↑/↓ Jump to previous/next folder
 .         Repeat last action (execute, delete, duplicate, favorite, expand)
 u         Undo last saved change
 ctrl+r    Redo
