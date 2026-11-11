@@ -79,7 +79,7 @@ ctrl+r    Redo
 j/k       Scroll
 g/G       Top/bottom
 d/u       Half-page scroll
-ctrl+r    Resend request
+ctrl+e    Resend request
 t         Timing breakdown
 s         Save response
 ya        Copy request + response
@@ -317,7 +317,7 @@ Fields include endpoint, service/method, metadata, JSON message, and TLS.
 j/k       Select field
 enter     Edit / toggle TLS
 ctrl+s    Save multiline field
-ctrl+r    Browse server reflection
+ctrl+f    Browse server reflection
 esc       Back
 ```
 

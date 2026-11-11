@@ -259,9 +259,12 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m.handleNormalMode(msg)
 }
 
-// resendStepKey resends the request, or reruns the workflow step, whose
-// response is on screen.
-const resendStepKey = "ctrl+r"
+// runKey sends a request, resends the one on screen or runs a workflow, in
+// every view, so one key always means "send".
+const runKey = "ctrl+e"
+
+// reflectKey (re)loads a gRPC server's services through reflection.
+const reflectKey = "ctrl+f"
 
 // quitKey quits from every view, including text inputs and prompts.
 const quitKey = "ctrl+c"
@@ -1381,7 +1384,7 @@ func (m Model) enterEditMode(item postman.Item, folderPath []string) Model {
 			m.grpcEditMethod = ""
 		}
 		m.editType = EditTypeGRPCRequest
-		m.statusMessage = "Edit gRPC request: j/k navigate, Enter edit field, Ctrl+R reflect, :w save"
+		m.statusMessage = "Edit gRPC request: j/k navigate, Enter edit field, Ctrl+F reflect, :w save"
 	} else {
 		m.editType = EditTypeRequest
 		m.statusMessage = "Edit mode: Use j/k to navigate, Enter to edit field, :w to save, :wq to save & exit"
@@ -1568,7 +1571,7 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case requestVariablesKey:
 		return handleRequestVariablesKey(m)
 
-	case "ctrl+r":
+	case reflectKey:
 		if m.editType == EditTypeGRPCRequest {
 			return m.startGRPCReflection()
 		}
@@ -1646,7 +1649,7 @@ func (m Model) startGRPCReflection() (Model, tea.Cmd) {
 
 func (m Model) handleGRPCReflectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "ctrl+r":
+	case reflectKey:
 		if m.grpcEditEndpoint != "" {
 			m.statusMessage = "Reloading reflection…"
 			return m.startGRPCReflection()
@@ -2875,7 +2878,7 @@ func (m Model) openWorkflowDetail(wf *workflow.Workflow) (Model, tea.Cmd) {
 	if steps == 0 {
 		m.statusMessage = fmt.Sprintf("%s — no steps defined  <:wf new> to scaffold", wf.Name)
 	} else {
-		m.statusMessage = fmt.Sprintf("%s — %d step(s)  j/k navigate  u/f/r partial run  ctrl+r/R full run  enter response  tab step panel", wf.Name, steps)
+		m.statusMessage = fmt.Sprintf("%s — %d step(s)  j/k navigate  u/f/r partial run  "+runKey+"/R full run  enter response  tab step panel", wf.Name, steps)
 	}
 	return m, nil
 }
@@ -3024,7 +3027,7 @@ func (m Model) showWorkflowStepResponse() (Model, tea.Cmd) {
 	m.mode = ModeResponse
 
 	m.configureViewport(&m.responseViewport, strings.Join(m.responseViewLines(), "\n"))
-	m.statusMessage = fmt.Sprintf("Response for %s (esc to return, ctrl+r to resend the step)", step.ID)
+	m.statusMessage = fmt.Sprintf("Response for %s (esc to return, %s to resend the step)", step.ID, runKey)
 	return m, nil
 }
 

@@ -346,7 +346,7 @@ The result object is the same as HTTP: `response.code`, `response.body`, `respon
 :wf
 ```
 
-Opens the workflow browser. Navigate with `j/k`. Press `enter` to open the selected workflow's steps, or `ctrl+r` to run it.
+Opens the workflow browser. Navigate with `j/k`. Press `enter` to open the selected workflow's steps, or `ctrl+e` to run it.
 
 ### Run a workflow by ID
 
@@ -367,7 +367,7 @@ Creates a new workflow file at `workflows/<id>.yaml` with a skeleton script.
 ### Run selected workflow
 
 ```
-ctrl+r
+ctrl+e
 ```
 
 In the workflow list view, runs the currently highlighted workflow.

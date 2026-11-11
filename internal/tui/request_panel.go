@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	requestPanelNotSentMessage = "Not sent yet: ctrl+r to send"
-	requestPanelStatusMessage  = "Request info (ctrl+r send, s save response, y copy, ctrl+g editor, q close)"
+	requestPanelNotSentMessage = "Not sent yet: " + runKey + " to send"
+	requestPanelStatusMessage  = "Request info (" + runKey + " send, s save response, y copy, ctrl+g editor, q close)"
 )
 
 // openRequestPanel shows a request's definition and its latest exchange in

@@ -12,7 +12,7 @@ import (
 const fullWorkflowScript = "export default async function (wf, pm) { await wf.run(\"login\"); await wf.run(\"list\"); }"
 
 var (
-	ctrlRKey = tea.KeyMsg{Type: tea.KeyCtrlR}
+	runKeyMsg = tea.KeyMsg{Type: tea.KeyCtrlE}
 	enterKey = tea.KeyMsg{Type: tea.KeyEnter}
 )
 
@@ -41,10 +41,10 @@ func TestCtrlR_InWorkflowsListRunsSelectedWorkflow(t *testing.T) {
 	m := workflowKeysTestModel()
 	m.mode = ModeWorkflows
 
-	m, _ = pressKey(m, ctrlRKey)
+	m, _ = pressKey(m, runKeyMsg)
 
 	if m.workflowChan == nil {
-		t.Fatal("expected ctrl+r to start the selected workflow")
+		t.Fatal("expected ctrl+e to start the selected workflow")
 	}
 	if m.mode != ModeWorkflowDetail {
 		t.Errorf("mode = %v, want the workflow detail showing the run", m.mode)
@@ -65,10 +65,10 @@ func TestEnter_InWorkflowsListOpensDetailWithoutRunning(t *testing.T) {
 func TestCtrlR_InWorkflowDetailRunsFullWorkflow(t *testing.T) {
 	m := workflowKeysTestModel()
 
-	m, _ = pressKey(m, ctrlRKey)
+	m, _ = pressKey(m, runKeyMsg)
 
 	if m.workflowChan == nil {
-		t.Fatal("expected ctrl+r to run the workflow")
+		t.Fatal("expected ctrl+e to run the workflow")
 	}
 	if m.mode != ModeWorkflowDetail {
 		t.Errorf("mode = %v, want to stay in workflow detail", m.mode)
@@ -90,7 +90,7 @@ func TestCtrlR_InStepResponseResendsTheStep(t *testing.T) {
 	m := workflowKeysTestModel()
 	m, _ = pressKey(m, enterKey)
 
-	m, _ = pressKey(m, ctrlRKey)
+	m, _ = pressKey(m, runKeyMsg)
 
 	if m.mode != ModeWorkflowDetail || m.workflowChan == nil {
 		t.Errorf("mode = %v running = %v, want back in detail rerunning the step", m.mode, m.workflowChan != nil)

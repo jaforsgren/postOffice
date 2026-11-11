@@ -44,7 +44,7 @@ func handleTimingCommand(m Model, _ []string) (Model, tea.Cmd) {
 
 func (m Model) openTiming() (Model, tea.Cmd) {
 	if m.mode != ModeResponse {
-		m.statusMessage = "Timing is available from the response view (ctrl+r)"
+		m.statusMessage = "Timing is available from the response view (" + runKey + ")"
 		return m, nil
 	}
 	if m.lastResponse == nil {

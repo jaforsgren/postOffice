@@ -294,17 +294,17 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables},
 		},
 		{
-			Keys:        []string{"ctrl+e"},
+			Keys:        []string{runKey},
 			Description: "Execute request/run folder",
-			ShortHelp:   "ctrl+e",
+			ShortHelp:   runKey,
 			Handler:     handleExecuteKey,
 			AvailableIn: []ViewMode{ModeRequests},
 			Repeatable:  true,
 		},
 		{
-			Keys:        []string{"ctrl+r"},
+			Keys:        []string{runKey},
 			Description: "Resend request (workflows: run)",
-			ShortHelp:   "ctrl+r",
+			ShortHelp:   runKey,
 			Handler:     handleResponseViewKey,
 			AvailableIn: []ViewMode{ModeResponse, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail},
 		},
@@ -1672,7 +1672,7 @@ func (m Model) loadWorkflows() (Model, tea.Cmd) {
 	if len(wfs) == 0 {
 		m.statusMessage = "No workflows found. Create one with :wf new <id>"
 	} else {
-		m.statusMessage = fmt.Sprintf("%d workflow(s) — enter or ctrl+r to run", len(wfs))
+		m.statusMessage = fmt.Sprintf("%d workflow(s) — enter or %s to run", len(wfs), runKey)
 	}
 	return m, nil
 }

@@ -419,7 +419,7 @@ func (m Model) renderStatusBar() string {
 
 	switch m.mode {
 	case ModeResponse:
-		help = "ctrl+r: resend | t: timing | ya/yb/yr/yy: copy | ctrl+g: open in editor | q: close | j/k: scroll"
+		help = runKey + ": resend | t: timing | ya/yb/yr/yy: copy | ctrl+g: open in editor | q: close | j/k: scroll"
 	case ModeTiming:
 		help = "t/q/esc: close timing"
 	case ModeInfo:

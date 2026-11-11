@@ -72,7 +72,7 @@ func (m Model) buildEditLines() []string {
 func (m Model) buildEditShortcuts() string {
 	base := "<Enter> Edit field  <j/k> Navigate  <Tab> {{var}} autocomplete  <V> Variables  <Ctrl+G> Open in vim  <Esc> Cancel  <:w> Save  <:wq> Save & Exit"
 	if m.editType == EditTypeGRPCRequest {
-		return base + "  <Ctrl+R> Reflect"
+		return base + "  <Ctrl+F> Reflect"
 	}
 	return base
 }
@@ -205,7 +205,7 @@ func (m Model) buildGRPCEditFields() []string {
 
 		// Hint for the Service/Method field
 		if i == 2 && i == m.editFieldCursor && !m.editFieldMode {
-			lines = append(lines, "    "+dimStyle.Render("[Ctrl+R to browse via reflection]"))
+			lines = append(lines, "    "+dimStyle.Render("[Ctrl+F to browse via reflection]"))
 		}
 
 		lines = append(lines, "")

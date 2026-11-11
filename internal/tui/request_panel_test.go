@@ -53,10 +53,10 @@ func TestInfoKey_OnFolderStillShowsFolderInfo(t *testing.T) {
 func TestRequestPanel_CtrlRSendsAndRefreshesInPlace(t *testing.T) {
 	m := pressKeys(t, modelWithCursorOn(t, formRequestName), runes("i"))
 
-	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyCtrlR})
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyCtrlE})
 	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, nil, formRequestName)
 	if _, sending := m.requestExecutions[itemID]; !sending {
-		t.Fatal("expected ctrl+r to send the panel's request")
+		t.Fatal("expected ctrl+e to send the panel's request")
 	}
 
 	updated, _ := m.Update(RequestCompleteMsg{ItemID: itemID, ItemName: formRequestName, Response: &http.Response{StatusCode: 201, Status: "201 Created"}})
