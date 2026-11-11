@@ -241,8 +241,12 @@ type Model struct {
 	// response beside the workflow's steps; workflowStepPanelScroll scrolls it.
 	workflowStepPanelOpen   bool
 	workflowStepPanelScroll int
-	addingWorkflowStep      bool
-	editingWorkflowStepIdx  int
+	// workflowPreviewOpen shows the selected workflow's steps and last run
+	// beside the workflows list; workflowPreviewScroll scrolls it.
+	workflowPreviewOpen    bool
+	workflowPreviewScroll  int
+	addingWorkflowStep     bool
+	editingWorkflowStepIdx int
 
 	// pendingFolderRun holds the folder awaiting a y/n answer to "run as workflow?";
 	// while set, the next key press answers the prompt instead of reaching normal mode.

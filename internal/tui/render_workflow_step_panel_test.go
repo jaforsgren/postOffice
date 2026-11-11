@@ -211,7 +211,7 @@ func TestStepPanel_ScrollStopsAtLastPage(t *testing.T) {
 	for range manyLogLines {
 		m.workflowState.Logs = append(m.workflowState.Logs, workflow.LogEntry{StepID: loginStepID, Message: "line"})
 	}
-	maxScroll := m.maxStepPanelScroll()
+	maxScroll := m.maxSidePanelScroll(m.buildStepPanelLines)
 	if maxScroll == 0 {
 		t.Fatal("expected the panel to overflow")
 	}

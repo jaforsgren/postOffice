@@ -9,13 +9,17 @@ import (
 // Workflow detail keys. The run variants avoid u/f/r, which mean undo,
 // favorite and refresh in the lists.
 const (
-	runUpToStepKey      = "<"
-	runFromStepKey      = ">"
-	runStepOnlyKey      = "x"
-	stepPanelKey        = toggleSplitViewKey
-	stepPanelDownKey    = "]"
-	stepPanelUpKey      = "["
-	refreshWorkflowsKey = "r"
+	runUpToStepKey   = "<"
+	runFromStepKey   = ">"
+	runStepOnlyKey   = "x"
+	stepPanelKey     = toggleSplitViewKey
+	stepPanelDownKey = "]"
+	stepPanelUpKey   = "["
+	// The workflows list preview mirrors the detail's step panel keys.
+	workflowPreviewKey     = stepPanelKey
+	workflowPreviewDownKey = stepPanelDownKey
+	workflowPreviewUpKey   = stepPanelUpKey
+	refreshWorkflowsKey    = "r"
 )
 
 // handleRefreshWorkflowsKey rereads the workflow files, picking up edits

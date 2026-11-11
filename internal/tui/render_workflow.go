@@ -10,46 +10,11 @@ import (
 )
 
 func (m Model) renderWorkflowsList() string {
-	metrics := m.calculateLayout()
-	h := metrics.contentHeight
-
-	var sb strings.Builder
-
-	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).Render("Workflows")
-	sb.WriteString(title + "\n\n")
-
-	if len(m.workflows) == 0 {
-		sb.WriteString(subtleStyle.Render("No workflows found.\n"))
-		sb.WriteString(subtleStyle.Render("Create one with: :wf new <id>"))
-		return m.padToHeight(sb.String(), h)
+	if m.workflowPreviewOpen {
+		return m.renderWorkflowsListWithPreview()
 	}
-
-	for i, wf := range m.workflows {
-		selected := i == m.workflowCursor
-		prefix := "  "
-		if selected {
-			prefix = "> "
-		}
-
-		nameStyle := lipgloss.NewStyle()
-		if selected {
-			nameStyle = nameStyle.Bold(true).Foreground(lipgloss.Color("205"))
-		}
-
-		line := prefix + nameStyle.Render(wf.Name)
-		if wf.Description != "" {
-			line += "  " + subtleStyle.Render(wf.Description)
-		}
-		sb.WriteString(line + "\n")
-
-		if selected && len(wf.Steps) > 0 {
-			for _, step := range wf.Steps {
-				sb.WriteString(subtleStyle.Render(fmt.Sprintf("    [%s] %s", step.ID, step.Request)) + "\n")
-			}
-		}
-	}
-
-	return m.padToHeight(sb.String(), h)
+	h := m.calculateLayout().contentHeight
+	return m.padToHeight(strings.Join(m.buildWorkflowListLines(h), "\n"), h)
 }
 
 func (m Model) renderWorkflowDetail() string {
@@ -64,26 +29,10 @@ func (m Model) renderWorkflowDetail() string {
 			Render(subtleStyle.Render("No workflow selected."))
 	}
 
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-
-	var headerLines []string
-	headerLines = append(headerLines, headerStyle.Render(wf.Name))
-	if wf.Description != "" {
-		headerLines = append(headerLines, subtleStyle.Render(wf.Description))
-	}
-	meta := fmt.Sprintf("Steps: %d", len(wf.Steps))
-	if wf.Version > 0 {
-		meta += fmt.Sprintf("  v%d", wf.Version)
-	}
-	headerLines = append(headerLines, dimStyle.Render(meta))
-	if m.workflowState.WorkflowID == wf.ID && isRunFinished(m.workflowState.Status) {
-		headerLines = append(headerLines, dimStyle.Render(m.workflowState.Summary.String()))
-	}
-	headerLines = append(headerLines, "")
+	headerLines := append(m.workflowHeaderLines(wf), "")
 
 	if len(wf.Steps) == 0 {
-		content := strings.Join(headerLines, "\n") + subtleStyle.Render("No steps defined.")
+		content := strings.Join(headerLines, "\n") + subtleStyle.Render(noStepsMessage)
 		return mainWindowStyle.
 			Height(h).
 			Width(m.width - 4).
@@ -92,8 +41,6 @@ func (m Model) renderWorkflowDetail() string {
 
 	visibleLines := h - len(headerLines) - 1
 	startIdx, endIdx := calculateVisibleWindow(m.workflowStepCursor, len(wf.Steps), visibleLines)
-
-	headerLines[0] += m.workflowRunIndicator(wf)
 
 	lines := append([]string{}, headerLines...)
 
@@ -106,7 +53,7 @@ func (m Model) renderWorkflowDetail() string {
 			cursor = "> "
 		}
 
-		num := dimStyle.Render(fmt.Sprintf("[%d]", i+1))
+		num := workflowMetaStyle.Render(fmt.Sprintf("[%d]", i+1))
 		stepIDStr := fmt.Sprintf("%-20s", step.ID)
 		requestStr := step.Request
 		if len(requestStr) > 40 {
@@ -114,16 +61,9 @@ func (m Model) renderWorkflowDetail() string {
 		}
 		requestStr = fmt.Sprintf("%-40s", requestStr)
 
-		var annotations []string
-		if step.PreScript != "" {
-			annotations = append(annotations, "[pre]")
-		}
-		if step.PostScript != "" {
-			annotations = append(annotations, "[post]")
-		}
 		annotationStr := ""
-		if len(annotations) > 0 {
-			annotationStr = " " + dimStyle.Render(strings.Join(annotations, " "))
+		if annotations := stepScriptAnnotations(step); annotations != "" {
+			annotationStr = " " + workflowMetaStyle.Render(annotations)
 		}
 
 		// Step run state icon (from current/last workflow execution)
@@ -133,7 +73,7 @@ func (m Model) renderWorkflowDetail() string {
 				icon := workflow.StatusIcon(ss.Status)
 				runStateStr = "  " + workflowStatusStyle(ss.Status).Render(icon+" "+ss.Status)
 				if ss.Total > 1 {
-					runStateStr += dimStyle.Render(fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total))
+					runStateStr += workflowMetaStyle.Render(fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total))
 				}
 			}
 		}
@@ -182,7 +122,7 @@ func (m Model) renderWorkflowDetail() string {
 // workflowRunIndicator is the run status suffix for wf's title, or empty when
 // wf has not run.
 func (m Model) workflowRunIndicator(wf *workflow.Workflow) string {
-	if m.workflowChan != nil {
+	if m.workflowChan != nil && m.workflowState.WorkflowID == wf.ID {
 		return " " + workflowStatusStyle(workflow.StatusRunning).Render("● running"+iterationLabel(m.workflowState))
 	}
 	if m.workflowState.WorkflowID == wf.ID && m.workflowState.Status != "" {

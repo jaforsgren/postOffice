@@ -520,6 +520,27 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
+			Keys:        []string{workflowPreviewKey},
+			Description: "Toggle workflow preview (steps, last run)",
+			ShortHelp:   workflowPreviewKey,
+			Handler:     handleToggleWorkflowPreviewKey,
+			AvailableIn: []ViewMode{ModeWorkflows},
+		},
+		{
+			Keys:        []string{workflowPreviewDownKey},
+			Description: "Scroll workflow preview down",
+			ShortHelp:   workflowPreviewDownKey,
+			Handler:     handleWorkflowPreviewScrollDownKey,
+			AvailableIn: []ViewMode{ModeWorkflows},
+		},
+		{
+			Keys:        []string{workflowPreviewUpKey},
+			Description: "Scroll workflow preview up",
+			ShortHelp:   workflowPreviewUpKey,
+			Handler:     handleWorkflowPreviewScrollUpKey,
+			AvailableIn: []ViewMode{ModeWorkflows},
+		},
+		{
 			Keys:        []string{"d"},
 			Description: "Discard selected",
 			ShortHelp:   "d",
@@ -1370,6 +1391,11 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Closed changes view"
 		return m, nil
 	case ModeWorkflows:
+		if m.workflowPreviewOpen {
+			m.workflowPreviewOpen = false
+			m.statusMessage = "Closed workflow preview"
+			return m, nil
+		}
 		m.mode = m.previousMode
 		m.statusMessage = "Closed workflows view"
 		return m, nil
@@ -1429,6 +1455,7 @@ func handleUpKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeWorkflows {
 		if m.workflowCursor > 0 {
 			m.workflowCursor--
+			m.workflowPreviewScroll = 0
 		}
 		return m, nil
 	}
@@ -1475,6 +1502,7 @@ func handleDownKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeWorkflows {
 		if m.workflowCursor < len(m.workflows)-1 {
 			m.workflowCursor++
+			m.workflowPreviewScroll = 0
 		}
 		return m, nil
 	}
@@ -1540,7 +1568,7 @@ func handleToggleStepPanelKey(m Model) (Model, tea.Cmd) {
 
 func handleStepPanelScrollDownKey(m Model) (Model, tea.Cmd) {
 	if m.workflowStepPanelOpen {
-		m.workflowStepPanelScroll = min(m.workflowStepPanelScroll+1, m.maxStepPanelScroll())
+		m.workflowStepPanelScroll = min(m.workflowStepPanelScroll+1, m.maxSidePanelScroll(m.buildStepPanelLines))
 	}
 	return m, nil
 }
@@ -1548,6 +1576,26 @@ func handleStepPanelScrollDownKey(m Model) (Model, tea.Cmd) {
 func handleStepPanelScrollUpKey(m Model) (Model, tea.Cmd) {
 	if m.workflowStepPanelOpen {
 		m.workflowStepPanelScroll = max(m.workflowStepPanelScroll-1, 0)
+	}
+	return m, nil
+}
+
+func handleToggleWorkflowPreviewKey(m Model) (Model, tea.Cmd) {
+	m.workflowPreviewOpen = !m.workflowPreviewOpen
+	m.workflowPreviewScroll = 0
+	return m, nil
+}
+
+func handleWorkflowPreviewScrollDownKey(m Model) (Model, tea.Cmd) {
+	if m.workflowPreviewOpen {
+		m.workflowPreviewScroll = min(m.workflowPreviewScroll+1, m.maxSidePanelScroll(m.buildWorkflowPreviewLines))
+	}
+	return m, nil
+}
+
+func handleWorkflowPreviewScrollUpKey(m Model) (Model, tea.Cmd) {
+	if m.workflowPreviewOpen {
+		m.workflowPreviewScroll = max(m.workflowPreviewScroll-1, 0)
 	}
 	return m, nil
 }

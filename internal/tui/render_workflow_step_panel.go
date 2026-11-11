@@ -179,7 +179,16 @@ func (m Model) selectedStepResponse() (*http.Response, *RequestExecution) {
 // runStepState is the state of stepID in the active workflow's latest run, or
 // nil when that workflow has not run.
 func (m Model) runStepState(stepID string) *workflow.StepState {
-	if m.activeWorkflow == nil || m.workflowState.WorkflowID != m.activeWorkflow.ID || m.workflowState.StepIndex == nil {
+	if m.activeWorkflow == nil {
+		return nil
+	}
+	return m.workflowRunStepState(m.activeWorkflow.ID, stepID)
+}
+
+// workflowRunStepState is the state of stepID in workflowID's latest run, or
+// nil when that workflow has not run.
+func (m Model) workflowRunStepState(workflowID, stepID string) *workflow.StepState {
+	if m.workflowState.WorkflowID != workflowID || m.workflowState.StepIndex == nil {
 		return nil
 	}
 	return m.workflowState.StepIndex[stepID]
@@ -194,8 +203,10 @@ func wrapLines(lines []string, width int) []string {
 	return wrapped
 }
 
-func (m Model) maxStepPanelScroll() int {
+// maxSidePanelScroll is how far the right pane of a workflow split view can
+// scroll when buildLines fills it.
+func (m Model) maxSidePanelScroll(buildLines func(width int) []string) int {
 	layout := m.calculateRequestSplitLayout()
-	lineCount := len(m.buildStepPanelLines(paneInnerWidth(layout.rightWidth)))
+	lineCount := len(buildLines(paneInnerWidth(layout.rightWidth)))
 	return maxPaneScroll(lineCount, paneInnerHeight(layout.listHeight))
 }
