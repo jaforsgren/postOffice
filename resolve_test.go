@@ -89,3 +89,57 @@ func TestLsRequest_ResolvesCollectionByName(t *testing.T) {
 		t.Errorf("code %d, stderr %s, stdout:\n%s", code, errOut, out)
 	}
 }
+
+// sharedWorkflowsFixture loads two collections from one directory, so they
+// share its workflows directory, with one workflow saved there.
+func sharedWorkflowsFixture(t *testing.T) (f fixture, other string) {
+	t.Helper()
+	f = newFixture(t, apiServer(t))
+	otherCollection := apiCollection()
+	otherCollection.Info.Name = "Other"
+	other = writeJSONFile(t, f.dir, "other.postman_collection.json", otherCollection)
+	writeLoadedConfig(t, []string{f.collectionPath, other}, []string{f.envPath})
+	saveWorkflowFor(t, f.collectionPath, healthWorkflow())
+	return f, other
+}
+
+func TestLs_ListsAWorkflowSharedByCollectionsOnce(t *testing.T) {
+	sharedWorkflowsFixture(t)
+
+	code, out, _ := cli(t, "ls")
+
+	if code != exitSuccess || strings.Count(out, "health-check") != 1 || !strings.Contains(out, "API"+collectionNameSeparator+"Other") {
+		t.Errorf("code %d, want health-check listed once for both collections:\n%s", code, out)
+	}
+}
+
+func TestWorkflowRun_SharedWorkflowRunsAgainstTheSelectedCollection(t *testing.T) {
+	_, other := sharedWorkflowsFixture(t)
+	cli(t, "-c", other)
+
+	code, out, errOut := cli(t, "workflow", "run", "health-check", "-e", "Local")
+
+	if code != exitSuccess || !strings.Contains(out, `(collection Other`) || !strings.Contains(out, "✓ Health") {
+		t.Errorf("code %d, stderr %s, stdout:\n%s", code, errOut, out)
+	}
+}
+
+func TestWorkflowRun_SharedWorkflowWithoutASelectedOwnerIsAmbiguous(t *testing.T) {
+	sharedWorkflowsFixture(t)
+
+	code, _, errOut := cli(t, "workflow", "run", "health-check", "-e", "Local")
+
+	if code != exitUsage || !strings.Contains(errOut, errAmbiguousCollection.Error()) {
+		t.Errorf("code %d, stderr %q, want errAmbiguousCollection", code, errOut)
+	}
+}
+
+func TestWorkflowsSavedNextTo_CollectionsSharingADirectory(t *testing.T) {
+	f, other := sharedWorkflowsFixture(t)
+
+	saved, err := workflowsSavedNextTo([]string{f.collectionPath, other})
+
+	if err != nil || len(saved) != 1 || len(saved[0].collectionPaths) != 2 {
+		t.Errorf("got %+v, %v, want one workflow owned by both collections", saved, err)
+	}
+}

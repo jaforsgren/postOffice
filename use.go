@@ -98,8 +98,7 @@ func applySelection(selection *postman.CLISelection, parsed parsedArgs) error {
 	}
 	if parsed.has(workflowFlag) {
 		path, err := resolveOptionalRef(parsed.value(workflowFlag), func(ref string) (string, error) {
-			resolved, err := resolveWorkflowRef(ref, selection.CollectionPath)
-			return resolved.path, err
+			return resolveWorkflowRef(ref, selection.CollectionPath)
 		})
 		if err != nil {
 			return err

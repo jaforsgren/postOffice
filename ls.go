@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"text/tabwriter"
 
 	"postOffice/internal/postman"
@@ -28,6 +29,8 @@ const (
 	selectedPrefix   = "* "
 	unselectedPrefix = "  "
 	selectedLegend   = "\n* selected (see \"postOffice use\")"
+
+	collectionNameSeparator = ", "
 )
 
 var lsTopics = []lsTopic{
@@ -98,19 +101,23 @@ func listOverview(out io.Writer) error {
 	writeNamedPaths(table, parser.ListEnvironments(), parser.GetEnvironmentPath, selection.EnvironmentPath)
 
 	fmt.Fprintln(table, "Workflows:")
-	listed := 0
+	saved, err := workflowsSavedNextTo(loadedCollectionPaths(parser))
+	if err != nil {
+		return err
+	}
+	collectionNames := make(map[string]string)
 	for _, name := range parser.ListCollections() {
 		path, _ := parser.GetCollectionPath(name)
-		files, err := workflow.DiscoverWorkflowFiles(workflow.WorkflowsDir(path))
-		if err != nil {
-			return err
-		}
-		for _, file := range files {
-			fmt.Fprintf(table, "%s%s\t%s\t%s\n", selectionMarker(file.Path, selection.WorkflowPath), file.Workflow.ID, file.Workflow.Name, name)
-			listed++
-		}
+		collectionNames[path] = name
 	}
-	if listed == 0 {
+	for _, file := range saved {
+		owners := make([]string, 0, len(file.collectionPaths))
+		for _, path := range file.collectionPaths {
+			owners = append(owners, collectionNames[path])
+		}
+		fmt.Fprintf(table, "%s%s\t%s\t%s\n", selectionMarker(file.workflow.Path, selection.WorkflowPath), file.workflow.Workflow.ID, file.workflow.Workflow.Name, strings.Join(owners, collectionNameSeparator))
+	}
+	if len(saved) == 0 {
 		fmt.Fprintln(table, noneListed)
 	}
 	if err := table.Flush(); err != nil {

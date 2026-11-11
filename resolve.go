@@ -62,52 +62,69 @@ func resolveEnvironmentRef(ref string) (string, error) {
 	return resolveNamedFile(ref, environmentReference, loadedFiles(parser.ListEnvironments(), parser.GetEnvironmentPath, environmentExportSuffix))
 }
 
-// resolvedWorkflow is a workflow file and, when it was found by name, the
-// collection it was saved next to.
-type resolvedWorkflow struct {
-	path           string
-	collectionPath string
-}
-
 // resolveWorkflowRef turns a workflow file path, or the ID, name or file name
 // of a workflow saved next to collectionPath (or, without one, next to any
 // loaded collection), into a file path.
-func resolveWorkflowRef(ref, collectionPath string) (resolvedWorkflow, error) {
+func resolveWorkflowRef(ref, collectionPath string) (string, error) {
 	if path, ok := existingFile(ref); ok {
-		return resolvedWorkflow{path: path}, nil
+		return path, nil
 	}
 
 	collectionPaths := []string{collectionPath}
 	if collectionPath == "" {
 		parser, err := loadedState()
 		if err != nil {
-			return resolvedWorkflow{}, err
+			return "", err
 		}
-		collectionPaths = nil
-		for _, name := range parser.ListCollections() {
-			path, _ := parser.GetCollectionPath(name)
-			collectionPaths = append(collectionPaths, path)
-		}
+		collectionPaths = loadedCollectionPaths(parser)
 	}
 
-	var candidates []namedFile
-	owners := make(map[string]string)
-	for _, owner := range collectionPaths {
-		files, err := workflow.DiscoverWorkflowFiles(workflow.WorkflowsDir(owner))
+	saved, err := workflowsSavedNextTo(collectionPaths)
+	if err != nil {
+		return "", err
+	}
+	candidates := make([]namedFile, 0, len(saved))
+	for _, file := range saved {
+		candidates = append(candidates, namedFile{names: []string{file.workflow.Workflow.ID, file.workflow.Workflow.Name, fileStem(file.workflow.Path, "")}, path: file.workflow.Path})
+	}
+	return resolveNamedFile(ref, workflowReference, candidates)
+}
+
+// savedWorkflow is a workflow file and the collections it is saved next to.
+type savedWorkflow struct {
+	workflow        workflow.WorkflowFile
+	collectionPaths []string
+}
+
+// workflowsSavedNextTo lists the workflows saved next to collectionPaths, once
+// per file: collections in the same directory share its workflows directory.
+func workflowsSavedNextTo(collectionPaths []string) ([]savedWorkflow, error) {
+	var saved []savedWorkflow
+	indexByPath := make(map[string]int)
+	for _, collectionPath := range collectionPaths {
+		files, err := workflow.DiscoverWorkflowFiles(workflow.WorkflowsDir(collectionPath))
 		if err != nil {
-			return resolvedWorkflow{}, err
+			return nil, err
 		}
 		for _, file := range files {
-			candidates = append(candidates, namedFile{names: []string{file.Workflow.ID, file.Workflow.Name, fileStem(file.Path, "")}, path: file.Path})
-			owners[file.Path] = owner
+			if i, seen := indexByPath[file.Path]; seen {
+				saved[i].collectionPaths = append(saved[i].collectionPaths, collectionPath)
+				continue
+			}
+			indexByPath[file.Path] = len(saved)
+			saved = append(saved, savedWorkflow{workflow: file, collectionPaths: []string{collectionPath}})
 		}
 	}
+	return saved, nil
+}
 
-	path, err := resolveNamedFile(ref, workflowReference, candidates)
-	if err != nil {
-		return resolvedWorkflow{}, err
+func loadedCollectionPaths(parser *postman.Parser) []string {
+	var paths []string
+	for _, name := range parser.ListCollections() {
+		path, _ := parser.GetCollectionPath(name)
+		paths = append(paths, path)
 	}
-	return resolvedWorkflow{path: path, collectionPath: owners[path]}, nil
+	return paths
 }
 
 func loadedFiles(names []string, pathOf func(string) (string, bool), exportSuffix string) []namedFile {

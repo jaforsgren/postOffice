@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"postOffice/internal/postman"
@@ -60,8 +61,7 @@ var workflowCommand = &cliCommand{
 
 Runs a workflow against its collection. <workflow> is a workflow file, or the
 ID, name or file name of a workflow saved next to a loaded collection (next to
--c's collection when given), ignoring case; a workflow found by name runs
-against the collection it is saved next to. Collections and environments can
+-c's collection when given), ignoring case. Collections and environments can
 be given by file or by loaded name, as in "postOffice run". Without
 <workflow> the selected workflow runs, and without -e the selected
 environment is used (see "postOffice use").
@@ -70,7 +70,8 @@ Without -c the collection of a workflow file is found from where the workflow
 lives: workflows are saved in a "workflows" directory next to their collection
 file, so postOffice uses
   1. the loaded collection (see "postOffice ls") whose workflows directory
-     holds the file, or else
+     holds the file; when several loaded collections share that directory,
+     the selected collection among them, or else
   2. the only Postman collection .json file in the directory above it.
 Pass -c when neither finds exactly one collection.
 
@@ -104,19 +105,16 @@ Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input e
 				return err
 			}
 		}
-		resolved, err := resolveWorkflowRef(opts.workflowPath, collectionPath)
+		workflowPath, err := resolveWorkflowRef(opts.workflowPath, collectionPath)
 		if err != nil {
 			return err
 		}
-		wf, err := workflow.LoadWorkflow(resolved.path)
+		wf, err := workflow.LoadWorkflow(workflowPath)
 		if err != nil {
 			return err
 		}
 		if collectionPath == "" {
-			collectionPath = resolved.collectionPath
-		}
-		if collectionPath == "" {
-			if collectionPath, err = findWorkflowCollection(resolved.path); err != nil {
+			if collectionPath, err = findWorkflowCollection(workflowPath); err != nil {
 				return err
 			}
 		}
@@ -139,10 +137,13 @@ func findWorkflowCollection(workflowPath string) (string, error) {
 		return "", fmt.Errorf("failed to load loaded collections: %w", err)
 	}
 	var loaded []string
-	for _, name := range parser.ListCollections() {
-		if path, ok := parser.GetCollectionPath(name); ok && workflow.WorkflowsDir(path) == workflowsDir {
+	for _, path := range loadedCollectionPaths(parser) {
+		if workflow.WorkflowsDir(path) == workflowsDir {
 			loaded = append(loaded, path)
 		}
+	}
+	if selected := parser.LoadCLISelection().CollectionPath; len(loaded) > 1 && slices.Contains(loaded, selected) {
+		return selected, nil
 	}
 	if len(loaded) > 0 {
 		return singleCollection(loaded, workflowPath)
