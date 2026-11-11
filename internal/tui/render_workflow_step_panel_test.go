@@ -277,3 +277,33 @@ func TestShowWorkflowStepInfo_NotRunStepHasNoLogsSection(t *testing.T) {
 		t.Errorf("expected no logs section before the step has run, got:\n%s", info)
 	}
 }
+
+func TestWorkflowStepInfoReport_HasTheStepRunLogsAndResponse(t *testing.T) {
+	m := panelTestModel()
+	m.activeWorkflow.Steps[0].Request = formRequestName
+	m.workflowStepCursor = 0
+	m, _ = m.showWorkflowStepInfo()
+
+	target, err := m.currentYankTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := target.markdownReport()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"# " + formRequestName,
+		"## Logs\n\n```text\n" + loginPassLog + "\n```",
+		"POST " + loginRequestURL,
+		"\"token\": \"abc\"",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("expected the report to contain %q, got:\n%s", want, report)
+		}
+	}
+	if strings.Contains(report, listFailLog) || strings.Contains(report, workflowScriptLog) {
+		t.Errorf("expected only this step's logs, got:\n%s", report)
+	}
+}

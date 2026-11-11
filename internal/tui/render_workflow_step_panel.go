@@ -131,8 +131,7 @@ func (m Model) stepPanelBorderColor() lipgloss.Color {
 // console output, test results, errors), or a placeholder when it has none.
 func (m Model) stepLogLines(ss *workflow.StepState) []string {
 	lines := []string{lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11")).Render("LOGS")}
-	stepLogs, _ := groupLogsByStep(m.workflowState)
-	logs := stepLogs[stepRunKeyOf(ss)]
+	logs := m.stepRunLogs(ss)
 	if len(logs) == 0 {
 		return append(lines, subtleStyle.Render(stepPanelNoLogsMessage))
 	}
@@ -140,6 +139,12 @@ func (m Model) stepLogLines(ss *workflow.StepState) []string {
 		lines = append(lines, styleLogMessage(msg, styledRunStyler))
 	}
 	return lines
+}
+
+// stepRunLogs is the unstyled log messages of one step run, in order.
+func (m Model) stepRunLogs(ss *workflow.StepState) []string {
+	stepLogs, _ := groupLogsByStep(m.workflowState)
+	return stepLogs[stepRunKeyOf(ss)]
 }
 
 func (m Model) selectedWorkflowStep() (workflow.Step, bool) {

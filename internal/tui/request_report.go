@@ -50,6 +50,10 @@ func (t yankTarget) markdownReport() (string, error) {
 	if t.model.lastTestResult != nil && t.response != nil {
 		lines = append(lines, testResultSection(t.model.lastTestResult)...)
 	}
+	if len(t.stepLogs) > 0 {
+		lines = append(lines, "## Logs", blankLine)
+		lines = append(lines, fencedBlock(langText, strings.Join(t.stepLogs, "\n"))...)
+	}
 	curl, kind := t.curl()
 	lines = append(lines, "## "+kind, blankLine)
 	lines = append(lines, fencedBlock(langShell, curl)...)

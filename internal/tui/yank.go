@@ -47,7 +47,10 @@ type yankTarget struct {
 	vars       []postman.VariableSource
 	definition *postman.Item
 	response   *http.Response
-	model      Model
+	// stepLogs is the workflow step run's log output when the target is a
+	// workflow step; nil for requests run from the requests view.
+	stepLogs []string
+	model    Model
 }
 
 func (m Model) currentYankTarget() (yankTarget, error) {
@@ -66,6 +69,9 @@ func (m Model) currentYankTarget() (yankTarget, error) {
 			model:      m,
 		}, nil
 	case ModeInfo:
+		if m.previousMode == ModeWorkflowDetail && m.currentInfoItem != nil && m.currentInfoItem.IsRequest() {
+			return m.workflowStepYankTarget(*m.currentInfoItem), nil
+		}
 		showsRequestInfo := m.previousMode == ModeRequests || m.previousMode == ModeWorkflowDetail
 		if !showsRequestInfo || m.currentInfoItem == nil || !m.currentInfoItem.IsRequest() {
 			return yankTarget{}, errYankNoRequest
@@ -93,6 +99,25 @@ func (m Model) definitionYankTarget(item postman.Item) yankTarget {
 		target.model.lastResponse = execution.Response
 		target.model.lastTestResult = execution.TestResult
 	}
+	return target
+}
+
+// workflowStepYankTarget targets the selected workflow step's request with
+// its variables, and the response and logs of the step's latest run.
+func (m Model) workflowStepYankTarget(item postman.Item) yankTarget {
+	target := yankTarget{definition: &item, request: item, model: m}
+	if step, ok := m.selectedWorkflowStep(); ok {
+		if _, folderPath, err := m.resolveStepItem(step.Request); err == nil {
+			target.vars = m.variablesAt(m.workflowViewPath(folderPath))
+		}
+		if ss := m.runStepState(step.ID); ss != nil {
+			target.stepLogs = m.stepRunLogs(ss)
+		}
+	}
+	// The step logs already hold the run's test results and console output.
+	target.model.lastTestResult = nil
+	target.response, _ = m.selectedStepResponse()
+	target.model.lastResponse = target.response
 	return target
 }
 
