@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"net"
 	nethttp "net/http"
 	"net/http/httptest"
 	"testing"
@@ -100,5 +101,27 @@ func TestCancelRequest_CompletedRequestIsForgotten(t *testing.T) {
 
 	if _, inFlight := m.inFlightRequests[itemID]; inFlight {
 		t.Error("expected the completed request forgotten")
+	}
+}
+
+func TestCancelRequest_StopsAnAMQPPublish(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	go func() {
+		if conn, acceptErr := listener.Accept(); acceptErr == nil {
+			t.Cleanup(func() { conn.Close() })
+		}
+	}()
+	m := slowRequestModel(t)
+	m.currentItems[0].Request.URL.Raw = "amqp://" + listener.Addr().String() + "/queue"
+
+	m, done := sendInBackground(t, m)
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyCtrlX})
+
+	if msg := waitForMsg(t, done); !msg.Cancelled {
+		t.Errorf("expected the publish cancelled, got %+v", msg.Response)
 	}
 }

@@ -67,7 +67,7 @@ J         Raw JSON
 H         Saved responses
 V         Edit used variables
 ctrl+e    Re-execute / run folder
-ctrl+x    Cancel the request being sent (HTTP and gRPC)
+ctrl+x    Cancel the request being sent
 z         Expand/collapse folder in place
 Z         Expand/collapse all folders
 .         Repeat last action (execute, delete, duplicate, favorite, expand)

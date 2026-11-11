@@ -32,6 +32,11 @@ const (
 // All other request headers are sent as application properties.
 // The request body becomes the message body.
 func Send(req *postman.Request, variables []postman.VariableSource) *http.Response {
+	return SendContext(context.Background(), req, variables)
+}
+
+// SendContext is Send with the send cancelled when ctx is.
+func SendContext(ctx context.Context, req *postman.Request, variables []postman.VariableSource) *http.Response {
 	start := time.Now()
 	resp := &http.Response{
 		RequestMethod: "ASB",
@@ -98,10 +103,10 @@ func Send(req *postman.Request, variables []postman.VariableSource) *http.Respon
 		msg.MessageID = &msgID
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	sendCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 
-	if err := sender.SendMessage(ctx, msg, nil); err != nil {
+	if err := sender.SendMessage(sendCtx, msg, nil); err != nil {
 		resp.Error = fmt.Errorf("failed to send message to %q: %w", topicOrQueue, err)
 		resp.Duration = time.Since(start)
 		return resp

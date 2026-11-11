@@ -930,11 +930,11 @@ func (m Model) executorFor(item postman.Item) requestExecutor {
 }
 
 func (m Model) executeServiceBusRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	return m.executeProtocolItem(item, folderPath, history.ProtocolServiceBus, "Sending ASB message", servicebus.Send)
+	return m.executeProtocolItem(item, folderPath, history.ProtocolServiceBus, "Sending ASB message", servicebus.SendContext)
 }
 
 func (m Model) executeAMQPRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	return m.executeProtocolItem(item, folderPath, history.ProtocolAMQP, "Publishing AMQP message", amqp.Publish)
+	return m.executeProtocolItem(item, folderPath, history.ProtocolAMQP, "Publishing AMQP message", amqp.PublishContext)
 }
 
 // executeProtocolItem runs pre-request scripts, then sends a non-HTTP request with send.
@@ -964,6 +964,9 @@ func (m Model) executeProtocolItem(
 		Sender:      m.executor.SendRequest,
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	m.inFlightRequests[itemID] = cancel
+
 	return m, func() tea.Msg {
 		// Pre-request scripts can set variables (e.g. generate IDs) or skip the send.
 		request, preResult := script.NewRequestRun(scope).PreRequest(itemCopy.Request)
@@ -979,8 +982,9 @@ func (m Model) executeProtocolItem(
 		}
 
 		variables := postman.GetAllVariables(collection, collectionPath, environment)
-		resp := send(request, variables)
+		resp := send(ctx, request, variables)
 		return RequestCompleteMsg{
+			Cancelled:       errors.Is(ctx.Err(), context.Canceled),
 			ItemID:          itemID,
 			Response:        resp,
 			TestResult:      preResult,

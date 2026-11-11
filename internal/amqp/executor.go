@@ -1,6 +1,7 @@
 package amqp
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"postOffice/internal/http"
@@ -43,6 +44,11 @@ const (
 // All other request headers are forwarded as AMQP message headers.
 // The request body becomes the message body.
 func Publish(req *postman.Request, variables []postman.VariableSource) *http.Response {
+	return PublishContext(context.Background(), req, variables)
+}
+
+// PublishContext is Publish with connecting and publishing cancelled when ctx is.
+func PublishContext(ctx context.Context, req *postman.Request, variables []postman.VariableSource) *http.Response {
 	start := time.Now()
 	resp := &http.Response{
 		RequestMethod: "AMQP",
@@ -78,11 +84,20 @@ func Publish(req *postman.Request, variables []postman.VariableSource) *http.Res
 	sequence := timing.NewSequence(start)
 	defer func() { resp.Timing = sequence.Phases() }()
 
-	dial := amqp.DefaultDial(defaultTimeout)
+	dialer := net.Dialer{Timeout: defaultTimeout}
 	dialSucceeded := false
 	conn, err := amqp.DialConfig(brokerURL, amqp.Config{
 		Dial: func(network, addr string) (net.Conn, error) {
-			socket, dialErr := dial(network, addr)
+			socket, dialErr := dialer.DialContext(ctx, network, addr)
+			if dialErr == nil {
+				// As amqp.DefaultDial does: bound the TLS and AMQP handshake,
+				// which runs before heartbeats start. The library clears it once open.
+				if dialErr = socket.SetDeadline(time.Now().Add(defaultTimeout)); dialErr != nil {
+					socket.Close()
+				}
+				// The handshake doesn't watch ctx, so cancelling closes the socket.
+				context.AfterFunc(ctx, func() { socket.Close() })
+			}
 			sequence.Mark(PhaseDial)
 			dialSucceeded = dialErr == nil
 			return socket, dialErr
@@ -120,7 +135,7 @@ func Publish(req *postman.Request, variables []postman.VariableSource) *http.Res
 		publishing.MessageId = msgID
 	}
 
-	err = ch.Publish(exchange, routingKey, false, false, publishing)
+	err = ch.PublishWithContext(ctx, exchange, routingKey, false, false, publishing)
 	sequence.Mark(PhasePublish)
 	if err != nil {
 		resp.Error = fmt.Errorf("failed to publish message to %q: %w", routingKey, err)

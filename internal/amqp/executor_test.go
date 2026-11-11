@@ -1,9 +1,11 @@
 package amqp
 
 import (
+	"context"
 	"net"
 	"postOffice/internal/postman"
 	"testing"
+	"time"
 )
 
 func phaseNames(t *testing.T, req *postman.Request) []string {
@@ -60,4 +62,34 @@ func TestPublish_HandshakeFailureMeasuresDialAndHandshake(t *testing.T) {
 	got := phaseNames(t, &postman.Request{URL: postman.URL{Raw: "amqp://" + listener.Addr().String() + "/queue"}})
 
 	assertPhaseNames(t, got, PhaseDial, PhaseHandshake)
+}
+
+func TestPublishContext_CancelStopsAStalledHandshake(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		if conn, acceptErr := listener.Accept(); acceptErr == nil {
+			accepted <- conn
+		}
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		conn := <-accepted
+		defer conn.Close()
+		cancel()
+	}()
+
+	start := time.Now()
+	resp := PublishContext(ctx, &postman.Request{URL: postman.URL{Raw: "amqp://" + listener.Addr().String() + "/queue"}}, nil)
+
+	if resp.Error == nil {
+		t.Fatal("expected the cancelled publish to fail")
+	}
+	if elapsed := time.Since(start); elapsed >= defaultTimeout {
+		t.Errorf("expected cancel to end the handshake early, took %v", elapsed)
+	}
 }
