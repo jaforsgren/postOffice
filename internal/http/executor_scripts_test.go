@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -42,7 +43,7 @@ func TestExecute_PreRequestMutationsReachTheServer(t *testing.T) {
 	}
 	item := &postman.Item{Name: "create offer", Request: req, Events: []postman.Event{prerequest("pm.request.body.update('rewritten');")}}
 
-	resp, result := NewExecutor().Execute(req, scopeFor(collection, item), nil)
+	resp, result := NewExecutor().ExecuteContext(context.Background(), req, scopeFor(collection, item), nil)
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %v", resp.Error)
@@ -69,7 +70,7 @@ func TestExecute_SkipRequestSendsNothing(t *testing.T) {
 		testEvent("pm.test('must not run', () => {});"),
 	}}
 
-	resp, result := NewExecutor().Execute(req, scopeFor(&postman.Collection{}, item), nil)
+	resp, result := NewExecutor().ExecuteContext(context.Background(), req, scopeFor(&postman.Collection{}, item), nil)
 
 	if hits.Load() != 0 {
 		t.Errorf("expected no request to be sent, got %d", hits.Load())
@@ -89,7 +90,7 @@ func TestExecute_PreRequestErrorStopsTheRequest(t *testing.T) {
 	req := &postman.Request{Method: "GET", URL: postman.URL{Raw: "http://127.0.0.1:1"}}
 	item := &postman.Item{Name: "broken", Request: req, Events: []postman.Event{prerequest("notDefined();")}}
 
-	resp, _ := NewExecutor().Execute(req, scopeFor(nil, item), nil)
+	resp, _ := NewExecutor().ExecuteContext(context.Background(), req, scopeFor(nil, item), nil)
 
 	if !errors.Is(resp.Error, ErrPreRequestScript) {
 		t.Errorf("expected ErrPreRequestScript, got %v", resp.Error)
@@ -125,7 +126,7 @@ func TestExecute_TestChainSeesResponseAndSendRequest(t *testing.T) {
 		"});",
 	)}}
 
-	resp, result := NewExecutor().Execute(req, scopeFor(collection, item), nil)
+	resp, result := NewExecutor().ExecuteContext(context.Background(), req, scopeFor(collection, item), nil)
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %v", resp.Error)
@@ -185,7 +186,7 @@ func TestExecute_ResponseTimeExcludesPreRequestScripts(t *testing.T) {
 		testEvent(fmt.Sprintf("pm.test('fast response', () => pm.expect(pm.response.responseTime).to.be.below(%d));", preRequestBusyMs)),
 	}}
 
-	resp, result := NewExecutor().Execute(req, scopeFor(&postman.Collection{}, item), nil)
+	resp, result := NewExecutor().ExecuteContext(context.Background(), req, scopeFor(&postman.Collection{}, item), nil)
 
 	if len(result.Tests) != 1 || !result.Tests[0].Passed {
 		t.Errorf("expected responseTime to exclude the pre-request script, got %+v", result.Tests)

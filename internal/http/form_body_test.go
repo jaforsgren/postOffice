@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -98,7 +99,7 @@ func TestExecute_FormDataSendsFieldsAndFiles(t *testing.T) {
 	notes := writeTempFile(t, "notes.txt", "hello")
 	variables := []postman.VariableSource{{Key: "scope", Value: "Customer"}}
 
-	resp, _ := NewExecutor().Execute(formRequest(server.URL,
+	resp, _ := NewExecutor().ExecuteContext(context.Background(), formRequest(server.URL,
 		postman.FormParam{Key: "scope", Value: "{{scope}}", Type: "text"},
 		postman.FormParam{Key: "skipped", Value: "x", Type: "text", Disabled: true},
 		postman.FormParam{Key: "file", Type: postman.FormParamTypeFile, Src: fileSrc(picture)},
@@ -126,7 +127,7 @@ func TestExecute_FormDataWithoutFieldsIsStillMultipart(t *testing.T) {
 	var received receivedForm
 	server := formServer(t, &received)
 
-	resp, _ := NewExecutor().Execute(formRequest(server.URL), nil, nil)
+	resp, _ := NewExecutor().ExecuteContext(context.Background(), formRequest(server.URL), nil, nil)
 
 	if resp.Error != nil || received.parseErr != nil {
 		t.Fatalf("request error %v, server parse error %v (Content-Type %q)", resp.Error, received.parseErr, received.contentType)
@@ -140,7 +141,7 @@ func TestExecute_FormDataFileFieldWithoutAFileSendsNoPart(t *testing.T) {
 	var received receivedForm
 	server := formServer(t, &received)
 
-	resp, _ := NewExecutor().Execute(formRequest(server.URL, postman.FormParam{Key: "file", Type: postman.FormParamTypeFile}), nil, nil)
+	resp, _ := NewExecutor().ExecuteContext(context.Background(), formRequest(server.URL, postman.FormParam{Key: "file", Type: postman.FormParamTypeFile}), nil, nil)
 
 	if resp.Error != nil || received.parseErr != nil {
 		t.Fatalf("request error %v, server parse error %v", resp.Error, received.parseErr)
@@ -156,7 +157,7 @@ func TestExecute_FormDataUnreadableFileIsAnError(t *testing.T) {
 	defer server.Close()
 	missing := filepath.Join(t.TempDir(), "missing.png")
 
-	resp, _ := NewExecutor().Execute(formRequest(server.URL, postman.FormParam{Key: "file", Type: postman.FormParamTypeFile, Src: fileSrc(missing)}), nil, nil)
+	resp, _ := NewExecutor().ExecuteContext(context.Background(), formRequest(server.URL, postman.FormParam{Key: "file", Type: postman.FormParamTypeFile, Src: fileSrc(missing)}), nil, nil)
 
 	if !errors.Is(resp.Error, ErrFormFileUnreadable) {
 		t.Errorf("expected ErrFormFileUnreadable, got %v", resp.Error)

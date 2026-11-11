@@ -10,7 +10,7 @@ import (
 
 func phaseNames(t *testing.T, req *postman.Request) []string {
 	t.Helper()
-	resp := Publish(req, nil)
+	resp := PublishContext(context.Background(), req, nil)
 	if resp.Error == nil {
 		t.Fatal("expected publish to fail")
 	}

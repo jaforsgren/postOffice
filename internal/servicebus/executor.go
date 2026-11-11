@@ -20,7 +20,7 @@ const (
 	defaultTimeout = 30 * time.Second
 )
 
-// Send delivers a message to an Azure Service Bus topic or queue described by req.
+// SendContext delivers a message to an Azure Service Bus topic or queue described by req.
 //
 // URL format: asb://topic-or-queue
 // Reserved headers (not sent as application properties):
@@ -30,12 +30,7 @@ const (
 //   - Message-Id: custom message ID
 //
 // All other request headers are sent as application properties.
-// The request body becomes the message body.
-func Send(req *postman.Request, variables []postman.VariableSource) *http.Response {
-	return SendContext(context.Background(), req, variables)
-}
-
-// SendContext is Send with the send cancelled when ctx is.
+// The request body becomes the message body. The send is cancelled when ctx is.
 func SendContext(ctx context.Context, req *postman.Request, variables []postman.VariableSource) *http.Response {
 	start := time.Now()
 	resp := &http.Response{

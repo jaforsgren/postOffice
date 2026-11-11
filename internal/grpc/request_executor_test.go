@@ -142,7 +142,7 @@ func TestExecutor_Execute_SendsMetadataAndRunsScripts(t *testing.T) {
 		),
 	)
 
-	resp, result := NewExecutor().Execute(item.Request, scopeOf(item, collection, environment), nil)
+	resp, result := NewExecutor().ExecuteContext(context.Background(), item.Request, scopeOf(item, collection, environment), nil)
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %v", resp.Error)
@@ -169,7 +169,7 @@ func TestExecutor_Execute_ReportsGRPCStatusOnFailure(t *testing.T) {
 	environment := testEnvironment(unknownService)
 	item := healthItem(server.endpoint, scriptEvent("test", "pm.environment.set('"+statusVariable+"', 'ran');"))
 
-	resp, _ := NewExecutor().Execute(item.Request, scopeOf(item, &postman.Collection{}, environment), nil)
+	resp, _ := NewExecutor().ExecuteContext(context.Background(), item.Request, scopeOf(item, &postman.Collection{}, environment), nil)
 
 	if resp.Error == nil {
 		t.Fatal("expected an error for an unknown health service")
@@ -186,7 +186,7 @@ func TestExecutor_Execute_UsesV1AlphaReflectionWhenV1IsMissing(t *testing.T) {
 	server := startHealthServer(t, withV1AlphaReflectionOnly)
 	item := healthItem(server.endpoint)
 
-	resp, _ := NewExecutor().Execute(item.Request, scopeOf(item, &postman.Collection{}, testEnvironment(servingService)), nil)
+	resp, _ := NewExecutor().ExecuteContext(context.Background(), item.Request, scopeOf(item, &postman.Collection{}, testEnvironment(servingService)), nil)
 
 	if resp.Error != nil {
 		t.Fatalf("expected the call to succeed over v1alpha reflection, got %v", resp.Error)
@@ -212,7 +212,7 @@ func TestExecutor_Execute_StopsOnPreRequestScriptError(t *testing.T) {
 	server := startHealthServer(t, withReflection)
 	item := healthItem(server.endpoint, scriptEvent("prerequest", "throw new Error('boom');"))
 
-	resp, _ := NewExecutor().Execute(item.Request, scopeOf(item, &postman.Collection{}, testEnvironment(servingService)), nil)
+	resp, _ := NewExecutor().ExecuteContext(context.Background(), item.Request, scopeOf(item, &postman.Collection{}, testEnvironment(servingService)), nil)
 
 	if resp.Error == nil {
 		t.Fatal("expected the pre-request script error")
@@ -228,7 +228,7 @@ func TestExecutor_Execute_ResolvesVariablesWithoutItem(t *testing.T) {
 	item := healthItem(server.endpoint)
 	variables := postman.GetAllVariables(nil, nil, environment)
 
-	resp, result := NewExecutor().Execute(item.Request, nil, variables)
+	resp, result := NewExecutor().ExecuteContext(context.Background(), item.Request, nil, variables)
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %v", resp.Error)
@@ -265,7 +265,7 @@ func TestExecutor_Execute_FallsBackToProtosetWithoutReflection(t *testing.T) {
 	environment.Values = append(environment.Values, postman.EnvVariable{Key: ProtosetVariable, Value: writeHealthProtoset(t), Enabled: true})
 	item := healthItem(server.endpoint)
 
-	resp, _ := NewExecutor().Execute(item.Request, scopeOf(item, &postman.Collection{}, environment), nil)
+	resp, _ := NewExecutor().ExecuteContext(context.Background(), item.Request, scopeOf(item, &postman.Collection{}, environment), nil)
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %v", resp.Error)
@@ -279,7 +279,7 @@ func TestExecutor_Execute_ReportsMissingReflectionWithoutProtoset(t *testing.T) 
 	server := startHealthServer(t, withoutReflection)
 	item := healthItem(server.endpoint)
 
-	resp, _ := NewExecutor().Execute(item.Request, scopeOf(item, &postman.Collection{}, testEnvironment(servingService)), nil)
+	resp, _ := NewExecutor().ExecuteContext(context.Background(), item.Request, scopeOf(item, &postman.Collection{}, testEnvironment(servingService)), nil)
 
 	if !errors.Is(resp.Error, ErrReflectionUnavailable) {
 		t.Errorf("error = %v, want ErrReflectionUnavailable", resp.Error)

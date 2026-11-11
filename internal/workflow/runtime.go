@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,12 +10,10 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
-	"postOffice/internal/amqp"
-	internalgrpc "postOffice/internal/grpc"
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
+	"postOffice/internal/protocol"
 	"postOffice/internal/script"
-	"postOffice/internal/servicebus"
 )
 
 const (
@@ -31,7 +30,7 @@ type Runner struct {
 	collection   *postman.Collection
 	environment  *postman.Environment
 	httpExecutor *http.Executor
-	grpcExecutor *internalgrpc.Executor
+	protocols    *protocol.Registry
 
 	wfSteps []Step
 	options ExecutionOptions
@@ -63,7 +62,7 @@ func NewRunner(
 		collection:    collection,
 		environment:   environment,
 		httpExecutor:  httpExecutor,
-		grpcExecutor:  internalgrpc.NewExecutor(),
+		protocols:     protocol.NewBuiltinRegistry(httpExecutor),
 		scriptTimeout: defaultScriptTimeout,
 	}
 }
@@ -717,6 +716,11 @@ type itemOutcome struct {
 }
 
 func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcome, error) {
+	requestProtocol, err := r.protocols.For(item)
+	if err != nil {
+		return itemOutcome{}, fmt.Errorf("item %q is not a request: %w", item.Name, err)
+	}
+
 	// Write workflow-script variable changes to the collection before running.
 	r.syncToCollection()
 
@@ -729,25 +733,7 @@ func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcom
 		Iteration:   r.iteration,
 	}
 
-	variables := scope.Variables()
-
-	if item.IsGRPC() {
-		return r.executeGRPC(item, scope, variables), nil
-	}
-
-	if item.IsServiceBus() {
-		return r.executeMessageBus(item, scope, "ASB")
-	}
-
-	if item.IsAMQP() {
-		return r.executeMessageBus(item, scope, "AMQP")
-	}
-
-	if !item.IsRequest() || item.Request == nil {
-		return itemOutcome{}, fmt.Errorf("item %q is not a request", item.Name)
-	}
-
-	resp, scriptResult := r.httpExecutor.Execute(item.Request, &scope, variables)
+	resp, scriptResult := requestProtocol.Execute(context.Background(), item.Request, &scope, scope.Variables())
 
 	// Pick up variable changes from pre/post-request scripts.
 	r.syncFromCollection()
@@ -760,73 +746,15 @@ func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcom
 	}
 
 	if resp.Error != nil {
-		r.addLog(fmt.Sprintf("[HTTP ERROR] %v", resp.Error))
+		r.addLog(fmt.Sprintf("[%s ERROR] %v", requestProtocol.Name(), resp.Error))
+		// Step scripts read the body, so a failure without one reports its error there.
+		if stepResp.Body == "" {
+			stepResp.Body = fmt.Sprintf(`{"error":%q}`, resp.Error.Error())
+		}
 	}
 
 	retrySelf := scriptResult != nil && scriptResult.NextRequest.Set && scope.IsAddressedBy(scriptResult.NextRequest.Name)
 	return itemOutcome{step: stepResp, raw: resp, scripts: scriptResult, retrySelf: retrySelf}, nil
-}
-
-func (r *Runner) executeMessageBus(item *postman.Item, scope script.RequestScope, protocol string) (itemOutcome, error) {
-	if item.Request == nil {
-		return itemOutcome{}, fmt.Errorf("item %q has no request", item.Name)
-	}
-
-	// Run Postman pre-request scripts (e.g. to generate IDs before the send).
-	request, preResult := script.NewRequestRun(scope).PreRequest(item.Request)
-	for _, e := range preResult.Errors {
-		r.addLog(fmt.Sprintf("[%s PRE-SCRIPT ERROR] %s", protocol, e))
-	}
-	r.syncFromCollection()
-	if preResult.Skipped {
-		r.addLog(fmt.Sprintf("[%s SKIPPED] %s", protocol, item.Name))
-		return itemOutcome{step: &StepResponse{}, raw: &http.Response{Skipped: true, Status: http.SkippedStatus}, scripts: preResult}, nil
-	}
-
-	variables := scope.Variables()
-
-	var resp *http.Response
-	switch protocol {
-	case "ASB":
-		resp = servicebus.Send(request, variables)
-	case "AMQP":
-		resp = amqp.Publish(request, variables)
-	default:
-		return itemOutcome{}, fmt.Errorf("unknown message bus protocol: %s", protocol)
-	}
-
-	r.syncFromCollection()
-
-	stepResp := &StepResponse{
-		Code: resp.StatusCode,
-		Body: resp.Body,
-		Time: resp.Duration.Milliseconds(),
-	}
-
-	if resp.Error != nil {
-		r.addLog(fmt.Sprintf("[%s ERROR] %v", protocol, resp.Error))
-	}
-
-	return itemOutcome{step: stepResp, raw: resp, scripts: preResult}, nil
-}
-
-func (r *Runner) executeGRPC(item *postman.Item, scope script.RequestScope, variables []postman.VariableSource) itemOutcome {
-	resp, scriptResult := r.grpcExecutor.Execute(item.Request, &scope, variables)
-
-	// Pick up variable changes from pre/post-request scripts.
-	r.syncFromCollection()
-
-	stepResp := &StepResponse{
-		Code: resp.StatusCode,
-		Body: resp.Body,
-		Time: resp.Duration.Milliseconds(),
-	}
-	if resp.Error != nil {
-		r.addLog(fmt.Sprintf("[gRPC ERROR] %v", resp.Error))
-		stepResp.Body = fmt.Sprintf(`{"error":%q}`, resp.Error.Error())
-	}
-
-	return itemOutcome{step: stepResp, raw: resp, scripts: scriptResult}
 }
 
 // --- JavaScript helpers ---

@@ -4,11 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"postOffice/internal/amqp"
 	"postOffice/internal/history"
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
-	"postOffice/internal/servicebus"
+	"postOffice/internal/protocol"
 	"postOffice/internal/textdiff"
 	"sort"
 	"strings"
@@ -25,13 +24,6 @@ const (
 	requestHistoryKey = "ctrl+y"
 	historyDiffKey    = "="
 )
-
-// requestSender sends an already built request, resolving variables first,
-// and gives up when ctx is cancelled.
-type requestSender func(context.Context, *postman.Request, []postman.VariableSource) *internalhttp.Response
-
-// ErrUnknownProtocol is returned when a history entry names a protocol with no executor.
-var ErrUnknownProtocol = errors.New("unknown request protocol")
 
 func (m Model) environmentName() string {
 	if m.environment == nil {
@@ -90,27 +82,10 @@ func (m Model) recordHistory(msg RequestCompleteMsg) Model {
 	return m
 }
 
-// withoutScripts sends with executor as is, as replays do: no scripts run.
-func withoutScripts(executor requestExecutor) requestSender {
-	return func(ctx context.Context, req *postman.Request, variables []postman.VariableSource) *internalhttp.Response {
-		resp, _ := executor.ExecuteContext(ctx, req, nil, variables)
-		return resp
-	}
-}
-
-func (m Model) senderFor(protocol history.Protocol) (requestSender, error) {
-	switch protocol {
-	case history.ProtocolHTTP:
-		return withoutScripts(m.executor), nil
-	case history.ProtocolGRPC:
-		return withoutScripts(m.grpcExecutor), nil
-	case history.ProtocolServiceBus:
-		return servicebus.SendContext, nil
-	case history.ProtocolAMQP:
-		return amqp.PublishContext, nil
-	default:
-		return nil, fmt.Errorf("%w: %q", ErrUnknownProtocol, protocol)
-	}
+// replayResponse sends req without a script scope, so no scripts run.
+func replayResponse(requestProtocol protocol.Protocol, req *postman.Request) *internalhttp.Response {
+	resp, _ := requestProtocol.Execute(context.Background(), req, nil, nil)
+	return resp
 }
 
 func (m Model) openRequestHistory() (Model, tea.Cmd) {
@@ -149,7 +124,7 @@ func (m Model) replayHistoryEntry() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	send, err := m.senderFor(entry.Protocol)
+	requestProtocol, err := m.protocols.Named(entry.Protocol)
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Cannot replay %s: %v", entry.ItemName, err)
 		return m, nil
@@ -165,7 +140,7 @@ func (m Model) replayHistoryEntry() (Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		return RequestCompleteMsg{
 			ItemID:          entry.ItemID,
-			Response:        send(context.Background(), req, nil),
+			Response:        replayResponse(requestProtocol, req),
 			EnvironmentName: entry.EnvironmentName,
 			Protocol:        entry.Protocol,
 			ItemName:        entry.ItemName,

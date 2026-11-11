@@ -34,20 +34,11 @@ func NewExecutor() *Executor {
 	return &Executor{timeout: requestTimeout, sender: httpexec.NewExecutor().SendRequest}
 }
 
-// Execute resolves req against variables and calls it. With a non-nil scope
-// the collection → folder → request pre-request scripts run first (and may
-// rewrite or skip the request), and the test scripts after a successful call.
-// Without a scope no scripts run and the result is nil.
-func (e *Executor) Execute(
-	req *postman.Request,
-	scope *script.RequestScope,
-	variables []postman.VariableSource,
-) (*httpexec.Response, *script.TestResult) {
-	return e.ExecuteContext(context.Background(), req, scope, variables)
-}
-
-// ExecuteContext is Execute with the call cancelled when ctx is. Scripts are
-// not interrupted; they have their own timeout.
+// ExecuteContext resolves req against variables and calls it, cancelling the
+// call when ctx is. With a non-nil scope the collection → folder → request
+// pre-request scripts run first (and may rewrite or skip the request), and the
+// test scripts after a successful call. Without a scope no scripts run and the
+// result is nil. Scripts are not interrupted; they have their own timeout.
 func (e *Executor) ExecuteContext(
 	ctx context.Context,
 	req *postman.Request,

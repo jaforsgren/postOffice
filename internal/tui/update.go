@@ -4,14 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"postOffice/internal/amqp"
 	"postOffice/internal/grpc"
-	"postOffice/internal/history"
-	internalhttp "postOffice/internal/http"
 	"postOffice/internal/logger"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
-	"postOffice/internal/servicebus"
 	"postOffice/internal/workflow"
 	"reflect"
 	"slices"
@@ -39,7 +35,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case RequestCompleteMsg:
 		if msg.Cancelled {
-			return m.completeCancelledRequest(msg), nil
+			return m.completeCancelledRequest(msg).continuePrerequisiteRun(msg)
 		}
 		m = m.forgetInFlightRequest(msg.ItemID)
 		m.lastResponse = msg.Response
@@ -103,7 +99,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.configureViewport(&m.responseViewport, strings.Join(m.responseViewLines(), "\n"))
 		}
 
-		return m, nil
+		return m.continuePrerequisiteRun(msg)
 
 	case WorkflowMsg:
 		m.workflowState = msg.State
@@ -184,6 +180,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case VimCollectionEditCompleteMsg:
 		m = m.applyVimCollectionEdit(msg)
+		return m, nil
+
+	case VimDependenciesEditCompleteMsg:
+		m = m.applyVimDependenciesEdit(msg)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -511,7 +511,7 @@ func treeFolderKey(parentPath []string, name string) string {
 // whose treeFolderKey is present in expanded. It returns display strings and,
 // in parallel, the folder path each flattened entry actually lives in (which
 // differs from the caller's own breadcrumb once a nested folder is expanded).
-func buildTreeView(items []postman.Item, parentPath []string, depth int, expanded map[string]bool) ([]string, []postman.Item, [][]string) {
+func (m Model) buildTreeView(items []postman.Item, parentPath []string, depth int, expanded map[string]bool) ([]string, []postman.Item, [][]string) {
 	var display []string
 	var flat []postman.Item
 	var paths [][]string
@@ -530,13 +530,13 @@ func buildTreeView(items []postman.Item, parentPath []string, depth int, expande
 			}
 		}
 
-		display = append(display, indent+itemDisplayPrefix(item)+marker+item.Name)
+		display = append(display, indent+m.itemDisplayPrefix(item)+marker+item.Name)
 		flat = append(flat, item)
 		paths = append(paths, slices.Clone(parentPath))
 
 		if isExpandedFolder {
 			childPath := append(slices.Clone(parentPath), item.Name)
-			childDisplay, childFlat, childPaths := buildTreeView(item.Items, childPath, depth+1, expanded)
+			childDisplay, childFlat, childPaths := m.buildTreeView(item.Items, childPath, depth+1, expanded)
 			display = append(display, childDisplay...)
 			flat = append(flat, childFlat...)
 			paths = append(paths, childPaths...)
@@ -551,7 +551,7 @@ func buildTreeView(items []postman.Item, parentPath []string, depth int, expande
 // expanded in m.expandedFolders.
 func (m Model) applyTreeItems(items []postman.Item, itemsFolderPath []string) Model {
 	m = m.ensureSavedWorkflowIDs()
-	display, flat, paths := buildTreeView(items, itemsFolderPath, 0, m.expandedFolders)
+	display, flat, paths := m.buildTreeView(items, itemsFolderPath, 0, m.expandedFolders)
 	m.items = display
 	m.currentItems = flat
 	m.currentItemPaths = paths
@@ -686,18 +686,12 @@ func (m Model) currentRequestsBase() []postman.Item {
 	return base
 }
 
-func itemDisplayPrefix(item postman.Item) string {
+func (m Model) itemDisplayPrefix(item postman.Item) string {
 	if item.IsFolder() {
 		return "[DIR] "
 	}
-	if item.IsServiceBus() {
-		return "[ASB] "
-	}
-	if item.IsAMQP() {
-		return "[AMQP] "
-	}
-	if item.IsRequest() {
-		return fmt.Sprintf("[%s] ", item.Request.Method)
+	if requestProtocol, err := m.protocols.For(&item); err == nil {
+		return fmt.Sprintf("[%s] ", requestProtocol.Label(item.Request))
 	}
 	return "[???] "
 }
@@ -840,33 +834,24 @@ func (m Model) handleSelection() Model {
 }
 
 func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	if !item.IsRequest() || item.Request == nil {
-		m.statusMessage = "Cannot execute: not a request"
+	requestProtocol, err := m.protocols.For(&item)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Cannot execute: %v", err)
 		return m, nil
-	}
-
-	if item.IsServiceBus() {
-		return m.executeServiceBusRequest(item, folderPath)
-	}
-
-	if item.IsAMQP() {
-		return m.executeAMQPRequest(item, folderPath)
 	}
 
 	itemID := m.requestItemID(folderPath, item.Name)
 	requestToExecute := item.Request
 	isModified := m.isItemModified(itemID)
+	sendingStatus := "Sending"
 
 	if isModified {
 		if modifiedReq, exists := m.modifiedRequests[itemID]; exists {
 			requestToExecute = modifiedReq
-			m.statusMessage = fmt.Sprintf("Sending (unsaved): %s %s", requestToExecute.Method, item.Name)
-		} else {
-			m.statusMessage = fmt.Sprintf("Sending: %s %s", item.Request.Method, item.Name)
+			sendingStatus = "Sending (unsaved)"
 		}
-	} else {
-		m.statusMessage = fmt.Sprintf("Sending: %s %s", item.Request.Method, item.Name)
 	}
+	m.statusMessage = fmt.Sprintf("%s: %s %s", sendingStatus, requestProtocol.Label(requestToExecute), item.Name)
 
 	if stored, ok := m.requestPathParams[itemID]; ok && len(stored) > 0 {
 		requestToExecute = applyPathParamsToReq(requestToExecute, stored)
@@ -882,7 +867,6 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 
 	variables := m.variablesAt(folderPath)
 
-	executor := m.executorFor(item)
 	collection, collectionPath := m.collectionScope(folderPath)
 	environment := m.environment
 	environmentName := m.environmentName()
@@ -899,7 +883,7 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 	m.inFlightRequests[itemID] = cancel
 
 	return m, func() tea.Msg {
-		response, testResult := executor.ExecuteContext(ctx, requestToExecute, scope, variables)
+		response, testResult := requestProtocol.Execute(ctx, requestToExecute, scope, variables)
 
 		return RequestCompleteMsg{
 			Cancelled:       errors.Is(ctx.Err(), context.Canceled),
@@ -909,91 +893,9 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 			Collection:      collection,
 			Environment:     environment,
 			EnvironmentName: environmentName,
-			Protocol:        protocolFor(item),
+			Protocol:        requestProtocol.Name(),
 			ItemName:        item.Name,
 			IsModified:      isModified,
-		}
-	}
-}
-
-func protocolFor(item postman.Item) history.Protocol {
-	if item.IsGRPC() {
-		return history.ProtocolGRPC
-	}
-	return history.ProtocolHTTP
-}
-
-func (m Model) executorFor(item postman.Item) requestExecutor {
-	if item.IsGRPC() {
-		return m.grpcExecutor
-	}
-	return m.executor
-}
-
-func (m Model) executeServiceBusRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	return m.executeProtocolItem(item, folderPath, history.ProtocolServiceBus, "Sending ASB message", servicebus.SendContext)
-}
-
-func (m Model) executeAMQPRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	return m.executeProtocolItem(item, folderPath, history.ProtocolAMQP, "Publishing AMQP message", amqp.PublishContext)
-}
-
-// executeProtocolItem runs pre-request scripts, then sends a non-HTTP request with send.
-func (m Model) executeProtocolItem(
-	item postman.Item,
-	folderPath []string,
-	protocol history.Protocol,
-	statusPrefix string,
-	send requestSender,
-) (Model, tea.Cmd) {
-	itemID := m.requestItemID(folderPath, item.Name)
-	m.statusMessage = fmt.Sprintf("%s: %s", statusPrefix, item.Name)
-	m.requestExecutions[itemID] = &RequestExecution{
-		Status:    statusSending,
-		Timestamp: time.Now(),
-	}
-
-	collection, collectionPath := m.collectionScope(folderPath)
-	environment := m.environment
-	environmentName := m.environmentName()
-	itemCopy := item
-	scope := script.RequestScope{
-		Collection:  collection,
-		Environment: environment,
-		FolderPath:  slices.Clone(collectionPath),
-		Item:        &itemCopy,
-		Sender:      m.executor.SendRequest,
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	m.inFlightRequests[itemID] = cancel
-
-	return m, func() tea.Msg {
-		// Pre-request scripts can set variables (e.g. generate IDs) or skip the send.
-		request, preResult := script.NewRequestRun(scope).PreRequest(itemCopy.Request)
-		if preResult.Skipped {
-			return RequestCompleteMsg{
-				ItemID:      itemID,
-				Response:    &internalhttp.Response{Skipped: true, Status: internalhttp.SkippedStatus},
-				TestResult:  preResult,
-				Collection:  collection,
-				Environment: environment,
-				ItemName:    itemCopy.Name,
-			}
-		}
-
-		variables := postman.GetAllVariables(collection, collectionPath, environment)
-		resp := send(ctx, request, variables)
-		return RequestCompleteMsg{
-			Cancelled:       errors.Is(ctx.Err(), context.Canceled),
-			ItemID:          itemID,
-			Response:        resp,
-			TestResult:      preResult,
-			Collection:      collection,
-			Environment:     environment,
-			EnvironmentName: environmentName,
-			Protocol:        protocol,
-			ItemName:        itemCopy.Name,
 		}
 	}
 }
@@ -1109,7 +1011,7 @@ func (m Model) applyFavoritesView() Model {
 		if len(paths[i]) > 0 {
 			label = strings.Join(paths[i], " / ") + " / " + item.Name
 		}
-		display[i] = itemDisplayPrefix(item) + label
+		display[i] = m.itemDisplayPrefix(item) + label
 	}
 
 	m.items = display
@@ -1227,12 +1129,12 @@ func (m Model) searchItemsRecursive(items []postman.Item, query string, parentPa
 				}
 			}
 			if matches {
-				displayItems = append(displayItems, itemDisplayPrefix(item)+fullPath)
+				displayItems = append(displayItems, m.itemDisplayPrefix(item)+fullPath)
 				foundItems = append(foundItems, item)
 				indices = append(indices, idx)
 			}
 		} else if item.IsRequest() && matches {
-			displayItems = append(displayItems, itemDisplayPrefix(item)+fullPath)
+			displayItems = append(displayItems, m.itemDisplayPrefix(item)+fullPath)
 			foundItems = append(foundItems, item)
 			indices = append(indices, idx)
 		}
@@ -2907,7 +2809,12 @@ func (m Model) startWorkflowPartial(wf *workflow.Workflow, fromIdx, toIdx int) (
 
 // resolveStepItem finds the postman.Item for a workflow step by traversing the collection.
 func (m Model) resolveStepItem(requestPath string) (*postman.Item, []string, error) {
-	collection := m.workflowCollection()
+	return resolveItemPath(m.workflowCollection(), requestPath)
+}
+
+// resolveItemPath finds the item at requestPath ("Folder/Request") in collection
+// and returns it with its folder path.
+func resolveItemPath(collection *postman.Collection, requestPath string) (*postman.Item, []string, error) {
 	if collection == nil {
 		return nil, nil, fmt.Errorf("no collection loaded")
 	}

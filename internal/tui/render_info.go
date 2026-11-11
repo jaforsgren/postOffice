@@ -195,6 +195,7 @@ func (m Model) buildRequestInfoLines() []string {
 		lines = append(lines, "  gRPC Request")
 		lines = append(lines, "")
 		lines = append(lines, m.buildGRPCInfoSection(req)...)
+		lines = append(lines, m.buildDependenciesSection()...)
 		lines = append(lines, m.buildScriptsSection()...)
 		lines = append(lines, m.buildDescriptionSection()...)
 		return lines
@@ -210,6 +211,7 @@ func (m Model) buildRequestInfoLines() []string {
 	lines = append(lines, m.buildURLSection(req, variables)...)
 	lines = append(lines, m.buildHeadersSection(req, variables)...)
 	lines = append(lines, m.buildBodySection(req, variables)...)
+	lines = append(lines, m.buildDependenciesSection()...)
 	lines = append(lines, m.buildScriptsSection()...)
 	lines = append(lines, m.buildDescriptionSection()...)
 
