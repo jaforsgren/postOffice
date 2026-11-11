@@ -41,6 +41,7 @@ const (
 	ModeHistory
 	ModeHistoryDiff
 	ModeTiming
+	ModeDependencyGraph
 )
 
 type GRPCReflectPhase int
@@ -290,6 +291,7 @@ type Model struct {
 	favoritesReturnCursor int
 
 	prerequisiteRun *prerequisiteRun
+	dependencyGraph dependencyGraphView
 }
 
 // GRPCReflectMsg carries the result of an async gRPC server reflection call.

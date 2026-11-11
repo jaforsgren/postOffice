@@ -33,6 +33,9 @@ type Requirement struct {
 type SessionState interface {
 	// LastSuccess returns when the request last completed, if that run was successful this session.
 	LastSuccess(requestPath string) (time.Time, bool)
+	// LastFailure says why the request's last completed run this session was not
+	// successful, or returns "" when it succeeded or has not completed.
+	LastFailure(requestPath string) string
 	// VariableSet reports whether the variable currently resolves to a non-empty value.
 	VariableSet(name string) bool
 	// ChangedInputs returns the variables the request used in its last successful
@@ -47,6 +50,7 @@ type StaleReason int
 const (
 	Fresh StaleReason = iota
 	NeverRan
+	Failed
 	Expired
 	ProducedUnset
 	InputsChanged
@@ -54,10 +58,22 @@ const (
 )
 
 // Staleness is the verdict on one requirement. Variables lists the unset,
-// changed or missing variables; Age and MaxAge are set for Expired.
+// changed or missing variables; Age and MaxAge are set for Expired and Failure for Failed.
 type Staleness struct {
 	Reason    StaleReason
 	Variables []string
 	Age       time.Duration
 	MaxAge    time.Duration
+	Failure   string
+}
+
+// PlanStep is one request in a target's execution order.
+type PlanStep struct {
+	Request string
+	// Staleness is the first stale verdict among the requirements naming this
+	// request, or fresh when all of them are fresh. It is fresh for the target.
+	Staleness Staleness
+	// Runs reports whether running the target with its prerequisites sends this
+	// request: the target always, a stale prerequisite unless only fresh requests need it.
+	Runs bool
 }

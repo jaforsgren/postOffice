@@ -311,6 +311,8 @@ func (m Model) getModeString() string {
 		return "History Diff"
 	case ModeTiming:
 		return "Timing"
+	case ModeDependencyGraph:
+		return "Dependency Graph"
 	default:
 		return ""
 	}
@@ -432,6 +434,8 @@ func (m Model) renderStatusBar() string {
 		help = "q: quit | ↑↓/jk: navigate | space: toggle active | enter: select | backspace/h: back | /: search | :: command"
 	case ModeHistory:
 		help = "enter: replay | d: diff vs current | esc: back | j/k: navigate"
+	case ModeDependencyGraph:
+		help = "enter: jump to request | " + runWithPrerequisitesKey + ": run with prerequisites | esc: back | j/k: navigate"
 	default:
 		help = "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
 	}

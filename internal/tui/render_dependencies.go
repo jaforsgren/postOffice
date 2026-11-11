@@ -79,23 +79,34 @@ func (m Model) dependencyEdges(scope dependencyScope, graph *dependency.Graph, n
 		edges = append(edges, edge+" "+prerequisiteStatus(scope, graph, required, state))
 	}
 	for _, name := range node.Produces {
-		status := dependencyStatusTag(dependencyOKStyle, variableSet)
-		if !state.VariableSet(name) {
-			status = dependencyStatusTag(dependencyWarningStyle, variableUnset)
-		}
-		edges = append(edges, dependencyProducesLabel+name+" "+status)
+		edges = append(edges, dependencyProducesLabel+name+" "+producedVariableStatus(name, state))
 	}
 	return edges
+}
+
+func producedVariableStatus(name string, state dependency.SessionState) string {
+	if !state.VariableSet(name) {
+		return dependencyStatusTag(dependencyWarningStyle, variableUnset)
+	}
+	return dependencyStatusTag(dependencyOKStyle, variableSet)
 }
 
 func prerequisiteStatus(scope dependencyScope, graph *dependency.Graph, required dependency.Requirement, state dependency.SessionState) string {
 	if !scope.requestExists(required.Request) {
 		return dependencyStatusTag(dependencyErrorStyle, prerequisiteMissing)
 	}
-	if staleness := graph.Staleness(required, state); staleness.IsStale() {
-		return dependencyStatusTag(dependencyWarningStyle, prerequisiteStale+": "+staleness.String())
+	return stalenessTag(graph.Staleness(required, state))
+}
+
+// stalenessTag shows a failed last run as an error and any other stale verdict as a warning.
+func stalenessTag(staleness dependency.Staleness) string {
+	switch staleness.Reason {
+	case dependency.Fresh:
+		return dependencyStatusTag(dependencyOKStyle, prerequisiteFresh)
+	case dependency.Failed:
+		return dependencyStatusTag(dependencyErrorStyle, prerequisiteStale+": "+staleness.String())
 	}
-	return dependencyStatusTag(dependencyOKStyle, prerequisiteFresh)
+	return dependencyStatusTag(dependencyWarningStyle, prerequisiteStale+": "+staleness.String())
 }
 
 func dependencyStatusTag(style lipgloss.Style, status string) string {

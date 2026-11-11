@@ -226,6 +226,14 @@ func (cr *CommandRegistry) registerCommands() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeHistory},
 		},
 		{
+			Name:        "dependencies",
+			Aliases:     []string{"deps"},
+			Description: "Show the selected request's dependency graph",
+			ShortHelp:   ":deps",
+			Handler:     handleDependencyGraphCommand,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Name:        "timing",
 			Aliases:     []string{"t"},
 			Description: "Show timing breakdown of the response",
@@ -319,6 +327,27 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Repeatable:  true,
 		},
 		{
+			Keys:        []string{dependencyGraphKey},
+			Description: "Show dependency graph",
+			ShortHelp:   dependencyGraphKey,
+			Handler:     handleDependencyGraphKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{"enter"},
+			Description: "Jump to request",
+			ShortHelp:   "enter",
+			Handler:     Model.jumpToDependencyGraphRequest,
+			AvailableIn: []ViewMode{ModeDependencyGraph},
+		},
+		{
+			Keys:        []string{runWithPrerequisitesKey},
+			Description: "Run stale prerequisites, then request",
+			ShortHelp:   runWithPrerequisitesKey,
+			Handler:     handleDependencyGraphRunKey,
+			AvailableIn: []ViewMode{ModeDependencyGraph},
+		},
+		{
 			Keys:        []string{editDependenciesKey},
 			Description: "Edit request dependencies in editor",
 			ShortHelp:   editDependenciesKey,
@@ -365,7 +394,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHelp, ModeHistory, ModeHistoryDiff, ModeTiming},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHelp, ModeHistory, ModeHistoryDiff, ModeTiming, ModeDependencyGraph},
 		},
 		{
 			Keys:        []string{"q"},
@@ -379,14 +408,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Navigate up",
 			ShortHelp:   "j/k",
 			Handler:     handleUpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory, ModeDependencyGraph},
 		},
 		{
 			Keys:        []string{"down", "j"},
 			Description: "Scroll/Navigate",
 			ShortHelp:   "j/k",
 			Handler:     handleDownKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory, ModeDependencyGraph},
 		},
 		{
 			Keys:        []string{"a"},
@@ -574,14 +603,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Show help",
 			ShortHelp:   "?",
 			Handler:     handleHelpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail, ModeResponse, ModeInfo, ModeChanges, ModeHistory},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail, ModeResponse, ModeInfo, ModeChanges, ModeHistory, ModeDependencyGraph},
 		},
 		{
 			Keys:        []string{"q"},
 			Description: "Close view",
 			ShortHelp:   "q",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeSavedResponses, ModeHistory, ModeHistoryDiff, ModeTiming},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeSavedResponses, ModeHistory, ModeHistoryDiff, ModeTiming, ModeDependencyGraph},
 		},
 		{
 			Keys:        []string{"g"},
@@ -1439,6 +1468,8 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.mode = ModeResponse
 		m.statusMessage = ""
 		return m, nil
+	case ModeDependencyGraph:
+		return m.closeDependencyGraph()
 	}
 
 	if m.addingWorkflowStep {
@@ -1490,6 +1521,9 @@ func handleUpKey(m Model) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.mode == ModeDependencyGraph {
+		return m.moveDependencyGraphCursor(-1), nil
+	}
 	if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
 		if m.envVarCursor > 0 {
 			m.envVarCursor--
@@ -1536,6 +1570,9 @@ func handleDownKey(m Model) (Model, tea.Cmd) {
 			m.requestHistoryCursor++
 		}
 		return m, nil
+	}
+	if m.mode == ModeDependencyGraph {
+		return m.moveDependencyGraphCursor(1), nil
 	}
 	if m.mode == ModeInfo && m.previousMode == ModeEnvironments && m.environment != nil {
 		if m.envVarCursor < len(m.environment.Values)-1 {

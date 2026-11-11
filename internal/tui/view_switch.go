@@ -15,7 +15,7 @@ const (
 var viewSwitchModes = []ViewMode{
 	ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges,
 	ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeSavedResponses, ModeHistory,
-	ModeWorkflows, ModeWorkflowDetail, ModeWorkflowRun,
+	ModeWorkflows, ModeWorkflowDetail, ModeWorkflowRun, ModeDependencyGraph,
 }
 
 // viewSwitchBindings bind each view key to the command opening that view.

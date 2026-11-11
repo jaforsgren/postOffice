@@ -117,6 +117,15 @@ func (s sessionDependencyState) LastSuccess(requestPath string) (time.Time, bool
 	return execution.Timestamp, true
 }
 
+// LastFailure leaves out a request still being sent, which has no response yet.
+func (s sessionDependencyState) LastFailure(requestPath string) string {
+	execution, exists := s.execution(requestPath)
+	if !exists || execution.Response == nil {
+		return ""
+	}
+	return executionFailure(execution.Response, execution.TestResult)
+}
+
 func (s sessionDependencyState) VariableSet(name string) bool {
 	return variableValue(s.variables, name) != ""
 }

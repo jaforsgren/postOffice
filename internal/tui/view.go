@@ -83,6 +83,9 @@ func (m Model) renderContent() []string {
 	case ModeTiming:
 		return []string{m.renderTimingPopup()}
 
+	case ModeDependencyGraph:
+		return []string{m.renderDependencyGraphView()}
+
 	default:
 		return []string{m.renderMainWindow()}
 	}

@@ -22,6 +22,9 @@ func (g *Graph) Staleness(requirement Requirement, state SessionState) Staleness
 
 	lastSuccess, ran := state.LastSuccess(requirement.Request)
 	if !ran {
+		if failure := state.LastFailure(requirement.Request); failure != "" {
+			return Staleness{Reason: Failed, Failure: failure}
+		}
 		return Staleness{Reason: NeverRan}
 	}
 	if age := state.Now().Sub(lastSuccess); requirement.MaxAge > 0 && age > requirement.MaxAge {
@@ -74,6 +77,8 @@ func (s Staleness) String() string {
 	switch s.Reason {
 	case NeverRan:
 		return "not run this session"
+	case Failed:
+		return "last run failed: " + s.Failure
 	case Expired:
 		return fmt.Sprintf("ran %s ago, %s %s", formatDuration(s.Age.Round(time.Second)), maxAgeKey, formatDuration(s.MaxAge))
 	case ProducedUnset:

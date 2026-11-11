@@ -70,6 +70,7 @@ V         Edit used variables
 ctrl+e    Re-execute / run folder
 P         Run stale prerequisites, then request
 L         Edit request dependencies
+M         Dependency graph
 ctrl+x    Cancel the request being sent
 z         Expand/collapse folder in place
 Z         Expand/collapse all folders
@@ -112,6 +113,7 @@ Press `:` to enter command mode.
 :changes        Unsaved changes
 :session        Restore the last session
 :hist           Request history
+:deps           Dependency graph of the selected request
 :t              Timing breakdown (response view)
 :w              Save
 :wq             Save and quit
@@ -340,6 +342,7 @@ requests:
 ```
 P         Run stale prerequisites in dependency order, then the request
 L         Edit the dependency file in $EDITOR (adds an entry for the selected request)
+M         Show the dependency graph (also :deps)
 ```
 
 Fresh prerequisites are skipped. A failing or cancelled prerequisite stops the chain, and so does one that leaves a produced variable unset.
@@ -353,6 +356,28 @@ Get User
 ```
 
 Unknown paths and cycles are reported and block `P` until fixed.
+
+### Dependency graph
+
+`M` (or `:deps`) on a request opens its whole dependency graph:
+
+```
+Execution order (P sends the numbered requests, – are skipped):
+▶  1. Users/List (stale: not run this session)
+   –. Auth/Login (fresh)
+   2. Users/Get User target
+
+Requires:
+   Users/Get User
+   ├── Users/Profile (stale: last run failed: status 500)
+   │   └── Auth/Login (fresh)
+   └── Auth/Login [max_age 1h] (fresh) (prerequisites shown above)
+```
+
+- The execution order is every transitive prerequisite in the order `P` runs them. Numbered rows are sent; `–` rows are fresh or only needed by fresh requests.
+- Each requires edge shows its rules and status: fresh, stale with the reason, failed (red) or missing. A request already expanded is not expanded again, and an edge back up the path is marked `↻ cycle`.
+- Cycles and unknown paths are listed under Problems before anything runs; the execution order is left out while the graph has a cycle.
+- `j`/`k` select a request, `enter` jumps to it in the requests view, `P` runs the target with its prerequisites (the graph updates as they complete) and `esc`/`q` go back.
 
 In the combined view, a request's dependencies come from its own collection's file.
 

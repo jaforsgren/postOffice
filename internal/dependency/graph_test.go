@@ -17,6 +17,7 @@ const (
 
 type fakeSession struct {
 	succeeded map[string]time.Time
+	failed    map[string]string
 	variables map[string]bool
 	changed   map[string][]string
 	now       time.Time
@@ -26,6 +27,7 @@ func (s fakeSession) LastSuccess(requestPath string) (time.Time, bool) {
 	at, ok := s.succeeded[requestPath]
 	return at, ok
 }
+func (s fakeSession) LastFailure(requestPath string) string     { return s.failed[requestPath] }
 func (s fakeSession) VariableSet(name string) bool              { return s.variables[name] }
 func (s fakeSession) ChangedInputs(requestPath string) []string { return s.changed[requestPath] }
 func (s fakeSession) Now() time.Time                            { return s.now }
@@ -36,6 +38,7 @@ func (s fakeSession) succeed(requestPath string, ago time.Duration) {
 func newFakeSession() fakeSession {
 	return fakeSession{
 		succeeded: map[string]time.Time{},
+		failed:    map[string]string{},
 		variables: map[string]bool{},
 		changed:   map[string][]string{},
 		now:       time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
@@ -74,6 +77,12 @@ func TestStaleness(t *testing.T) {
 			requirement: Requirement{Request: loginPath},
 			arrange:     func(s fakeSession) { s.variables[tokenVar] = true },
 			want:        Staleness{Reason: NeverRan},
+		},
+		{
+			name:        "last run failed",
+			requirement: Requirement{Request: loginPath},
+			arrange:     func(s fakeSession) { s.failed[loginPath] = "status 500" },
+			want:        Staleness{Reason: Failed, Failure: "status 500"},
 		},
 		{
 			name:        "ran but produced variable empty",
@@ -175,6 +184,7 @@ func TestStaleness_String(t *testing.T) {
 	}{
 		{Staleness{}, "fresh"},
 		{Staleness{Reason: NeverRan}, "not run this session"},
+		{Staleness{Reason: Failed, Failure: "status 500"}, "last run failed: status 500"},
 		{Staleness{Reason: Expired, Age: 62*time.Minute + 400*time.Millisecond, MaxAge: time.Hour}, "ran 1h2m ago, max_age 1h"},
 		{Staleness{Reason: ProducedUnset, Variables: []string{tokenVar}}, "token unset"},
 		{Staleness{Reason: InputsChanged, Variables: []string{"username", "password"}}, "inputs changed: username, password"},
@@ -395,5 +405,69 @@ func TestRequirementRules(t *testing.T) {
 		if got := tt.requirement.Rules(); got != tt.want {
 			t.Errorf("Rules() = %q, want %q", got, tt.want)
 		}
+	}
+}
+
+func TestPlan(t *testing.T) {
+	s := newFakeSession()
+	s.succeed(loginPath, time.Minute)
+	s.variables[tokenVar] = true
+
+	got, err := chainGraph().Plan(getUserPath, s)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []PlanStep{
+		{Request: loginPath, Runs: false},
+		{Request: profilePath, Staleness: Staleness{Reason: NeverRan}, Runs: true},
+		{Request: getUserPath, Runs: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Plan = %+v, want %+v", got, want)
+	}
+}
+
+func TestPlan_StalePrerequisiteBehindFreshOneDoesNotRun(t *testing.T) {
+	s := newFakeSession()
+	s.succeed(profilePath, time.Minute)
+	s.variables[userIDVar] = true
+	g := &Graph{Requests: map[string]Node{
+		profilePath: {Requires: requires(loginPath), Produces: []string{userIDVar}},
+		getUserPath: {Requires: requires(profilePath)},
+	}}
+
+	got, err := g.Plan(getUserPath, s)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got[0].Request != loginPath || !got[0].Staleness.IsStale() || got[0].Runs {
+		t.Errorf("expected a stale %s that does not run, got %+v", loginPath, got[0])
+	}
+}
+
+func TestPlan_UsesTheFirstStaleRequirement(t *testing.T) {
+	s := newFakeSession()
+	s.succeed(loginPath, 2*time.Hour)
+	s.variables[tokenVar] = true
+	g := &Graph{Requests: map[string]Node{
+		loginPath:   {Produces: []string{tokenVar}},
+		profilePath: {Requires: requires(loginPath)},
+		getUserPath: {Requires: []Requirement{{Request: profilePath}, {Request: loginPath, MaxAge: time.Hour}}},
+	}}
+
+	got, err := g.Plan(getUserPath, s)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got[0].Request != loginPath || got[0].Staleness.Reason != Expired {
+		t.Errorf("expected %s expired through the max_age requirement, got %+v", loginPath, got[0])
+	}
+}
+
+func TestPlan_Cycle(t *testing.T) {
+	g := &Graph{Requests: map[string]Node{loginPath: {Requires: requires(loginPath)}}}
+	var cycleErr *CycleError
+	if _, err := g.Plan(loginPath, newFakeSession()); !errors.As(err, &cycleErr) {
+		t.Fatalf("expected CycleError, got %v", err)
 	}
 }

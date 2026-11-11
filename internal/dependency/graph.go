@@ -55,6 +55,43 @@ func (g *Graph) StalePrerequisites(target string, state SessionState) ([]string,
 	return w.order[:len(w.order)-1], nil
 }
 
+// Plan returns every transitive prerequisite of target in execution order,
+// followed by target, marking which ones a run with prerequisites would send.
+func (g *Graph) Plan(target string, state SessionState) ([]PlanStep, error) {
+	w := newWalker(g, func(string, Requirement) bool { return true })
+	if err := w.visit(target); err != nil {
+		return nil, err
+	}
+	stale, err := g.StalePrerequisites(target, state)
+	if err != nil {
+		return nil, err
+	}
+
+	steps := make([]PlanStep, len(w.order))
+	for i, path := range w.order {
+		steps[i] = PlanStep{Request: path, Runs: path == target || slices.Contains(stale, path)}
+		if path != target {
+			steps[i].Staleness = g.requiredStaleness(path, w.order, state)
+		}
+	}
+	return steps, nil
+}
+
+// requiredStaleness is the first stale verdict among the requirements of requirers naming path.
+func (g *Graph) requiredStaleness(path string, requirers []string, state SessionState) Staleness {
+	for _, requirer := range requirers {
+		for _, required := range g.Requests[requirer].Requires {
+			if required.Request != path {
+				continue
+			}
+			if staleness := g.Staleness(required, state); staleness.IsStale() {
+				return staleness
+			}
+		}
+	}
+	return Staleness{}
+}
+
 // RefreshPrerequisites returns what to run again before retrying requestPath after it
 // answered with status: every direct requirement listing status in refresh_on, fresh or
 // not, preceded by its own stale prerequisites, in execution order. It is empty when no
