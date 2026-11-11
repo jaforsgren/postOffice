@@ -610,9 +610,9 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests, ModeResponse, ModeInfo},
 		},
 		{
-			Keys:        []string{openRequestReportKey},
+			Keys:        []string{openReportKey},
 			Description: "Open request info, response and logs in editor",
-			ShortHelp:   openRequestReportKey,
+			ShortHelp:   openReportKey,
 			Handler:     handleOpenRequestReportKey,
 			AvailableIn: []ViewMode{ModeResponse, ModeInfo},
 		},
@@ -680,9 +680,9 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeWorkflows, ModeWorkflowDetail},
 		},
 		{
-			Keys:        []string{"L"},
+			Keys:        []string{openReportKey},
 			Description: "Open run report (steps + logs) in editor",
-			ShortHelp:   "L",
+			ShortHelp:   openReportKey,
 			Handler:     Model.openRunInEditor,
 			AvailableIn: []ViewMode{ModeWorkflowDetail, ModeWorkflowRun},
 		},

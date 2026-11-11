@@ -26,8 +26,9 @@ const (
 	yankURLKey     = "y"
 )
 
-// openRequestReportKey opens the request report in the editor from the read-only views.
-const openRequestReportKey = "ctrl+g"
+// openReportKey opens a read-only report (request info and response, or a
+// workflow run) in the editor. ctrl+g is kept for editing files.
+const openReportKey = "o"
 
 const yankPendingMessage = "yank: a request+response · b body · r curl/grpcurl · y url"
 

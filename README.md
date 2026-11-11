@@ -87,7 +87,7 @@ ya        Copy request + response
 yb        Copy response body
 yr        Copy as curl/grpcurl
 yy        Copy resolved URL
-ctrl+g    Open Markdown report
+o         Open Markdown report
 ```
 
 ## Commands
@@ -264,7 +264,7 @@ enter           Step response
 |               Step panel ([ / ] scroll it)
 i               Step info
 ctrl+d          Delete step
-L               Open run report
+o               Open run report
 ```
 
 Reports open in `$VISUAL`, `$EDITOR`, or `nvim`.

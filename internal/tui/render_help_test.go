@@ -140,7 +140,7 @@ func TestBuildHelpGroups_IncludesShortcutsFromNewViews(t *testing.T) {
 
 	cases := map[string]string{
 		"Requests":     "<tab>",
-		"Workflow Run": "<L>",
+		"Workflow Run": "<" + openReportKey + ">",
 	}
 	for group, key := range cases {
 		if !slices.Contains(keysByGroup[group], key) {
