@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"postOffice/internal/postman"
@@ -23,7 +24,7 @@ func okHandler(w http.ResponseWriter, _ *http.Request) {
 
 func executeGET(t *testing.T, executor *Executor, url string) *Response {
 	t.Helper()
-	resp, _ := executor.Execute(&postman.Request{Method: "GET", URL: postman.URL{Raw: url}}, nil, nil)
+	resp, _ := executor.ExecuteContext(context.Background(), &postman.Request{Method: "GET", URL: postman.URL{Raw: url}}, nil, nil)
 	if resp.Error != nil {
 		t.Fatalf("request failed: %v", resp.Error)
 	}
@@ -140,7 +141,7 @@ func TestExecute_TimingOmitsUnreachedPhasesOnFailure(t *testing.T) {
 	url := server.URL
 	server.Close()
 
-	resp, _ := NewExecutor().Execute(&postman.Request{Method: "GET", URL: postman.URL{Raw: url}}, nil, nil)
+	resp, _ := NewExecutor().ExecuteContext(context.Background(), &postman.Request{Method: "GET", URL: postman.URL{Raw: url}}, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected connection error")
 	}

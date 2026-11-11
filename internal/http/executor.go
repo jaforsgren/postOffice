@@ -52,20 +52,11 @@ func NewExecutor() *Executor {
 	}
 }
 
-// Execute sends req. With a non-nil scope it first runs the collection →
-// folder → request pre-request scripts (which may rewrite or skip the
-// request), and afterwards the test scripts, returning their combined result.
-// Without a scope no scripts run and the result is nil.
-func (e *Executor) Execute(
-	req *postman.Request,
-	scope *script.RequestScope,
-	variables []postman.VariableSource,
-) (*Response, *script.TestResult) {
-	return e.ExecuteContext(context.Background(), req, scope, variables)
-}
-
-// ExecuteContext is Execute with the HTTP exchange cancelled when ctx is.
-// Scripts are not interrupted; they have their own timeout.
+// ExecuteContext sends req, cancelling the HTTP exchange when ctx is. With a
+// non-nil scope it first runs the collection → folder → request pre-request
+// scripts (which may rewrite or skip the request), and afterwards the test
+// scripts, returning their combined result. Without a scope no scripts run
+// and the result is nil. Scripts are not interrupted; they have their own timeout.
 func (e *Executor) ExecuteContext(
 	ctx context.Context,
 	req *postman.Request,

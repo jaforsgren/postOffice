@@ -29,7 +29,7 @@ const (
 	PhasePublish     = "Publish"
 )
 
-// Publish sends a message to an AMQP broker described by req.
+// PublishContext sends a message to an AMQP broker described by req.
 //
 // URL format: amqp://host:port/queue or amqps://host:port/queue
 // The queue segment of the URL is the default routing key unless
@@ -42,12 +42,8 @@ const (
 //   - Message-Id: custom message ID
 //
 // All other request headers are forwarded as AMQP message headers.
-// The request body becomes the message body.
-func Publish(req *postman.Request, variables []postman.VariableSource) *http.Response {
-	return PublishContext(context.Background(), req, variables)
-}
-
-// PublishContext is Publish with connecting and publishing cancelled when ctx is.
+// The request body becomes the message body. Connecting and publishing are
+// cancelled when ctx is.
 func PublishContext(ctx context.Context, req *postman.Request, variables []postman.VariableSource) *http.Response {
 	start := time.Now()
 	resp := &http.Response{
