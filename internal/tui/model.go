@@ -283,6 +283,8 @@ type Model struct {
 	favorites             map[string]bool
 	viewingFavorites      bool
 	favoritesReturnCursor int
+
+	prerequisiteRun *prerequisiteRun
 }
 
 // GRPCReflectMsg carries the result of an async gRPC server reflection call.

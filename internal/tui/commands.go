@@ -311,6 +311,21 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Repeatable:  true,
 		},
 		{
+			Keys:        []string{runWithPrerequisitesKey},
+			Description: "Run stale prerequisites, then request",
+			ShortHelp:   runWithPrerequisitesKey,
+			Handler:     handleRunWithPrerequisitesKey,
+			AvailableIn: []ViewMode{ModeRequests},
+			Repeatable:  true,
+		},
+		{
+			Keys:        []string{editDependenciesKey},
+			Description: "Edit request dependencies in editor",
+			ShortHelp:   editDependenciesKey,
+			Handler:     handleEditDependenciesKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Keys:        []string{runKey},
 			Description: "Resend request (workflows: run)",
 			ShortHelp:   runKey,

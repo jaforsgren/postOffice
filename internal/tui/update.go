@@ -35,7 +35,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case RequestCompleteMsg:
 		if msg.Cancelled {
-			return m.completeCancelledRequest(msg), nil
+			return m.completeCancelledRequest(msg).continuePrerequisiteRun(msg)
 		}
 		m = m.forgetInFlightRequest(msg.ItemID)
 		m.lastResponse = msg.Response
@@ -99,7 +99,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.configureViewport(&m.responseViewport, strings.Join(m.responseViewLines(), "\n"))
 		}
 
-		return m, nil
+		return m.continuePrerequisiteRun(msg)
 
 	case WorkflowMsg:
 		m.workflowState = msg.State
@@ -180,6 +180,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case VimCollectionEditCompleteMsg:
 		m = m.applyVimCollectionEdit(msg)
+		return m, nil
+
+	case VimDependenciesEditCompleteMsg:
+		m = m.applyVimDependenciesEdit(msg)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -2805,7 +2809,12 @@ func (m Model) startWorkflowPartial(wf *workflow.Workflow, fromIdx, toIdx int) (
 
 // resolveStepItem finds the postman.Item for a workflow step by traversing the collection.
 func (m Model) resolveStepItem(requestPath string) (*postman.Item, []string, error) {
-	collection := m.workflowCollection()
+	return resolveItemPath(m.workflowCollection(), requestPath)
+}
+
+// resolveItemPath finds the item at requestPath ("Folder/Request") in collection
+// and returns it with its folder path.
+func resolveItemPath(collection *postman.Collection, requestPath string) (*postman.Item, []string, error) {
 	if collection == nil {
 		return nil, nil, fmt.Errorf("no collection loaded")
 	}

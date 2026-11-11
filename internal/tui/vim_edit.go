@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"postOffice/internal/dependency"
 	"postOffice/internal/postman"
 	"postOffice/internal/workflow"
 )
@@ -680,5 +681,70 @@ func (m Model) applyVimCollectionEdit(msg VimCollectionEditCompleteMsg) Model {
 	}
 
 	m.statusMessage = fmt.Sprintf("Reloaded collection: %s", newCollection.Info.Name)
+	return m
+}
+
+// ── request dependency editing (sidecar YAML next to the collection) ─────────
+
+// VimDependenciesEditCompleteMsg is sent when the editor exits after editing the dependency file.
+// ViewFolderPath is where the cursor was, which picks the collection whose file was edited.
+type VimDependenciesEditCompleteMsg struct {
+	ViewFolderPath []string
+	Err            error
+}
+
+// openVimForDependencies opens the dependency file of the collection holding the
+// cursor, scaffolding an empty entry for the selected request so its
+// requires/produces keys are ready to fill in.
+func (m Model) openVimForDependencies() (Model, tea.Cmd) {
+	viewFolderPath := m.folderPathForCursor()
+	scope, err := m.dependencyScopeAt(viewFolderPath)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Cannot edit dependencies: %v", err)
+		return m, nil
+	}
+
+	if item, ok := m.selectedItem(); ok && item.IsRequest() {
+		if err := scaffoldDependencyEntry(scope, scope.requestPath(viewFolderPath, item.Name)); err != nil {
+			m.statusMessage = fmt.Sprintf("Cannot edit dependencies: %v", err)
+			return m, nil
+		}
+	}
+
+	return m, tea.ExecProcess(exec.Command(editorBin(), scope.filePath), func(err error) tea.Msg {
+		return VimDependenciesEditCompleteMsg{ViewFolderPath: viewFolderPath, Err: err}
+	})
+}
+
+func scaffoldDependencyEntry(scope dependencyScope, requestPath string) error {
+	graph, err := scope.loadGraph()
+	if err != nil {
+		return err
+	}
+	if _, declared := graph.Requests[requestPath]; declared {
+		return nil
+	}
+	graph.Requests[requestPath] = dependency.Node{Requires: []string{}, Produces: []string{}}
+	return dependency.Save(graph, scope.filePath)
+}
+
+func (m Model) applyVimDependenciesEdit(msg VimDependenciesEditCompleteMsg) Model {
+	if msg.Err != nil {
+		m.statusMessage = fmt.Sprintf("Editor error: %v", msg.Err)
+		return m
+	}
+
+	scope, err := m.dependencyScopeAt(msg.ViewFolderPath)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Cannot reload dependencies: %v", err)
+		return m
+	}
+	graph, err := scope.loadValidGraph()
+	if err != nil {
+		m.statusMessage = "Dependencies saved with problems: " + singleLineError(err)
+		return m
+	}
+
+	m.statusMessage = fmt.Sprintf("Reloaded dependencies: %d request(s) declared", len(graph.Requests))
 	return m
 }
