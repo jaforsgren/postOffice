@@ -8,7 +8,7 @@ import (
 )
 
 func jumpBack() tea.KeyMsg    { return tea.KeyMsg{Type: tea.KeyCtrlO} }
-func jumpForward() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyTab} }
+func jumpForward() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyCtrlCloseBracket} }
 
 // openOrders goes from the combined view's top level into B/Orders by keys.
 func openOrders(t *testing.T, m Model) Model {

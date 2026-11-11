@@ -97,10 +97,10 @@ func TestSplitFocus_ScrollStopsAtTheEnds(t *testing.T) {
 func TestSplitFocus_OtherKeysLeaveFocus(t *testing.T) {
 	m := pressKeys(t, splitFocusModel(t), keyRight)
 
-	m = pressKeys(t, m, runes(toggleSplitViewKey))
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyTab})
 
 	if m.splitFocus != splitPaneNone || m.splitViewActive {
-		t.Errorf("expected | to leave focus and close the split view, got focus %v split %v", m.splitFocus, m.splitViewActive)
+		t.Errorf("expected tab to leave focus and close the split view, got focus %v split %v", m.splitFocus, m.splitViewActive)
 	}
 }
 

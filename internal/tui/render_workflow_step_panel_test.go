@@ -138,17 +138,17 @@ func TestGroupLogsByStep_KeepsIterationsApart(t *testing.T) {
 	}
 }
 
-func TestStepPanel_PipeTogglesInWorkflowDetail(t *testing.T) {
+func TestStepPanel_TabTogglesInWorkflowDetail(t *testing.T) {
 	m := panelTestModel()
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(stepPanelKey)})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyTab})
 	if !m.workflowStepPanelOpen {
-		t.Fatal("expected | to open the step panel")
+		t.Fatal("expected tab to open the step panel")
 	}
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(stepPanelKey)})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyTab})
 	if m.workflowStepPanelOpen {
-		t.Fatal("expected a second | to close the step panel")
+		t.Fatal("expected a second tab to close the step panel")
 	}
 }
 

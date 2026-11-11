@@ -44,9 +44,9 @@ enter     Open or execute
 h/esc     Go back
 /         Search (collections, requests, environments, variables, workflows)
 i         Info (also on a collection)
-|         Toggle split view
+tab       Toggle split view
 ctrl+o    Jump back (previous folder or collection, also from other lists)
-ctrl+i    Jump forward (also tab)
+ctrl+]    Jump forward
 O         Reveal the collection/environment file (Finder/Explorer)
 r         Refresh
 ctrl+n    Next environment
@@ -263,7 +263,7 @@ R, ctrl+e       Run all
 .               Repeat the last partial run
 r               Reload workflows from disk
 enter           Step response
-|               Step panel ([ / ] scroll it)
+tab             Step panel ([ / ] scroll it)
 i               Step info
 ctrl+d          Delete step
 o               Open run report

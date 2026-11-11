@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	jumpBackKey     = "ctrl+o"
-	jumpForwardKey  = "tab" // terminals send ctrl+i as tab
-	jumpForwardHelp = "ctrl+i"
+	jumpBackKey = "ctrl+o"
+	// jumpForwardKey stands in for Vim's ctrl+i, which terminals send as tab,
+	// the split view key.
+	jumpForwardKey = "ctrl+]"
 	// maxJumps caps the jumplist, dropping the oldest jumps, like Vim's.
 	maxJumps = 100
 )

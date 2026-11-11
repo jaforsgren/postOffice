@@ -712,7 +712,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		{
 			Keys:        []string{jumpForwardKey},
 			Description: "Jump forward",
-			ShortHelp:   jumpForwardHelp,
+			ShortHelp:   jumpForwardKey,
 			Handler:     handleJumpForwardKey,
 			AvailableIn: jumpModes,
 		},

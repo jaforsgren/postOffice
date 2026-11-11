@@ -25,27 +25,27 @@ func createSplitTestModel() Model {
 	return m
 }
 
-func TestToggleSplitView_PipeTogglesInRequestsMode(t *testing.T) {
+func TestToggleSplitView_TabTogglesInRequestsMode(t *testing.T) {
 	m := createTestModel()
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(toggleSplitViewKey)})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyTab})
 	if !m.splitViewActive {
-		t.Fatal("expected | to enable the split view")
+		t.Fatal("expected tab to enable the split view")
 	}
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(toggleSplitViewKey)})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyTab})
 	if m.splitViewActive {
-		t.Fatal("expected a second | to disable the split view")
+		t.Fatal("expected a second tab to disable the split view")
 	}
 }
 
-func TestToggleSplitView_PipeIgnoredInCollectionsMode(t *testing.T) {
+func TestToggleSplitView_TabIgnoredInCollectionsMode(t *testing.T) {
 	m := createTestModel()
 	m.mode = ModeCollections
 
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(toggleSplitViewKey)})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyTab})
 	if m.splitViewActive {
-		t.Fatal("expected | to leave the split view off outside requests mode")
+		t.Fatal("expected tab to leave the split view off outside requests mode")
 	}
 }
 

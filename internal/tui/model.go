@@ -280,7 +280,7 @@ type Model struct {
 	lastRepeatableKey string
 
 	// jumps is the jumplist of requests view locations, oldest first, with
-	// jumpIndex the position ctrl+o/ctrl+i move from (len(jumps) when not
+	// jumpIndex the position ctrl+o/ctrl+] move from (len(jumps) when not
 	// jumping). lastJumpLocation is where the requests view last was, and
 	// jumping marks a move made by the jumplist itself, which isn't recorded.
 	jumps            []jumpLocation
