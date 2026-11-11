@@ -12,6 +12,7 @@ import (
 	"postOffice/internal/history"
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
+	"postOffice/internal/protocol"
 	"postOffice/internal/textdiff"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -252,15 +253,15 @@ func TestReplay_EmptyHistory(t *testing.T) {
 	}
 }
 
-func TestSenderFor_AllProtocols(t *testing.T) {
+func TestReplayProtocols_AllHistoryProtocols(t *testing.T) {
 	m := sizedTestModel()
-	for _, protocol := range []history.Protocol{history.ProtocolHTTP, history.ProtocolGRPC, history.ProtocolServiceBus, history.ProtocolAMQP} {
-		if send, err := m.senderFor(protocol); err != nil || send == nil {
-			t.Errorf("senderFor(%s) = %v, %v", protocol, send, err)
+	for _, name := range []history.Protocol{history.ProtocolHTTP, history.ProtocolGRPC, history.ProtocolServiceBus, history.ProtocolAMQP} {
+		if requestProtocol, err := m.protocols.Named(name); err != nil || requestProtocol == nil {
+			t.Errorf("Named(%s) = %v, %v", name, requestProtocol, err)
 		}
 	}
-	if _, err := m.senderFor("SMTP"); !errors.Is(err, ErrUnknownProtocol) {
-		t.Errorf("senderFor(SMTP) error = %v, want ErrUnknownProtocol", err)
+	if _, err := m.protocols.Named("SMTP"); !errors.Is(err, protocol.ErrUnknownProtocol) {
+		t.Errorf("Named(SMTP) error = %v, want ErrUnknownProtocol", err)
 	}
 }
 

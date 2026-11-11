@@ -1482,15 +1482,26 @@ func TestItemDisplayPrefix(t *testing.T) {
 			expected: "[GRPC] ",
 		},
 		{
+			name:     "Service Bus prefix",
+			item:     postman.Item{Name: "Order placed", Request: &postman.Request{Method: "POST", URL: postman.URL{Raw: "asb://orders"}}},
+			expected: "[ASB] ",
+		},
+		{
+			name:     "AMQP prefix",
+			item:     postman.Item{Name: "Order placed", Request: &postman.Request{Method: "POST", URL: postman.URL{Raw: "amqp://localhost/orders"}}},
+			expected: "[AMQP] ",
+		},
+		{
 			name:     "Unknown item prefix",
 			item:     postman.Item{Name: "Unknown"},
 			expected: "[???] ",
 		},
 	}
 
+	m := createTestModel()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := itemDisplayPrefix(tt.item)
+			result := m.itemDisplayPrefix(tt.item)
 			if result != tt.expected {
 				t.Errorf("Expected prefix %q, got %q", tt.expected, result)
 			}
