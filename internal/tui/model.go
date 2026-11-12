@@ -211,6 +211,7 @@ type Model struct {
 	inFlightRequests map[string]context.CancelFunc
 
 	splitViewActive bool
+	topBarHidden    bool
 	// splitFocus is the split view pane j/k scroll instead of the list.
 	splitFocus      splitPane
 	splitPaneScroll [splitPaneCount]int

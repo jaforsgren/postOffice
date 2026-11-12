@@ -16,11 +16,12 @@ type layoutMetrics struct {
 
 func (m Model) calculateLayout() layoutMetrics {
 	// Content views are bordered, and lipgloss Height excludes the border.
-	totalOverhead := topBarHeight + statusHeight + commandBarHeight + paneBorderSize
+	topBarRows := m.renderedTopBarHeight()
+	totalOverhead := topBarRows + statusHeight + commandBarHeight + paneBorderSize
 	contentHeight := m.height - totalOverhead
 
 	return layoutMetrics{
-		topBarHeight:  topBarHeight,
+		topBarHeight:  topBarRows,
 		statusHeight:  statusHeight,
 		totalOverhead: totalOverhead,
 		contentHeight: contentHeight,

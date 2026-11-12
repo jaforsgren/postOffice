@@ -11,7 +11,9 @@ func (m Model) View() string {
 
 	var sections []string
 
-	sections = append(sections, m.renderTopBar())
+	if !m.topBarHidden {
+		sections = append(sections, m.renderTopBar())
+	}
 	sections = append(sections, m.renderContent()...)
 	sections = append(sections, m.renderCommandBar())
 	sections = append(sections, m.renderStatusBar())

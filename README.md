@@ -51,6 +51,7 @@ ctrl+]    Jump forward
 O         Reveal the collection/environment file (Finder/Explorer)
 r         Refresh
 ctrl+n    Next environment
+T         Toggle the top bar (every view)
 1-4       Collections / Requests / Environments / Variables
 ?         Help
 q         Quit
