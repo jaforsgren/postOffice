@@ -405,6 +405,31 @@ Limitations:
 - Collection-level and folder-level scripts do not run. Only each request's own scripts do. Postman runner flow control (`pm.execution.setNextRequest`, `pm.execution.skipRequest`) is not supported, so requests always run strictly in order. Steps that need flow control should be scripted in the workflow `script` with `wf.run`, `wf.skip` and `wf.stop`.
 - The whole workflow script shares the runtime's 30-second timeout, so long folders may time out.
 
+### Workflow keys
+
+The workflow detail view has keys to add steps and run part of a workflow (`<` up to a step, `>` from a step, `x` one step). See [commands and keys](commands-and-keys.md#workflows).
+
+Run reports (`o`) open in `$VISUAL`, `$EDITOR`, or `nvim`, with Vim folding.
+
+### Run options
+
+Configure folder and workflow runs with `:runopts` or `:ro`.
+
+```
+:ro stop on
+:ro stop off
+:ro iterations 5
+:ro env staging
+:ro env active
+:ro data users.csv
+:ro data off
+:ro reset
+```
+
+Data files can be CSV or JSON. Data values override environment and collection variables for each iteration, and variable changes carry over between iterations.
+
+Run summaries show passed, failed, and skipped steps and tests.
+
 ---
 
 ## Workflow Discovery
