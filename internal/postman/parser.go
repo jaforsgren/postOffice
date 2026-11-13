@@ -182,6 +182,11 @@ func (p *Parser) ToggleActiveEnvironment(name string) {
 	p.activeEnvironments = toggleName(p.activeEnvironments, name)
 }
 
+// ActivateOnlyEnvironment replaces the active set with name alone.
+func (p *Parser) ActivateOnlyEnvironment(name string) {
+	p.activeEnvironments = []string{name}
+}
+
 func (p *Parser) IsCollectionActive(name string) bool {
 	return containsName(p.activeCollections, name)
 }

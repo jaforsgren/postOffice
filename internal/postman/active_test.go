@@ -48,6 +48,18 @@ func TestToggleActiveEnvironment(t *testing.T) {
 	}
 }
 
+func TestActivateOnlyEnvironment_ReplacesTheActiveSet(t *testing.T) {
+	p := NewParser()
+	p.ToggleActiveEnvironment("Dev")
+	p.ToggleActiveEnvironment("Prod")
+
+	p.ActivateOnlyEnvironment("Test")
+
+	if got := p.ActiveEnvironments(); !slices.Equal(got, []string{"Test"}) {
+		t.Errorf("expected only Test active, got %v", got)
+	}
+}
+
 func TestMergedCollection_NoneActive(t *testing.T) {
 	p := NewParser()
 	if merged := p.MergedCollection(); merged != nil {

@@ -10,6 +10,7 @@ import (
 
 func environmentsModel(t *testing.T, names ...string) Model {
 	t.Helper()
+	t.Setenv("HOME", t.TempDir())
 	parser := postman.NewParser()
 	for _, name := range names {
 		if _, err := parser.LoadEnvironment(writeJSONFile(t, name+".json", postman.Environment{Name: name})); err != nil {
@@ -48,6 +49,18 @@ func TestNextEnvironment_LeavesTheCombinedEnvironment(t *testing.T) {
 
 	if m.isViewingMergedEnvironment() || m.environment.Name != "dev" {
 		t.Errorf("expected the first single environment, got %+v", m.environment)
+	}
+}
+
+func TestNextEnvironment_MakesTheSwitchedToEnvironmentTheOnlyActiveOne(t *testing.T) {
+	m := environmentsModel(t, "dev", "prod")
+	m.parser.ToggleActiveEnvironment("dev")
+	m.environment, _ = m.parser.GetEnvironment("dev")
+
+	m = pressKeys(t, m, ctrlN())
+
+	if got := m.parser.ActiveEnvironments(); len(got) != 1 || got[0] != "prod" {
+		t.Errorf("expected only prod active for the topbar, got %v", got)
 	}
 }
 

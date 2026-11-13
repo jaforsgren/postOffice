@@ -26,10 +26,14 @@ func handleNextEnvironmentKey(m Model) (Model, tea.Cmd) {
 	environment, _ := m.parser.GetEnvironment(names[next])
 	m.environment = environment
 	m.mergedEnvironmentActive = false
+	m.parser.ActivateOnlyEnvironment(environment.Name)
 
 	if m.mode == ModeVariables {
 		m = m.loadVariablesList()
 	}
 	m.statusMessage = fmt.Sprintf("Environment: %s (%d/%d)", environment.Name, next+1, len(names))
+	if err := m.parser.SaveState(); err != nil {
+		m.statusMessage += " (warning: failed to save state)"
+	}
 	return m, nil
 }
