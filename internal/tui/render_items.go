@@ -129,6 +129,9 @@ func (m Model) formatItemLine(index int, nameWidth int) string {
 				timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
 				executionInfo = "  " + statusStyle.Render(exec.Status) + " " + timeStyle.Render(timeStr)
 			}
+			if active, watching := m.listeners[itemID]; watching {
+				executionInfo += "  " + watchingStyle.Render(fmt.Sprintf("%s (%d)", watchingIndicator, active.received))
+			}
 		}
 	}
 

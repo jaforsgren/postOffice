@@ -22,6 +22,7 @@ Press `:` to enter command mode. `esc` leaves it, `enter` runs the command.
 | `:changes` | Unsaved changes |
 | `:session` | Restore the last session |
 | `:hist` | Request history |
+| `:lis` | [Listeners](servicebus.md#watching): messages seen by watched PEEK requests |
 | `:deps` | Dependency graph of the selected request |
 | `:t` | Timing breakdown (response view) |
 | `:w` | Save |
@@ -75,6 +76,8 @@ Paths support `~/` expansion, e.g. `:load ~/postman/api.json`. Loaded collection
 | `L` | Edit request dependencies |
 | `M` | Dependency graph |
 | `ctrl+x` | Cancel the request being sent; in the workflow views, stop the running workflow |
+| `w` | Watch the selected [PEEK request](servicebus.md#peeking) in the background (again: stop) |
+| `W` | Listeners view |
 | `z` / `Z` | Expand/collapse the folder in place / all folders |
 | `shift+↑` / `shift+↓` | Jump to the previous/next folder |
 | `.` | Repeat the last action (execute, delete, duplicate, favorite, expand) |
@@ -128,6 +131,16 @@ The gRPC editor adds `enter` to toggle TLS and `ctrl+f` to browse server reflect
 | `enter` | Replay the entry |
 | `=` | Diff the entry against the current response |
 | `esc` / `q` | Close the diff, then the history |
+
+## Listeners
+
+| Key | Action |
+|---|---|
+| `j` / `k` | Navigate messages (newest first) |
+| `enter` | Show the message's properties and body |
+| `c` | Clear the messages seen so far |
+| `ctrl+x` | Stop every listener |
+| `esc` / `q` | Close the message, then the listeners |
 
 ## Workflows
 

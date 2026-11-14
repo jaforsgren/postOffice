@@ -23,6 +23,8 @@ func TestBuiltinRegistry_ForRoutesByProtocol(t *testing.T) {
 		{"gRPC by method", requestItem("GRPC", "localhost:50051/svc.Greeter/SayHello"), history.ProtocolGRPC},
 		{"gRPC by scheme", requestItem("POST", "grpcs://localhost:50051/svc.Greeter/SayHello"), history.ProtocolGRPC},
 		{"Service Bus", requestItem("POST", "asb://orders"), history.ProtocolServiceBus},
+		{"Service Bus peek", requestItem("PEEK", "asb://payments/postoffice-tap"), history.ProtocolServiceBusPeek},
+		{"Service Bus peek, any case", requestItem("peek", "ASB://orders"), history.ProtocolServiceBusPeek},
 		{"AMQP", requestItem("POST", "amqp://localhost:5672/orders"), history.ProtocolAMQP},
 		{"AMQPS", requestItem("POST", "AMQPS://localhost:5671/orders"), history.ProtocolAMQP},
 		{"Service Bus wins over a GRPC method", requestItem("GRPC", "asb://orders"), history.ProtocolServiceBus},
@@ -61,7 +63,7 @@ func TestRegistry_ForPicksFirstClaimingProtocol(t *testing.T) {
 
 func TestBuiltinRegistry_NamedFindsEveryHistoryProtocol(t *testing.T) {
 	registry := NewBuiltinRegistry(http.NewExecutor())
-	for _, name := range []history.Protocol{history.ProtocolHTTP, history.ProtocolGRPC, history.ProtocolServiceBus, history.ProtocolAMQP} {
+	for _, name := range []history.Protocol{history.ProtocolHTTP, history.ProtocolGRPC, history.ProtocolServiceBus, history.ProtocolServiceBusPeek, history.ProtocolAMQP} {
 		protocol, err := registry.Named(name)
 		if err != nil || protocol.Name() != name {
 			t.Errorf("Named(%s) = %v, %v", name, protocol, err)
@@ -81,6 +83,7 @@ func TestBuiltinRegistry_Labels(t *testing.T) {
 		{requestItem("PATCH", "https://example.com"), "PATCH"},
 		{requestItem("GRPC", "grpc://localhost:50051/svc.Greeter/SayHello"), "GRPC"},
 		{requestItem("POST", "asb://orders"), "ASB"},
+		{requestItem("peek", "asb://orders"), "PEEK"},
 		{requestItem("POST", "amqp://localhost/orders"), "AMQP"},
 	}
 	for _, tt := range tests {

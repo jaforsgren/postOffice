@@ -83,6 +83,7 @@ See the [headless CLI](docs/cli.md) for selection, listing, merging and aliases.
 - [Workflows](docs/workflows.md)
 - [Request history and timing](docs/history.md)
 - [gRPC](docs/grpc.md)
+- [Azure Service Bus: send, peek and watch](docs/servicebus.md)
 - [Headless CLI](docs/cli.md)
 
 ## Configuration

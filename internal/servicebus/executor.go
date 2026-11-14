@@ -18,6 +18,8 @@ const (
 	headerMessageID        = "Message-Id"
 
 	defaultTimeout = 30 * time.Second
+
+	urlScheme = "asb://"
 )
 
 // SendContext delivers a message to an Azure Service Bus topic or queue described by req.
@@ -38,18 +40,10 @@ func SendContext(ctx context.Context, req *postman.Request, variables []postman.
 	}
 
 	rawURL := postman.ResolveVariables(req.URL.Raw, variables)
-	topicOrQueue := strings.TrimPrefix(strings.ToLower(rawURL), "asb://")
-	// Re-apply original casing by trimming the prefix off the non-lowered URL
-	if len(rawURL) > len("asb://") {
-		topicOrQueue = rawURL[len("asb://"):]
-	}
-
+	topicOrQueue, _ := entityPath(rawURL)
 	resp.RequestURL = rawURL
 
-	resolvedHeaders := make(map[string]string, len(req.Header))
-	for _, h := range req.Header {
-		resolvedHeaders[h.Key] = postman.ResolveVariables(h.Value, variables)
-	}
+	resolvedHeaders := resolveHeaders(req, variables)
 	resp.RequestHeaders = resolvedHeaders
 
 	connectionString := resolvedHeaders[headerConnectionString]
@@ -112,6 +106,23 @@ func SendContext(ctx context.Context, req *postman.Request, variables []postman.
 	resp.Status = "Message Sent"
 	resp.Body = fmt.Sprintf("Message delivered to %q in %v", topicOrQueue, resp.Duration.Round(time.Millisecond))
 	return resp
+}
+
+// entityPath is the resolved URL without its case-insensitive asb:// scheme,
+// keeping the entity's own casing. ok is false without the scheme.
+func entityPath(rawURL string) (path string, ok bool) {
+	if !strings.HasPrefix(strings.ToLower(rawURL), urlScheme) {
+		return "", false
+	}
+	return rawURL[len(urlScheme):], true
+}
+
+func resolveHeaders(req *postman.Request, variables []postman.VariableSource) map[string]string {
+	resolved := make(map[string]string, len(req.Header))
+	for _, header := range req.Header {
+		resolved[header.Key] = postman.ResolveVariables(header.Value, variables)
+	}
+	return resolved
 }
 
 // buildAppProperties converts request headers to Service Bus application properties,

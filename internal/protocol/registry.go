@@ -25,6 +25,8 @@ func NewRegistry(protocols ...Protocol) *Registry {
 // of any protocol send pm.sendRequest calls with httpExecutor.
 func NewBuiltinRegistry(httpExecutor *http.Executor) *Registry {
 	return NewRegistry(
+		// Peeks are asb:// requests too, so they must claim before Service Bus sends.
+		newRespondingProtocol(history.ProtocolServiceBusPeek, (*postman.Item).IsServiceBusPeek, postman.MethodServiceBusPeek, servicebus.PeekContext, httpExecutor.SendRequest),
 		newMessageProtocol(history.ProtocolServiceBus, (*postman.Item).IsServiceBus, servicebus.SendContext, httpExecutor.SendRequest),
 		newMessageProtocol(history.ProtocolAMQP, (*postman.Item).IsAMQP, amqp.PublishContext, httpExecutor.SendRequest),
 		newScriptedProtocol(history.ProtocolGRPC, (*postman.Item).IsGRPC, grpc.NewExecutor()),

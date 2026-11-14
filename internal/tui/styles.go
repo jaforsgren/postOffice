@@ -52,4 +52,6 @@ var (
 			Padding(paneVerticalPadding, paneHorizontalPadding)
 
 	subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	// watchingStyle marks a PEEK request a listener is watching.
+	watchingStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
 )

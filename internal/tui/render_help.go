@@ -122,6 +122,8 @@ var helpSections = []struct {
 	{[]ViewMode{ModeHistoryDiff}, "History Diff"},
 	{[]ViewMode{ModeTiming}, "Timing"},
 	{[]ViewMode{ModeDependencyGraph}, "Dependency Graph"},
+	{[]ViewMode{ModeListeners}, "Listeners"},
+	{[]ViewMode{ModeListenerMessage}, "Listened Message"},
 	{[]ViewMode{ModeHelp}, "Help"},
 }
 

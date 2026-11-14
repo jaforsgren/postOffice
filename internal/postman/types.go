@@ -107,6 +107,15 @@ func (i *Item) IsServiceBus() bool {
 	return strings.HasPrefix(lower, "asb://")
 }
 
+// MethodServiceBusPeek marks an asb:// request that peeks a queue or topic
+// subscription instead of sending a message.
+const MethodServiceBusPeek = "PEEK"
+
+// IsServiceBusPeek reports whether i peeks a Service Bus queue or subscription.
+func (i *Item) IsServiceBusPeek() bool {
+	return i.IsServiceBus() && strings.EqualFold(i.Request.Method, MethodServiceBusPeek)
+}
+
 func (i *Item) IsAMQP() bool {
 	if i.Request == nil {
 		return false

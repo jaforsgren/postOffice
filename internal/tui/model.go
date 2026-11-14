@@ -43,6 +43,8 @@ const (
 	ModeHistoryDiff
 	ModeTiming
 	ModeDependencyGraph
+	ModeListeners
+	ModeListenerMessage
 )
 
 type GRPCReflectPhase int
@@ -273,6 +275,14 @@ type Model struct {
 	requestHistoryCursor int
 	historyReturnMode    ViewMode
 	historyDiffViewport  viewport.Model
+	// listeners are the background watches of PEEK requests, by item ID.
+	listeners map[string]*listener
+	// listenedMessages are every listener's messages, oldest first.
+	listenedMessages        []listenedMessage
+	listenerCursor          int
+	listenerMessageViewport viewport.Model
+	// listenersReturnMode is where the listeners view was opened from.
+	listenersReturnMode ViewMode
 
 	// lastRepeatableKey is the key of the last repeatable action, which "." repeats.
 	lastRepeatableKey string
@@ -336,44 +346,47 @@ func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
 	editFieldTextArea.CharLimit = 50000
 
 	m := Model{
-		parser:                parser,
-		engine:                engine.New(http.NewExecutor()),
-		commandRegistry:       NewCommandRegistry(),
-		mode:                  ModeCollections,
-		commandMode:           false,
-		commandInput:          cmdInput,
-		commandHistory:        []string{},
-		historyIndex:          -1,
-		commandSuggestion:     "",
-		cursor:                0,
-		items:                 []string{},
-		currentItems:          []postman.Item{},
-		expandedFolders:       make(map[string]bool),
-		breadcrumb:            []string{},
-		previousMode:          modeUnset,
-		searchInput:           searchInput,
-		editFieldInput:        editFieldInput,
-		editFieldTextArea:     editFieldTextArea,
-		modifiedItems:         make(map[string]bool),
-		modifiedCollections:   make(map[string]bool),
-		modifiedEnvironments:  make(map[string]bool),
-		modifiedRequests:      make(map[string]*postman.Request),
-		pathParams:            make(map[string]string),
-		requestPathParams:     make(map[string]map[string]string),
-		responseViewport:      viewport.New(0, 0),
-		infoViewport:          viewport.New(0, 0),
-		jsonViewport:          viewport.New(0, 0),
-		logsViewport:          viewport.New(0, 0),
-		workflowViewport:      viewport.New(0, 0),
-		savedResponseViewport: viewport.New(0, 0),
-		helpViewport:          viewport.New(0, 0),
-		requestHistory:        requestHistory,
-		undoHistory:           newUndoHistory(),
-		historyReturnMode:     modeUnset,
-		historyDiffViewport:   viewport.New(0, 0),
-		requestExecutions:     make(map[string]*RequestExecution),
-		inFlightRequests:      make(map[string]context.CancelFunc),
-		favorites:             make(map[string]bool),
+		parser:                  parser,
+		engine:                  engine.New(http.NewExecutor()),
+		commandRegistry:         NewCommandRegistry(),
+		mode:                    ModeCollections,
+		commandMode:             false,
+		commandInput:            cmdInput,
+		commandHistory:          []string{},
+		historyIndex:            -1,
+		commandSuggestion:       "",
+		cursor:                  0,
+		items:                   []string{},
+		currentItems:            []postman.Item{},
+		expandedFolders:         make(map[string]bool),
+		breadcrumb:              []string{},
+		previousMode:            modeUnset,
+		searchInput:             searchInput,
+		editFieldInput:          editFieldInput,
+		editFieldTextArea:       editFieldTextArea,
+		modifiedItems:           make(map[string]bool),
+		modifiedCollections:     make(map[string]bool),
+		modifiedEnvironments:    make(map[string]bool),
+		modifiedRequests:        make(map[string]*postman.Request),
+		pathParams:              make(map[string]string),
+		requestPathParams:       make(map[string]map[string]string),
+		responseViewport:        viewport.New(0, 0),
+		infoViewport:            viewport.New(0, 0),
+		jsonViewport:            viewport.New(0, 0),
+		logsViewport:            viewport.New(0, 0),
+		workflowViewport:        viewport.New(0, 0),
+		savedResponseViewport:   viewport.New(0, 0),
+		helpViewport:            viewport.New(0, 0),
+		requestHistory:          requestHistory,
+		undoHistory:             newUndoHistory(),
+		historyReturnMode:       modeUnset,
+		historyDiffViewport:     viewport.New(0, 0),
+		listeners:               make(map[string]*listener),
+		listenerMessageViewport: viewport.New(0, 0),
+		listenersReturnMode:     modeUnset,
+		requestExecutions:       make(map[string]*RequestExecution),
+		inFlightRequests:        make(map[string]context.CancelFunc),
+		favorites:               make(map[string]bool),
 	}
 	if ids, err := postman.LoadFavorites(); err == nil {
 		for _, id := range ids {

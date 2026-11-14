@@ -313,6 +313,10 @@ func (m Model) getModeString() string {
 		return "Timing"
 	case ModeDependencyGraph:
 		return "Dependency Graph"
+	case ModeListeners:
+		return "Listeners"
+	case ModeListenerMessage:
+		return "Listened Message"
 	default:
 		return ""
 	}
@@ -426,8 +430,10 @@ func (m Model) renderStatusBar() string {
 		help = "t/q/esc: close timing"
 	case ModeInfo:
 		help = "ya/yb/yr/yy: copy | " + openReportKey + ": open in editor | q: close | j/k: scroll"
-	case ModeJSON, ModeLog, ModeHistoryDiff:
+	case ModeJSON, ModeLog, ModeHistoryDiff, ModeListenerMessage:
 		help = "q: close | j/k: scroll"
+	case ModeListeners:
+		help = "enter: inspect | " + clearListenedMessagesKey + ": clear | " + cancelRequestKey + ": stop all | esc: back | j/k: navigate"
 	case ModeSavedResponses:
 		help = "enter: view | d: delete | esc: back | j/k: navigate"
 	case ModeCollections, ModeEnvironments:

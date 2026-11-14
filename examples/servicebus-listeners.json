@@ -1,0 +1,122 @@
+{
+  "info": {
+    "name": "Service Bus Listeners",
+    "description": "PEEK requests for the postoffice-tap subscriptions of the local Service Bus emulator. Use with servicebus-emulator.env.json.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "claimdocumentation",
+      "request": {
+        "method": "PEEK",
+        "header": [
+          {
+            "key": "Connection-String",
+            "value": "{{sb_connection_string}}"
+          },
+          {
+            "key": "Max-Messages",
+            "value": "50"
+          }
+        ],
+        "url": {
+          "raw": "asb://{{sb_topic_claim}}/postoffice-tap"
+        }
+      },
+      "description": "Peeks the postoffice-tap subscription without consuming its messages. ctrl+e peeks once; w watches it in the background and W shows what arrives.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('peeked', () => pm.expect(pm.response.json()).to.be.an('array'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "payments",
+      "request": {
+        "method": "PEEK",
+        "header": [
+          {
+            "key": "Connection-String",
+            "value": "{{sb_connection_string}}"
+          },
+          {
+            "key": "Max-Messages",
+            "value": "50"
+          }
+        ],
+        "url": {
+          "raw": "asb://{{sb_topic_payments}}/postoffice-tap"
+        }
+      },
+      "description": "Peeks the postoffice-tap subscription without consuming its messages. ctrl+e peeks once; w watches it in the background and W shows what arrives.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('peeked', () => pm.expect(pm.response.json()).to.be.an('array'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "conversation",
+      "request": {
+        "method": "PEEK",
+        "header": [
+          {
+            "key": "Connection-String",
+            "value": "{{sb_connection_string}}"
+          },
+          {
+            "key": "Max-Messages",
+            "value": "50"
+          }
+        ],
+        "url": {
+          "raw": "asb://{{sb_topic_conversation}}/postoffice-tap"
+        }
+      },
+      "description": "Peeks the postoffice-tap subscription without consuming its messages. ctrl+e peeks once; w watches it in the background and W shows what arrives.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('peeked', () => pm.expect(pm.response.json()).to.be.an('array'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "payments dead-letter",
+      "request": {
+        "method": "PEEK",
+        "header": [
+          {
+            "key": "Connection-String",
+            "value": "{{sb_connection_string}}"
+          },
+          {
+            "key": "Dead-Letter",
+            "value": "true"
+          }
+        ],
+        "url": {
+          "raw": "asb://{{sb_topic_payments}}/payments-sejfa-internal-subscription"
+        }
+      },
+      "description": "Peeks the dead-letter queue of the sejfa-internal payments subscription."
+    }
+  ]
+}

@@ -88,6 +88,12 @@ func (m Model) renderContent() []string {
 	case ModeDependencyGraph:
 		return []string{m.renderDependencyGraphView()}
 
+	case ModeListeners:
+		return []string{m.renderListenersView()}
+
+	case ModeListenerMessage:
+		return []string{m.renderListenerMessageView()}
+
 	default:
 		return []string{m.renderMainWindow()}
 	}

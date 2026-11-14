@@ -54,7 +54,7 @@ func (p messageProtocol) Execute(
 	}
 	request, preResult := script.NewRequestRun(*scope).PreRequest(req)
 	if preResult.Skipped {
-		return &http.Response{Skipped: true, Status: http.SkippedStatus}, preResult
+		return skippedResponse(), preResult
 	}
 	// Variables are read after the scripts, which may have set some.
 	return p.send(ctx, request, scope.Variables()), preResult

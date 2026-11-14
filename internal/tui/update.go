@@ -103,6 +103,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m.continuePrerequisiteRun(msg)
 
+	case ListenerMsg:
+		return m.handleListenerMsg(msg)
+
 	case WorkflowMsg:
 		m.workflowState = msg.State
 		m = m.refreshWorkflowRunViewport()
@@ -234,7 +237,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleEditModeKeys(msg)
 	}
 
-	if m.mode == ModeResponse || m.mode == ModeInfo || m.mode == ModeJSON || m.mode == ModeHelp || m.mode == ModeHistoryDiff {
+	if m.mode == ModeResponse || m.mode == ModeInfo || m.mode == ModeJSON || m.mode == ModeHelp || m.mode == ModeHistoryDiff || m.mode == ModeListenerMessage {
 		key := msg.String()
 		if key == "esc" || key == "h" || key == "backspace" || key == "q" {
 			return m.handleNormalMode(msg)
@@ -256,6 +259,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.helpViewport, cmd = m.helpViewport.Update(msg)
 		case ModeHistoryDiff:
 			m.historyDiffViewport, cmd = m.historyDiffViewport.Update(msg)
+		case ModeListenerMessage:
+			m.listenerMessageViewport, cmd = m.listenerMessageViewport.Update(msg)
 		}
 		return m, cmd
 	}
@@ -836,20 +841,29 @@ func (m Model) handleSelection() Model {
 	return m
 }
 
-func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	itemID := m.requestItemID(folderPath, item.Name)
-	requestToExecute := item.Request
-	isModified := m.isItemModified(itemID)
-	sendingStatus := "Sending"
-
-	if isModified {
+// requestToSend is item's request as it would be sent: with its unsaved
+// edits and stored path parameters applied. unsaved reports the edits.
+func (m Model) requestToSend(item postman.Item, itemID string) (request *postman.Request, unsaved bool) {
+	request = item.Request
+	if m.isItemModified(itemID) {
 		if modifiedReq, exists := m.modifiedRequests[itemID]; exists {
-			requestToExecute = modifiedReq
-			sendingStatus = "Sending (unsaved)"
+			request = modifiedReq
+			unsaved = true
 		}
 	}
 	if stored, ok := m.requestPathParams[itemID]; ok && len(stored) > 0 {
-		requestToExecute = applyPathParamsToReq(requestToExecute, stored)
+		request = applyPathParamsToReq(request, stored)
+	}
+	return request, unsaved
+}
+
+func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
+	itemID := m.requestItemID(folderPath, item.Name)
+	isModified := m.isItemModified(itemID)
+	requestToExecute, unsaved := m.requestToSend(item, itemID)
+	sendingStatus := "Sending"
+	if unsaved {
+		sendingStatus = "Sending (unsaved)"
 	}
 
 	collection, collectionPath := m.collectionScope(folderPath)

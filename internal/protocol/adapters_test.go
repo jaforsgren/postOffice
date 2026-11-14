@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"postOffice/internal/history"
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
@@ -126,6 +127,77 @@ func TestMessageProtocol_PreRequestErrorsDontStopTheSend(t *testing.T) {
 
 	if sender.calls != 1 || result == nil || len(result.Errors) == 0 {
 		t.Errorf("sent %d message(s) with result %+v, want one send and the script error", sender.calls, result)
+	}
+}
+
+const respondedBody = `[{"subject":"LF-1"}]`
+
+func respondingSender(calls *int) messageSender {
+	return func(context.Context, *postman.Request, []postman.VariableSource) *http.Response {
+		*calls++
+		return &http.Response{StatusCode: sentStatusCode, Status: "1 message(s) peeked", Body: respondedBody}
+	}
+}
+
+func peekItem(events ...postman.Event) *postman.Item {
+	return &postman.Item{
+		Name:    "peek",
+		Request: &postman.Request{Method: postman.MethodServiceBusPeek, URL: postman.URL{Raw: "asb://payments/tap"}},
+		Events:  events,
+	}
+}
+
+func scriptEvent(phase script.Phase, lines ...string) postman.Event {
+	return postman.Event{Listen: string(phase), Script: postman.Script{Exec: lines}}
+}
+
+func TestRespondingProtocol_TestsTheResponse(t *testing.T) {
+	calls := 0
+	protocol := newRespondingProtocol(testProtocolName, (*postman.Item).IsServiceBusPeek, postman.MethodServiceBusPeek, respondingSender(&calls), unusedScriptSender)
+	item := peekItem(scriptEvent(script.PhaseTest, "pm.test('one message', () => pm.expect(pm.response.json()[0].subject).to.eql('LF-1'));"))
+
+	resp, result := protocol.Execute(context.Background(), item.Request, &script.RequestScope{Item: item}, nil)
+
+	if calls != 1 || resp.Body != respondedBody {
+		t.Fatalf("sent %d time(s), response %+v", calls, resp)
+	}
+	if result == nil || len(result.Tests) != 1 || !result.Tests[0].Passed {
+		t.Errorf("result = %+v, want the passing test", result)
+	}
+}
+
+func TestRespondingProtocol_PreRequestErrorStopsTheSend(t *testing.T) {
+	calls := 0
+	protocol := newRespondingProtocol(testProtocolName, (*postman.Item).IsServiceBusPeek, postman.MethodServiceBusPeek, respondingSender(&calls), nil)
+	item := peekItem(scriptEvent(script.PhasePreRequest, "throw new Error('boom');"))
+
+	resp, _ := protocol.Execute(context.Background(), item.Request, &script.RequestScope{Item: item}, nil)
+
+	if calls != 0 || !errors.Is(resp.Error, http.ErrPreRequestScript) {
+		t.Errorf("sent %d time(s) with error %v, want no send and ErrPreRequestScript", calls, resp.Error)
+	}
+}
+
+func TestRespondingProtocol_SkippedByPreRequestScript(t *testing.T) {
+	calls := 0
+	protocol := newRespondingProtocol(testProtocolName, (*postman.Item).IsServiceBusPeek, postman.MethodServiceBusPeek, respondingSender(&calls), nil)
+	item := peekItem(scriptEvent(script.PhasePreRequest, "pm.execution.skipRequest();"))
+
+	resp, result := protocol.Execute(context.Background(), item.Request, &script.RequestScope{Item: item}, nil)
+
+	if calls != 0 || !resp.Skipped || !result.Skipped {
+		t.Errorf("sent %d time(s), response %+v, want a skipped peek", calls, resp)
+	}
+}
+
+func TestRespondingProtocol_WithoutScopeSendsAsGiven(t *testing.T) {
+	calls := 0
+	protocol := newRespondingProtocol(testProtocolName, (*postman.Item).IsServiceBusPeek, postman.MethodServiceBusPeek, respondingSender(&calls), nil)
+
+	resp, result := protocol.Execute(context.Background(), peekItem().Request, nil, nil)
+
+	if calls != 1 || resp.Body != respondedBody || result != nil {
+		t.Errorf("Execute() = %+v, %+v, want the response and no script result", resp, result)
 	}
 }
 

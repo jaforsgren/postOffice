@@ -15,9 +15,12 @@ const (
 // workflowRunModes are the views ctrl+x cancels the workflow run from.
 var workflowRunModes = []ViewMode{ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail}
 
-// handleCancelKey cancels the workflow run in progress from the workflow
-// views, otherwise the request being sent.
+// handleCancelKey stops every listener from the listeners view, the workflow
+// run in progress from the workflow views, otherwise the request being sent.
 func handleCancelKey(m Model) (Model, tea.Cmd) {
+	if m.mode == ModeListeners {
+		return m.stopAllListeners(), nil
+	}
 	if slices.Contains(workflowRunModes, m.mode) {
 		return handleCancelWorkflowRunKey(m)
 	}

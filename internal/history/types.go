@@ -9,7 +9,9 @@ const (
 	ProtocolHTTP       Protocol = "HTTP"
 	ProtocolGRPC       Protocol = "gRPC"
 	ProtocolServiceBus Protocol = "ASB"
-	ProtocolAMQP       Protocol = "AMQP"
+	// ProtocolServiceBusPeek is a non-destructive read of a queue or subscription.
+	ProtocolServiceBusPeek Protocol = "ASB-PEEK"
+	ProtocolAMQP           Protocol = "AMQP"
 )
 
 // Entry is one recorded request execution. Snapshot holds the fully resolved

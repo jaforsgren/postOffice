@@ -226,6 +226,14 @@ func (cr *CommandRegistry) registerCommands() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeHistory},
 		},
 		{
+			Name:        "listeners",
+			Aliases:     []string{"lis"},
+			Description: "Show messages seen by PEEK listeners (" + toggleListenerKey + " watches a request)",
+			ShortHelp:   ":lis",
+			Handler:     handleListenersCommand,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeHistory, ModeListeners},
+		},
+		{
 			Name:        "dependencies",
 			Aliases:     []string{"deps"},
 			Description: "Show the selected request's dependency graph",
@@ -295,6 +303,34 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			ShortHelp:   "enter",
 			Handler:     Model.replayHistoryEntry,
 			AvailableIn: []ViewMode{ModeHistory},
+		},
+		{
+			Keys:        []string{"enter"},
+			Description: "Inspect message",
+			ShortHelp:   "enter",
+			Handler:     Model.showListenedMessage,
+			AvailableIn: []ViewMode{ModeListeners},
+		},
+		{
+			Keys:        []string{toggleListenerKey},
+			Description: "Watch PEEK request (start/stop)",
+			ShortHelp:   toggleListenerKey,
+			Handler:     handleToggleListenerKey,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{listenersViewKey},
+			Description: "Listeners (watched messages)",
+			ShortHelp:   listenersViewKey,
+			Handler:     handleListenersViewKey,
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeHistory},
+		},
+		{
+			Keys:        []string{clearListenedMessagesKey},
+			Description: "Clear messages",
+			ShortHelp:   clearListenedMessagesKey,
+			Handler:     handleClearListenedMessagesKey,
+			AvailableIn: []ViewMode{ModeListeners},
 		},
 		{
 			Keys:        []string{historyDiffKey},
@@ -394,7 +430,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Close/Back",
 			ShortHelp:   "esc",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHelp, ModeHistory, ModeHistoryDiff, ModeTiming, ModeDependencyGraph},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHelp, ModeHistory, ModeHistoryDiff, ModeTiming, ModeDependencyGraph, ModeListeners, ModeListenerMessage},
 		},
 		{
 			Keys:        []string{"q"},
@@ -408,14 +444,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Navigate up",
 			ShortHelp:   "j/k",
 			Handler:     handleUpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory, ModeDependencyGraph},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory, ModeDependencyGraph, ModeListeners},
 		},
 		{
 			Keys:        []string{"down", "j"},
 			Description: "Scroll/Navigate",
 			ShortHelp:   "j/k",
 			Handler:     handleDownKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory, ModeDependencyGraph},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeInfo, ModeJSON, ModeLog, ModeResponse, ModeEnvironments, ModeVariables, ModeChanges, ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail, ModeSavedResponses, ModeHistory, ModeDependencyGraph, ModeListeners},
 		},
 		{
 			Keys:        []string{"a"},
@@ -603,14 +639,14 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Description: "Show help",
 			ShortHelp:   "?",
 			Handler:     handleHelpKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail, ModeResponse, ModeInfo, ModeChanges, ModeHistory, ModeDependencyGraph},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail, ModeResponse, ModeInfo, ModeChanges, ModeHistory, ModeDependencyGraph, ModeListeners},
 		},
 		{
 			Keys:        []string{"q"},
 			Description: "Close view",
 			ShortHelp:   "q",
 			Handler:     handleBackKey,
-			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeSavedResponses, ModeHistory, ModeHistoryDiff, ModeTiming, ModeDependencyGraph},
+			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeSavedResponses, ModeHistory, ModeHistoryDiff, ModeTiming, ModeDependencyGraph, ModeListeners, ModeListenerMessage},
 		},
 		{
 			Keys:        []string{"g"},
@@ -797,10 +833,10 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		},
 		{
 			Keys:        []string{cancelRequestKey},
-			Description: "Cancel sending request / workflow run",
+			Description: "Cancel sending request / workflow run / listeners",
 			ShortHelp:   cancelRequestKey,
 			Handler:     handleCancelKey,
-			AvailableIn: append([]ViewMode{ModeRequests, ModeResponse}, workflowRunModes...),
+			AvailableIn: append([]ViewMode{ModeRequests, ModeResponse, ModeListeners}, workflowRunModes...),
 		},
 		{
 			Keys:        []string{nextEnvironmentKey},
@@ -1403,6 +1439,12 @@ func handleBackKey(m Model) (Model, tea.Cmd) {
 		m.mode = ModeHistory
 		m.statusMessage = "Closed history diff"
 		return m, nil
+	case ModeListeners:
+		return m.closeListeners()
+	case ModeListenerMessage:
+		m.mode = ModeListeners
+		m.statusMessage = "Closed message"
+		return m, nil
 	case ModeSavedResponses:
 		m.mode = ModeRequests
 		m.savedResponseCursor = 0
@@ -1528,6 +1570,9 @@ func handleUpKey(m Model) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.mode == ModeListeners {
+		return m.moveListenerCursor(-1), nil
+	}
 	if m.mode == ModeDependencyGraph {
 		return m.moveDependencyGraphCursor(-1), nil
 	}
@@ -1577,6 +1622,9 @@ func handleDownKey(m Model) (Model, tea.Cmd) {
 			m.requestHistoryCursor++
 		}
 		return m, nil
+	}
+	if m.mode == ModeListeners {
+		return m.moveListenerCursor(1), nil
 	}
 	if m.mode == ModeDependencyGraph {
 		return m.moveDependencyGraphCursor(1), nil

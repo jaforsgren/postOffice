@@ -192,3 +192,7 @@ while (retryCount < maxRetries && !success) {
 - Modify the workflows to add your own logic
 - Create new workflows combining different patterns
 - Check the main README.md for complete API reference
+
+## Service Bus Listeners Example
+
+`servicebus-listeners.json` peeks the `postoffice-tap` subscription of each emulator topic (and one dead-letter queue) without consuming messages. Load it with `servicebus-emulator.env.json`, then press `ctrl+e` on a request to peek once, or `w` to watch it in the background and `W` to see what arrives. See [Azure Service Bus](../docs/servicebus.md).

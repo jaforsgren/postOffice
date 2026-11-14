@@ -17,6 +17,6 @@ Press `t` (or run `:timing`) in the response view to open a waterfall popup of t
 - **HTTP**: DNS lookup, TCP connect, TLS handshake, TTFB and content download. On a reused connection, DNS/TCP/TLS show as `reused`; phases that don't apply (DNS for an IP address, TLS for plain HTTP) show as `n/a`.
 - **gRPC** (workflow steps): connect + reflection, invoke.
 - **AMQP**: dial (DNS + TCP), handshake (TLS + AMQP), open channel, publish.
-- **Azure Service Bus**: total only.
+- **Azure Service Bus** (sends and peeks): total only.
 
 Phases the request never reached because it failed are left out. Press `t`, `q` or `esc` to close.
