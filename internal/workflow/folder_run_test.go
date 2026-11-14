@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"postOffice/internal/engine"
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
@@ -66,7 +68,7 @@ func runWorkflowOver(t *testing.T, server *recordingServer, build func(*postman.
 	if err != nil {
 		t.Fatalf("unexpected error building workflow: %v", err)
 	}
-	return NewRunner(collection, nil, internalhttp.NewExecutor()).Run(wf, ExecutionOptions{}, nil)
+	return NewRunner(collection, nil, engine.New(internalhttp.NewExecutor())).Run(context.Background(), wf, ExecutionOptions{}, nil)
 }
 
 func runWholeCollection(t *testing.T, server *recordingServer, items ...postman.Item) ExecutionState {

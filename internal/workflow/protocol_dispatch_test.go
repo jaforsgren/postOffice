@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"encoding/json"
+	"postOffice/internal/engine"
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
@@ -10,7 +11,7 @@ import (
 )
 
 func runnerFor(collection *postman.Collection) *Runner {
-	runner := NewRunner(collection, nil, http.NewExecutor())
+	runner := NewRunner(collection, nil, engine.New(http.NewExecutor()))
 	runner.ctx = &script.ExecutionContext{CollectionVars: collection.Variables}
 	return runner
 }

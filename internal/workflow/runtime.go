@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
+	"postOffice/internal/engine"
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
-	"postOffice/internal/protocol"
 	"postOffice/internal/script"
 )
 
@@ -27,10 +27,11 @@ const (
 
 // Runner executes a workflow against a collection and environment.
 type Runner struct {
-	collection   *postman.Collection
-	environment  *postman.Environment
-	httpExecutor *http.Executor
-	protocols    *protocol.Registry
+	collection  *postman.Collection
+	environment *postman.Environment
+	engine      *engine.Engine
+	// runCtx cancels the run: the request being sent, wf.sleep and the script.
+	runCtx context.Context
 
 	wfSteps []Step
 	options ExecutionOptions
@@ -56,13 +57,13 @@ type Runner struct {
 func NewRunner(
 	collection *postman.Collection,
 	environment *postman.Environment,
-	httpExecutor *http.Executor,
+	requestEngine *engine.Engine,
 ) *Runner {
 	return &Runner{
 		collection:    collection,
 		environment:   environment,
-		httpExecutor:  httpExecutor,
-		protocols:     protocol.NewBuiltinRegistry(httpExecutor),
+		engine:        requestEngine,
+		runCtx:        context.Background(),
 		scriptTimeout: defaultScriptTimeout,
 	}
 }
@@ -75,12 +76,17 @@ var (
 	ErrWorkflowTimeout = errors.New("workflow timed out")
 	// ErrScriptFailed is the run error when the workflow script itself throws.
 	ErrScriptFailed = errors.New("script error")
+	// ErrRunCancelled is the run error when the run's context is cancelled.
+	ErrRunCancelled = errors.New("run cancelled")
 )
 
 // Run executes wf once per iteration of opts, calling onChange after each
 // state change. Collection and environment variables carry over between
 // iterations; each iteration gets a fresh script VM and its own step states.
-func (r *Runner) Run(wf *Workflow, opts ExecutionOptions, onChange func(ExecutionState)) ExecutionState {
+// Cancelling ctx stops the run: the request being sent is abandoned and the
+// run ends as stopped with ErrRunCancelled.
+func (r *Runner) Run(ctx context.Context, wf *Workflow, opts ExecutionOptions, onChange func(ExecutionState)) ExecutionState {
+	r.runCtx = ctx
 	r.onChange = onChange
 	r.status = StatusRunning
 	r.anyStepFailed = false
@@ -164,6 +170,8 @@ func (r *Runner) runIteration(wf *Workflow) error {
 		r.timedOut.Store(true)
 		r.vm.Interrupt("workflow timeout")
 	})
+	vm := r.vm
+	stopInterruptOnCancel := context.AfterFunc(r.runCtx, func() { vm.Interrupt(ErrRunCancelled) })
 
 	_, err := r.vm.RunString(transformed)
 	if err == nil {
@@ -172,15 +180,29 @@ func (r *Runner) runIteration(wf *Workflow) error {
 		}
 	}
 	r.scriptTimer.Stop()
+	stopInterruptOnCancel()
 
 	if r.timedOut.Load() {
 		return fmt.Errorf("%w after %v", ErrWorkflowTimeout, r.scriptTimeout)
+	}
+	if r.runCtx.Err() != nil {
+		r.markCancelled()
+		return nil
 	}
 
 	if err != nil && r.status != StatusFailed && r.status != StatusStopped {
 		return fmt.Errorf("%w: %v", ErrScriptFailed, err)
 	}
 	return nil
+}
+
+// stop ends the run as stopped; later wf.run() calls return skipped.
+func (r *Runner) stop(reason string) {
+	r.status = StatusStopped
+	r.state.Status = StatusStopped
+	r.state.Error = reason
+	r.addLog(fmt.Sprintf("[STOP] %s", reason))
+	r.notifyProgress()
 }
 
 func (r *Runner) finalize(status, errMsg string) ExecutionState {
@@ -304,7 +326,7 @@ func (r *Runner) setupConsole() error {
 }
 
 func (r *Runner) setupPmAPI() error {
-	r.ctx.SendRequest = r.httpExecutor.SendRequest
+	r.ctx.SendRequest = r.engine.ScriptSender()
 	if r.environment != nil {
 		r.ctx.EnvironmentName = r.environment.Name
 	}
@@ -320,6 +342,7 @@ func (r *Runner) setupWFAPI() error {
 	wfObj := r.vm.NewObject()
 
 	if err := wfObj.Set("run", func(call goja.FunctionCall) goja.Value {
+		r.abortIfCancelled()
 		if r.status == StatusFailed || r.status == StatusStopped {
 			return r.emptyResultJS(StatusSkipped)
 		}
@@ -334,6 +357,9 @@ func (r *Runner) setupWFAPI() error {
 		}
 
 		result, err := r.runStep(stepID, opts)
+		if errors.Is(err, ErrRunCancelled) {
+			r.abortIfCancelled()
+		}
 		if err != nil {
 			r.addStepLog(stepID, fmt.Sprintf("[ERROR] %v", err))
 			return r.emptyResultJS(StatusFailed)
@@ -363,11 +389,7 @@ func (r *Runner) setupWFAPI() error {
 		if len(call.Arguments) > 0 {
 			reason = call.Arguments[0].String()
 		}
-		r.status = StatusStopped
-		r.state.Status = StatusStopped
-		r.state.Error = reason
-		r.addLog(fmt.Sprintf("[STOP] %s", reason))
-		r.notifyProgress()
+		r.stop(reason)
 		panic(r.vm.NewGoError(fmt.Errorf("workflow.stop: %s", reason)))
 	}); err != nil {
 		return err
@@ -393,7 +415,8 @@ func (r *Runner) setupWFAPI() error {
 		}
 		ms := call.Arguments[0].ToInteger()
 		if ms > 0 {
-			r.outsideScriptTimeout(func() { time.Sleep(time.Duration(ms) * time.Millisecond) })
+			r.outsideScriptTimeout(func() { r.sleep(time.Duration(ms) * time.Millisecond) })
+			r.abortIfCancelled()
 		}
 		return goja.Undefined()
 	}); err != nil {
@@ -488,6 +511,10 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 		var outcome itemOutcome
 		var execErr error
 		r.outsideScriptTimeout(func() { outcome, status, execErr = r.executeItemWithSelfRetries(item, requestPath) })
+		if r.runCtx.Err() != nil {
+			ss.Status = StatusStopped
+			return nil, ErrRunCancelled
+		}
 		if execErr != nil {
 			r.failStep(ss)
 			return nil, execErr
@@ -533,6 +560,34 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 		Last:        last,
 		NextRequest: nextRequest,
 	}, nil
+}
+
+// abortIfCancelled stops the run and ends the workflow script once the run's
+// context is cancelled. Cancelling also interrupts the VM, but only at its
+// next instruction, which may already start another step.
+func (r *Runner) abortIfCancelled() {
+	if r.runCtx.Err() == nil {
+		return
+	}
+	r.markCancelled()
+	panic(r.vm.NewGoError(ErrRunCancelled))
+}
+
+// markCancelled stops the run as cancelled unless it already stopped.
+func (r *Runner) markCancelled() {
+	if r.status != StatusStopped {
+		r.stop(ErrRunCancelled.Error())
+	}
+}
+
+// sleep waits for duration or until the run is cancelled.
+func (r *Runner) sleep(duration time.Duration) {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-r.runCtx.Done():
+	}
 }
 
 // outsideScriptTimeout runs wait with the workflow script timer paused.
@@ -716,7 +771,14 @@ type itemOutcome struct {
 }
 
 func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcome, error) {
-	requestProtocol, err := r.protocols.For(item)
+	scope := script.RequestScope{
+		Collection:  r.collection,
+		Environment: r.environment,
+		FolderPath:  folderPathOf(requestPath),
+		Item:        item,
+		Iteration:   r.iteration,
+	}
+	execution, err := r.engine.Prepare(engine.Call{Item: item, Scope: scope})
 	if err != nil {
 		return itemOutcome{}, fmt.Errorf("item %q is not a request: %w", item.Name, err)
 	}
@@ -724,16 +786,8 @@ func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcom
 	// Write workflow-script variable changes to the collection before running.
 	r.syncToCollection()
 
-	scope := script.RequestScope{
-		Collection:  r.collection,
-		Environment: r.environment,
-		FolderPath:  folderPathOf(requestPath),
-		Item:        item,
-		Sender:      r.httpExecutor.SendRequest,
-		Iteration:   r.iteration,
-	}
-
-	resp, scriptResult := requestProtocol.Execute(context.Background(), item.Request, &scope, scope.Variables())
+	result := execution.Run(r.runCtx)
+	resp, scriptResult := result.Response, result.TestResult
 
 	// Pick up variable changes from pre/post-request scripts.
 	r.syncFromCollection()
@@ -746,7 +800,7 @@ func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcom
 	}
 
 	if resp.Error != nil {
-		r.addLog(fmt.Sprintf("[%s ERROR] %v", requestProtocol.Name(), resp.Error))
+		r.addLog(fmt.Sprintf("[%s ERROR] %v", result.Protocol, resp.Error))
 		// Step scripts read the body, so a failure without one reports its error there.
 		if stepResp.Body == "" {
 			stepResp.Body = fmt.Sprintf(`{"error":%q}`, resp.Error.Error())

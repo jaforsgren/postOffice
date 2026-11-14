@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 
+	"postOffice/internal/engine"
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/workflow"
@@ -76,6 +80,9 @@ func parseExecutionOptions(parsed parsedArgs) (executionOptions, error) {
 }
 
 // runOptions is a parsed `run` command line.
+// workflowBuilder makes the workflow a run executes from the loaded collection.
+type workflowBuilder func(*postman.Collection) (*workflow.Workflow, error)
+
 type runOptions struct {
 	collectionPath string
 	// requestPath ("Folder/Sub/Request") runs one request; otherwise folderPath
@@ -155,7 +162,8 @@ Options:
                                  {{key}} and pm.iterationData
   --bail                         stop at the first failed request, test or script
 
-Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input error.`,
+Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input error,
+130 interrupted (ctrl+c stops the run; variables are not persisted).`,
 	run: func(out io.Writer, args []string) error {
 		opts, err := parseRunArgs(args)
 		if err != nil {
@@ -179,8 +187,16 @@ Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input e
 
 // executeRun loads the collection and environment (each a file path or a
 // loaded one's name; the environment defaults to the selected one), runs the workflow buildWorkflow makes from the
-// collection, and reports the result.
-func executeRun(out io.Writer, collectionRef string, opts executionOptions, buildWorkflow func(*postman.Collection) (*workflow.Workflow, error)) error {
+// collection, and reports the result. SIGINT or SIGTERM stops the run.
+func executeRun(out io.Writer, collectionRef string, opts executionOptions, buildWorkflow workflowBuilder) error {
+	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	return executeRunContext(ctx, out, collectionRef, opts, buildWorkflow)
+}
+
+// executeRunContext is executeRun stopped by cancelling ctx instead of a
+// signal. A stopped run reports how far it got and persists nothing.
+func executeRunContext(ctx context.Context, out io.Writer, collectionRef string, opts executionOptions, buildWorkflow workflowBuilder) error {
 	opts = withSelectedEnvironment(opts)
 	collectionPath, err := resolveCollectionRef(collectionRef)
 	if err != nil {
@@ -227,10 +243,13 @@ func executeRun(out io.Writer, collectionRef string, opts executionOptions, buil
 		onChange = newStepStream(out, styles).onChange
 	}
 
-	state := workflow.NewRunner(collection, environment, internalhttp.NewExecutor()).Run(wf, runnerOptions, onChange)
+	state := workflow.NewRunner(collection, environment, engine.New(internalhttp.NewExecutor())).Run(ctx, wf, runnerOptions, onChange)
 	report := newRunReport(state, collection.Info.Name, environmentName(environment))
 	if err := writeRunOutput(out, styles, report, opts); err != nil {
 		return err
+	}
+	if ctx.Err() != nil {
+		return errRunInterrupted
 	}
 
 	if opts.persist {

@@ -2,11 +2,11 @@ package tui
 
 import (
 	"context"
+	"postOffice/internal/engine"
 	"postOffice/internal/grpc"
 	"postOffice/internal/history"
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
-	"postOffice/internal/protocol"
 	"postOffice/internal/script"
 	"postOffice/internal/suggest"
 	"postOffice/internal/workflow"
@@ -106,8 +106,7 @@ type RequestCompleteMsg struct {
 
 type Model struct {
 	parser              *postman.Parser
-	executor            *http.Executor
-	protocols           *protocol.Registry
+	engine              *engine.Engine
 	commandRegistry     *CommandRegistry
 	mode                ViewMode
 	commandMode         bool
@@ -229,7 +228,9 @@ type Model struct {
 	activeWorkflow     *workflow.Workflow
 	workflowState      workflow.ExecutionState
 	workflowChan       <-chan workflow.ExecutionState
-	workflowViewport   viewport.Model
+	// cancelWorkflowRun stops the workflow run in progress; nil when none is.
+	cancelWorkflowRun context.CancelFunc
+	workflowViewport  viewport.Model
 	// workflowStepPanelOpen shows the selected step's logs, request and
 	// response beside the workflow's steps; workflowStepPanelScroll scrolls it.
 	workflowStepPanelOpen   bool
@@ -308,6 +309,9 @@ type WorkflowMsg struct {
 	Done  bool
 }
 
+// workflowRun runs a workflow with runner until it finishes or ctx is cancelled.
+type workflowRun func(ctx context.Context, runner *workflow.Runner, onChange func(workflow.ExecutionState)) workflow.ExecutionState
+
 // waitForWorkflow returns a tea.Cmd that blocks until the next state arrives on ch.
 func waitForWorkflow(ch <-chan workflow.ExecutionState) tea.Cmd {
 	return func() tea.Msg {
@@ -331,11 +335,9 @@ func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
 	editFieldTextArea := textarea.New()
 	editFieldTextArea.CharLimit = 50000
 
-	executor := http.NewExecutor()
 	m := Model{
 		parser:                parser,
-		executor:              executor,
-		protocols:             protocol.NewBuiltinRegistry(executor),
+		engine:                engine.New(http.NewExecutor()),
 		commandRegistry:       NewCommandRegistry(),
 		mode:                  ModeCollections,
 		commandMode:           false,

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -10,6 +11,37 @@ const (
 	cancelRequestKey = "ctrl+x"
 	statusCancelled  = "Cancelled"
 )
+
+// workflowRunModes are the views ctrl+x cancels the workflow run from.
+var workflowRunModes = []ViewMode{ModeWorkflows, ModeWorkflowRun, ModeWorkflowDetail}
+
+// handleCancelKey cancels the workflow run in progress from the workflow
+// views, otherwise the request being sent.
+func handleCancelKey(m Model) (Model, tea.Cmd) {
+	if slices.Contains(workflowRunModes, m.mode) {
+		return handleCancelWorkflowRunKey(m)
+	}
+	return handleCancelRequestKey(m)
+}
+
+func handleCancelWorkflowRunKey(m Model) (Model, tea.Cmd) {
+	if m.cancelWorkflowRun == nil {
+		m.statusMessage = "No workflow is running"
+		return m, nil
+	}
+	m.cancelWorkflowRun()
+	m.statusMessage = fmt.Sprintf("Cancelling workflow %q...", m.workflowState.WorkflowName)
+	return m, nil
+}
+
+// forgetWorkflowRun releases a finished workflow run's cancel function.
+func (m Model) forgetWorkflowRun() Model {
+	if m.cancelWorkflowRun != nil {
+		m.cancelWorkflowRun()
+		m.cancelWorkflowRun = nil
+	}
+	return m
+}
 
 // handleCancelRequestKey cancels the selected request while it is being
 // sent, or the only request being sent when the selection isn't one.

@@ -19,6 +19,9 @@ const (
 	// exitUsage: bad arguments, or input that could not be read or parsed
 	// (missing file, invalid JSON/YAML, unknown request or folder).
 	exitUsage = 2
+	// exitInterrupted: a run was stopped by SIGINT or SIGTERM. 128 + SIGINT,
+	// as shells report a process killed by ctrl+c.
+	exitInterrupted = 130
 )
 
 var (
@@ -26,6 +29,8 @@ var (
 	errUsage = errors.New("usage error")
 	// errRunFailed marks a run that completed with failures; its report already explains them.
 	errRunFailed = errors.New("run failed")
+	// errRunInterrupted marks a run stopped by a signal; its report shows how far it got.
+	errRunInterrupted = errors.New("run interrupted")
 )
 
 var helpFlags = []string{"-h", "--help"}
@@ -101,6 +106,8 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return exitSuccess
 	case errors.Is(err, errRunFailed):
 		return exitRunFailed
+	case errors.Is(err, errRunInterrupted):
+		return exitInterrupted
 	case errors.Is(err, errUsage):
 		fmt.Fprintf(stderr, "Error: %v\n\n%s\n", err, cmd.usage)
 		return exitUsage

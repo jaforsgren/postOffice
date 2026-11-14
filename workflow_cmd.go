@@ -88,7 +88,8 @@ Options:
                                        as {{key}} and pm.iterationData
   --bail                               stop at the first failed request, test or script
 
-Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input error.`,
+Exit codes: 0 all passed, 1 a request, test or script failed, 2 usage or input error,
+130 interrupted (ctrl+c stops the run; variables are not persisted).`,
 	run: func(out io.Writer, args []string) error {
 		opts, err := parseWorkflowRunArgs(args)
 		if err != nil {

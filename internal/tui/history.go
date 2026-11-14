@@ -7,7 +7,6 @@ import (
 	"postOffice/internal/history"
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
-	"postOffice/internal/protocol"
 	"postOffice/internal/textdiff"
 	"sort"
 	"strings"
@@ -82,12 +81,6 @@ func (m Model) recordHistory(msg RequestCompleteMsg) Model {
 	return m
 }
 
-// replayResponse sends req without a script scope, so no scripts run.
-func replayResponse(requestProtocol protocol.Protocol, req *postman.Request) *internalhttp.Response {
-	resp, _ := requestProtocol.Execute(context.Background(), req, nil, nil)
-	return resp
-}
-
 func (m Model) openRequestHistory() (Model, tea.Cmd) {
 	if m.mode != ModeHistory && m.mode != ModeHistoryDiff {
 		m.historyReturnMode = m.mode
@@ -124,13 +117,12 @@ func (m Model) replayHistoryEntry() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	requestProtocol, err := m.protocols.Named(entry.Protocol)
+	execution, err := m.engine.PrepareReplay(entry)
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Cannot replay %s: %v", entry.ItemName, err)
 		return m, nil
 	}
 
-	req := entry.Request()
 	m.requestExecutions[entry.ItemID] = &RequestExecution{
 		Status:    statusSending,
 		Timestamp: time.Now(),
@@ -140,9 +132,9 @@ func (m Model) replayHistoryEntry() (Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		return RequestCompleteMsg{
 			ItemID:          entry.ItemID,
-			Response:        replayResponse(requestProtocol, req),
+			Response:        execution.Run(context.Background()).Response,
 			EnvironmentName: entry.EnvironmentName,
-			Protocol:        entry.Protocol,
+			Protocol:        execution.Protocol(),
 			ItemName:        entry.ItemName,
 			Replayed:        true,
 		}

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"net"
 	nethttp "net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"postOffice/internal/history"
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
+	"postOffice/internal/workflow"
 )
 
 const (
@@ -123,5 +125,48 @@ func TestCancelRequest_StopsAnAMQPPublish(t *testing.T) {
 
 	if msg := waitForMsg(t, done); !msg.Cancelled {
 		t.Errorf("expected the publish cancelled, got %+v", msg.Response)
+	}
+}
+
+// startBlockedWorkflowRun launches a run that lasts until it is cancelled and
+// returns the run's final message.
+func startBlockedWorkflowRun(t *testing.T, m Model) (Model, <-chan tea.Msg) {
+	t.Helper()
+	m.mode = ModeWorkflowDetail
+	m, cmd := m.launchRun(nil, func(ctx context.Context, _ *workflow.Runner, _ func(workflow.ExecutionState)) workflow.ExecutionState {
+		<-ctx.Done()
+		return workflow.ExecutionState{WorkflowName: "blocked", Status: workflow.StatusStopped, Error: workflow.ErrRunCancelled.Error()}
+	})
+	runCmd := cmd().(tea.BatchMsg)[0]
+	done := make(chan tea.Msg, 1)
+	go func() { done <- runCmd() }()
+	return m, done
+}
+
+func TestCancelKey_StopsTheWorkflowRun(t *testing.T) {
+	m, done := startBlockedWorkflowRun(t, sizedTestModel())
+
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyCtrlX})
+
+	select {
+	case msg := <-done:
+		updated, _ := m.Update(msg)
+		m = updated.(Model)
+	case <-time.After(cancelTestLimit):
+		t.Fatal("the workflow run was not cancelled")
+	}
+	if m.workflowState.Status != workflow.StatusStopped || m.cancelWorkflowRun != nil {
+		t.Errorf("run = %s with cancel func set = %v, want stopped and released", m.workflowState.Status, m.cancelWorkflowRun != nil)
+	}
+}
+
+func TestCancelKey_NoWorkflowRunning(t *testing.T) {
+	m := sizedTestModel()
+	m.mode = ModeWorkflowDetail
+
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyCtrlX})
+
+	if m.statusMessage != "No workflow is running" {
+		t.Errorf("got %q", m.statusMessage)
 	}
 }

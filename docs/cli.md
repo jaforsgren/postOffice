@@ -72,6 +72,7 @@ JSON includes request results, tests, errors, timings, and console output. JUnit
 | `0` | All passed |
 | `1` | Request, test, or script failure |
 | `2` | Invalid arguments or input |
+| `130` | Interrupted (`ctrl+c` / SIGTERM): the request being sent is abandoned, the report shows the run as `stopped`, and `--persist` saves nothing |
 
 ## Listing
 

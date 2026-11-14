@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"postOffice/internal/engine"
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
@@ -88,7 +90,7 @@ func runSteps(t *testing.T, workflowScript string, items ...postman.Item) (Execu
 	}
 	wf.Script = "export default async function (wf, pm) {\n" + workflowScript + "\n}"
 
-	state := NewRunner(collection, nil, internalhttp.NewExecutor()).Run(wf, ExecutionOptions{}, nil)
+	state := NewRunner(collection, nil, engine.New(internalhttp.NewExecutor())).Run(context.Background(), wf, ExecutionOptions{}, nil)
 	return state, collection
 }
 
@@ -251,10 +253,10 @@ func TestRun_TimeInsideStepsDoesNotCountAgainstTheScriptTimeout(t *testing.T) {
 		Steps:  []Step{{ID: "slow", Request: "slow"}},
 		Script: fmt.Sprintf("export default async function (wf, pm) {\nawait wf.run(\"slow\");\nwf.sleep(%d);\nawait wf.run(\"slow\");\n}", sleepMs),
 	}
-	runner := NewRunner(collection, nil, internalhttp.NewExecutor())
+	runner := NewRunner(collection, nil, engine.New(internalhttp.NewExecutor()))
 	runner.scriptTimeout = scriptTimeout
 
-	state := runner.Run(wf, ExecutionOptions{}, nil)
+	state := runner.Run(context.Background(), wf, ExecutionOptions{}, nil)
 
 	if state.Status != StatusSuccess {
 		t.Errorf("workflow = %s (%s), want %s", state.Status, state.Error, StatusSuccess)
@@ -262,10 +264,10 @@ func TestRun_TimeInsideStepsDoesNotCountAgainstTheScriptTimeout(t *testing.T) {
 }
 
 func TestRun_SpinningWorkflowScriptTimesOut(t *testing.T) {
-	runner := NewRunner(&postman.Collection{}, nil, internalhttp.NewExecutor())
+	runner := NewRunner(&postman.Collection{}, nil, engine.New(internalhttp.NewExecutor()))
 	runner.scriptTimeout = 50 * time.Millisecond
 
-	state := runner.Run(&Workflow{ID: "spin", Script: "export default async function (wf, pm) {\nwhile (true) {}\n}"}, ExecutionOptions{}, nil)
+	state := runner.Run(context.Background(), &Workflow{ID: "spin", Script: "export default async function (wf, pm) {\nwhile (true) {}\n}"}, ExecutionOptions{}, nil)
 
 	if state.Status != StatusFailed || !strings.Contains(state.Error, "timed out") {
 		t.Errorf("workflow = %s (%q), want a timeout", state.Status, state.Error)

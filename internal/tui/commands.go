@@ -797,10 +797,10 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		},
 		{
 			Keys:        []string{cancelRequestKey},
-			Description: "Cancel sending request",
+			Description: "Cancel sending request / workflow run",
 			ShortHelp:   cancelRequestKey,
-			Handler:     handleCancelRequestKey,
-			AvailableIn: []ViewMode{ModeRequests, ModeResponse},
+			Handler:     handleCancelKey,
+			AvailableIn: append([]ViewMode{ModeRequests, ModeResponse}, workflowRunModes...),
 		},
 		{
 			Keys:        []string{nextEnvironmentKey},

@@ -2,8 +2,8 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"postOffice/internal/engine"
 	"postOffice/internal/grpc"
 	"postOffice/internal/logger"
 	"postOffice/internal/postman"
@@ -118,6 +118,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMessage = fmt.Sprintf("%s %s: %s — %s", runLabel, msg.State.Status, errMsg, msg.State.Summary)
 			}
 			m.workflowChan = nil
+			m = m.forgetWorkflowRun()
 			if m.collection != nil {
 				for _, ss := range msg.State.Steps {
 					if ss.LastResponse != nil {
@@ -692,8 +693,8 @@ func (m Model) itemDisplayPrefix(item postman.Item) string {
 	if item.IsFolder() {
 		return "[DIR] "
 	}
-	if requestProtocol, err := m.protocols.For(&item); err == nil {
-		return fmt.Sprintf("[%s] ", requestProtocol.Label(item.Request))
+	if label, ok := m.engine.Label(&item); ok {
+		return fmt.Sprintf("[%s] ", label)
 	}
 	return "[???] "
 }
@@ -836,12 +837,6 @@ func (m Model) handleSelection() Model {
 }
 
 func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, tea.Cmd) {
-	requestProtocol, err := m.protocols.For(&item)
-	if err != nil {
-		m.statusMessage = fmt.Sprintf("Cannot execute: %v", err)
-		return m, nil
-	}
-
 	itemID := m.requestItemID(folderPath, item.Name)
 	requestToExecute := item.Request
 	isModified := m.isItemModified(itemID)
@@ -853,13 +848,28 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 			sendingStatus = "Sending (unsaved)"
 		}
 	}
-	m.statusMessage = fmt.Sprintf("%s: %s %s", sendingStatus, requestProtocol.Label(requestToExecute), item.Name)
-
 	if stored, ok := m.requestPathParams[itemID]; ok && len(stored) > 0 {
 		requestToExecute = applyPathParamsToReq(requestToExecute, stored)
 	}
 
 	collection, collectionPath := m.collectionScope(folderPath)
+	environment := m.environment
+	itemCopy := item
+	execution, err := m.engine.Prepare(engine.Call{
+		Item:    &itemCopy,
+		Request: requestToExecute,
+		Scope: script.RequestScope{
+			Collection:  collection,
+			Environment: environment,
+			FolderPath:  slices.Clone(collectionPath),
+			Item:        &itemCopy,
+		},
+	})
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Cannot execute: %v", err)
+		return m, nil
+	}
+	m.statusMessage = fmt.Sprintf("%s: %s %s", sendingStatus, execution.Label(), item.Name)
 
 	m.requestExecutions[itemID] = &RequestExecution{
 		Status:     statusSending,
@@ -870,34 +880,23 @@ func (m Model) executeRequest(item postman.Item, folderPath []string) (Model, te
 		Inputs:     sentRequestInputs(requestToExecute, collectionPath),
 	}
 
-	variables := m.variablesAt(folderPath)
-
-	environment := m.environment
 	environmentName := m.environmentName()
-	itemCopy := item
-
-	scope := &script.RequestScope{
-		Collection:  collection,
-		Environment: environment,
-		FolderPath:  slices.Clone(collectionPath),
-		Item:        &itemCopy,
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.inFlightRequests[itemID] = cancel
 
 	return m, func() tea.Msg {
-		response, testResult := requestProtocol.Execute(ctx, requestToExecute, scope, variables)
+		result := execution.Run(ctx)
 
 		return RequestCompleteMsg{
-			Cancelled:       errors.Is(ctx.Err(), context.Canceled),
+			Cancelled:       result.Cancelled,
 			ItemID:          itemID,
-			Response:        response,
-			TestResult:      testResult,
+			Response:        result.Response,
+			TestResult:      result.TestResult,
 			Collection:      collection,
 			Environment:     environment,
 			EnvironmentName: environmentName,
-			Protocol:        requestProtocol.Name(),
+			Protocol:        result.Protocol,
 			ItemName:        item.Name,
 			IsModified:      isModified,
 		}
@@ -2980,22 +2979,24 @@ func (m Model) runWorkflowScript(wf *workflow.Workflow, script, runLabel string)
 
 	runWf := *wf
 	runWf.Script = script
-	return m.launchRun(environment, func(runner *workflow.Runner, onChange func(workflow.ExecutionState)) workflow.ExecutionState {
-		return runner.Run(&runWf, opts, onChange)
+	return m.launchRun(environment, func(ctx context.Context, runner *workflow.Runner, onChange func(workflow.ExecutionState)) workflow.ExecutionState {
+		return runner.Run(ctx, &runWf, opts, onChange)
 	})
 }
 
 // launchRun runs a workflow against environment in a goroutine, streaming
 // state snapshots to the TUI until it finishes.
-func (m Model) launchRun(environment *postman.Environment, run func(*workflow.Runner, func(workflow.ExecutionState)) workflow.ExecutionState) (Model, tea.Cmd) {
+func (m Model) launchRun(environment *postman.Environment, run workflowRun) (Model, tea.Cmd) {
 	progressChan := make(chan workflow.ExecutionState, workflowProgressBuffer)
 	m.workflowChan = progressChan
 
-	runner := workflow.NewRunner(m.workflowCollection(), environment, m.executor)
+	runner := workflow.NewRunner(m.workflowCollection(), environment, m.engine)
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancelWorkflowRun = cancel
 
 	return m, tea.Batch(
 		func() tea.Msg {
-			finalState := run(runner, func(state workflow.ExecutionState) {
+			finalState := run(ctx, runner, func(state workflow.ExecutionState) {
 				progressChan <- state
 			})
 			close(progressChan)

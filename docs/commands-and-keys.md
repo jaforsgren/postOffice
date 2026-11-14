@@ -74,7 +74,7 @@ Paths support `~/` expansion, e.g. `:load ~/postman/api.json`. Loaded collection
 | `P` | Run stale prerequisites, then the request |
 | `L` | Edit request dependencies |
 | `M` | Dependency graph |
-| `ctrl+x` | Cancel the request being sent |
+| `ctrl+x` | Cancel the request being sent; in the workflow views, stop the running workflow |
 | `z` / `Z` | Expand/collapse the folder in place / all folders |
 | `shift+↑` / `shift+↓` | Jump to the previous/next folder |
 | `.` | Repeat the last action (execute, delete, duplicate, favorite, expand) |

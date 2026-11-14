@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"postOffice/internal/engine"
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
 	"postOffice/internal/script"
@@ -153,7 +155,7 @@ func runWithOptions(t *testing.T, environment *postman.Environment, opts Executi
 		runAll = append(runAll, `await wf.run("`+item.Name+`");`)
 	}
 	wf.Script = "export default async function (wf, pm) {\n" + strings.Join(runAll, "\n") + "\n}"
-	return NewRunner(collection, environment, internalhttp.NewExecutor()).Run(wf, opts, nil), collection
+	return NewRunner(collection, environment, engine.New(internalhttp.NewExecutor())).Run(context.Background(), wf, opts, nil), collection
 }
 
 func TestRun_IterationsRepeatEveryStep(t *testing.T) {

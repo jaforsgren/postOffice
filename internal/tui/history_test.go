@@ -253,15 +253,20 @@ func TestReplay_EmptyHistory(t *testing.T) {
 	}
 }
 
+func newEntryFor(name history.Protocol) history.Entry {
+	return history.Entry{ItemName: "replayed", Protocol: name, Snapshot: postman.SavedResponse{RequestMethod: "GET", RequestURL: "https://example.com"}}
+}
+
 func TestReplayProtocols_AllHistoryProtocols(t *testing.T) {
 	m := sizedTestModel()
 	for _, name := range []history.Protocol{history.ProtocolHTTP, history.ProtocolGRPC, history.ProtocolServiceBus, history.ProtocolAMQP} {
-		if requestProtocol, err := m.protocols.Named(name); err != nil || requestProtocol == nil {
-			t.Errorf("Named(%s) = %v, %v", name, requestProtocol, err)
+		entry := newEntryFor(name)
+		if execution, err := m.engine.PrepareReplay(entry); err != nil || execution.Protocol() != name {
+			t.Errorf("PrepareReplay(%s) = %v, %v", name, execution, err)
 		}
 	}
-	if _, err := m.protocols.Named("SMTP"); !errors.Is(err, protocol.ErrUnknownProtocol) {
-		t.Errorf("Named(SMTP) error = %v, want ErrUnknownProtocol", err)
+	if _, err := m.engine.PrepareReplay(newEntryFor("SMTP")); !errors.Is(err, protocol.ErrUnknownProtocol) {
+		t.Errorf("PrepareReplay(SMTP) error = %v, want ErrUnknownProtocol", err)
 	}
 }
 
