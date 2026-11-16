@@ -87,6 +87,16 @@ func TestToggleListener_InvalidRequestReportsError(t *testing.T) {
 	}
 }
 
+func TestToggleListener_UnresolvedVariableReportsIt(t *testing.T) {
+	m := peekRequestModel(t, "{{sb_connection_string}}")
+
+	m = pressKeys(t, m, runes(toggleListenerKey))
+
+	if len(m.listeners) != 0 || !m.statusIsError || !strings.Contains(m.statusMessage, "{{sb_connection_string}}") {
+		t.Errorf("listeners = %d, status = %q, want none and the unresolved variable", len(m.listeners), m.statusMessage)
+	}
+}
+
 func TestToggleListener_StartsThenStops(t *testing.T) {
 	m := peekRequestModel(t, testConnection)
 	itemID := m.requestItemID(nil, peekRequestName)

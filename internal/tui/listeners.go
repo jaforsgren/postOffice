@@ -111,6 +111,11 @@ func handleToggleListenerKey(m Model) (Model, tea.Cmd) {
 		return m.stopListener(itemID), nil
 	}
 	request, _ := m.requestToSend(item, itemID)
+	if unresolved := m.unresolvedVariables(request, folderPath); len(unresolved) > 0 {
+		m.statusMessage = fmt.Sprintf("Cannot watch %s: unresolved %s (load or select an environment that defines them)", item.Name, strings.Join(unresolved, ", "))
+		m.statusIsError = true
+		return m, nil
+	}
 	return m.startListener(itemID, item.Name, request, m.variablesAt(folderPath))
 }
 
