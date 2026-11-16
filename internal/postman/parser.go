@@ -92,7 +92,8 @@ func parseOpenAPISpec(data []byte) (*Collection, error) {
 	return collection, nil
 }
 
-// ExpandPath trims path and expands a leading "~/" to the home directory.
+// ExpandPath trims path, expands a leading "~/" to the home directory and
+// makes it absolute, so a saved path still resolves from another directory.
 func ExpandPath(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if strings.HasPrefix(path, "~/") {
@@ -102,7 +103,7 @@ func ExpandPath(path string) (string, error) {
 		}
 		path = filepath.Join(homeDir, path[2:])
 	}
-	return path, nil
+	return filepath.Abs(path)
 }
 
 func (p *Parser) GetCollection(name string) (*Collection, bool) {

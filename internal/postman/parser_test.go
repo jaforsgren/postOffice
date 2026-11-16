@@ -598,6 +598,22 @@ func TestExpandPath_WithWhitespace(t *testing.T) {
 	}
 }
 
+func TestExpandPath_RelativeBecomesAbsolute(t *testing.T) {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ExpandPath("examples/file.json")
+
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if want := filepath.Join(workingDir, "examples/file.json"); result != want {
+		t.Errorf("Expected %s, got %s", want, result)
+	}
+}
+
 func TestMultipleCollections(t *testing.T) {
 	parser := NewParser()
 
