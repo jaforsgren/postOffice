@@ -283,6 +283,18 @@ type Model struct {
 	listenerMessageViewport viewport.Model
 	// listenersReturnMode is where the listeners view was opened from.
 	listenersReturnMode ViewMode
+	// listenerFilter is the item ID of the listener whose messages alone are
+	// listed; empty lists every listener's.
+	listenerFilter string
+	// listenerQuery is the listeners view's search, in lower case.
+	listenerQuery string
+	// listenersPaused holds new messages in heldListenedMessages instead of
+	// listing them.
+	listenersPaused      bool
+	heldListenedMessages []listenedMessage
+	// unseenListenedMessages counts the messages that arrived while the
+	// listeners view was closed.
+	unseenListenedMessages int
 
 	// lastRepeatableKey is the key of the last repeatable action, which "." repeats.
 	lastRepeatableKey string
@@ -393,10 +405,12 @@ func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
 			m.favorites[id] = true
 		}
 	}
-	m = m.restoreSession()
+	// Init waits for the listeners the session resumes.
+	m, _ = m.restoreSession()
 	return m
 }
 
+// Init waits for the listeners resumed from the previous session.
 func (m Model) Init() tea.Cmd {
-	return nil
+	return m.waitForAllListeners()
 }

@@ -313,10 +313,66 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		},
 		{
 			Keys:        []string{toggleListenerKey},
-			Description: "Watch PEEK request (start/stop)",
+			Description: "Watch PEEK request or folder (start/stop)",
 			ShortHelp:   toggleListenerKey,
 			Handler:     handleToggleListenerKey,
 			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
+			Keys:        []string{runKey},
+			Description: "Resend message",
+			ShortHelp:   runKey,
+			Handler:     handleResendListenedMessageKey,
+			AvailableIn: listenedMessageModes,
+		},
+		{
+			Keys:        []string{saveListenedMessageKey},
+			Description: "Save message as request",
+			ShortHelp:   saveListenedMessageKey,
+			Handler:     handleSaveListenedMessageKey,
+			AvailableIn: listenedMessageModes,
+		},
+		{
+			Keys:        []string{copyListenedMessageKey},
+			Description: "Copy message body",
+			ShortHelp:   copyListenedMessageKey,
+			Handler:     handleCopyListenedMessageKey,
+			AvailableIn: listenedMessageModes,
+		},
+		{
+			Keys:        []string{openReportKey},
+			Description: "Open message(s) as JSON in editor",
+			ShortHelp:   openReportKey,
+			Handler:     handleOpenListenedMessagesKey,
+			AvailableIn: listenedMessageModes,
+		},
+		{
+			Keys:        []string{pauseListenersKey},
+			Description: "Pause/resume listing new messages",
+			ShortHelp:   pauseListenersKey,
+			Handler:     handlePauseListenersKey,
+			AvailableIn: []ViewMode{ModeListeners},
+		},
+		{
+			Keys:        []string{listenerFilterKey},
+			Description: "Show one listener's messages (cycle)",
+			ShortHelp:   listenerFilterKey,
+			Handler:     handleListenerFilterKey,
+			AvailableIn: []ViewMode{ModeListeners},
+		},
+		{
+			Keys:        []string{nextListenedMessageKey},
+			Description: "Next message",
+			ShortHelp:   nextListenedMessageKey,
+			Handler:     handleNextListenedMessageKey,
+			AvailableIn: []ViewMode{ModeListenerMessage},
+		},
+		{
+			Keys:        []string{previousListenedMessageKey},
+			Description: "Previous message",
+			ShortHelp:   previousListenedMessageKey,
+			Handler:     handlePreviousListenedMessageKey,
+			AvailableIn: []ViewMode{ModeListenerMessage},
 		},
 		{
 			Keys:        []string{listenersViewKey},
@@ -1409,7 +1465,7 @@ func handleSearchKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleSessionCommand(m Model, args []string) (Model, tea.Cmd) {
-	return m.restoreSession(), nil
+	return m.restoreSession()
 }
 
 func handleBackKey(m Model) (Model, tea.Cmd) {

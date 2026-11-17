@@ -430,10 +430,12 @@ func (m Model) renderStatusBar() string {
 		help = "t/q/esc: close timing"
 	case ModeInfo:
 		help = "ya/yb/yr/yy: copy | " + openReportKey + ": open in editor | q: close | j/k: scroll"
-	case ModeJSON, ModeLog, ModeHistoryDiff, ModeListenerMessage:
+	case ModeJSON, ModeLog, ModeHistoryDiff:
 		help = "q: close | j/k: scroll"
+	case ModeListenerMessage:
+		help = nextListenedMessageKey + "/" + previousListenedMessageKey + ": next/previous | " + runKey + ": resend | " + saveListenedMessageKey + ": save as request | " + copyListenedMessageKey + ": copy body | " + openReportKey + ": open | q: close | j/k: scroll"
 	case ModeListeners:
-		help = "enter: inspect | " + clearListenedMessagesKey + ": clear | " + cancelRequestKey + ": stop all | esc: back | j/k: navigate"
+		help = "enter: inspect | " + runKey + ": resend | /: search | " + listenerFilterKey + ": filter | " + pauseListenersKey + ": pause | " + clearListenedMessagesKey + ": clear | " + cancelRequestKey + ": stop all | esc: back | j/k: navigate"
 	case ModeSavedResponses:
 		help = "enter: view | d: delete | esc: back | j/k: navigate"
 	case ModeCollections, ModeEnvironments:
@@ -444,6 +446,10 @@ func (m Model) renderStatusBar() string {
 		help = "enter/r/" + runWithPrerequisitesKey + ": run with prerequisites | l: jump to request | esc: back | j/k: navigate"
 	default:
 		help = "q: quit | ↑↓/jk: navigate | enter: select | backspace/h: back | /: search | :: command"
+	}
+
+	if m.unseenListenedMessages > 0 {
+		help = watchingStyle.Render(fmt.Sprintf(newMessagesIndicator, m.unseenListenedMessages, listenersViewKey)) + " | " + help
 	}
 
 	// Wrapping would make the status bar taller than statusHeight.

@@ -230,11 +230,15 @@ func (m Model) copyFailed(err error) Model {
 	return m
 }
 
-// VimRequestReportCompleteMsg is sent when the editor showing a request report exits.
+// VimRequestReportCompleteMsg is sent when the editor showing a read-only
+// report exits. Label names the report in the status line.
 type VimRequestReportCompleteMsg struct {
 	TempFile string
+	Label    string
 	Err      error
 }
+
+const requestReportLabel = "request report"
 
 // handleOpenRequestReportKey shows the request info, the exchange and its
 // logs as Markdown in the editor, for searching and copying through large
@@ -251,13 +255,19 @@ func handleOpenRequestReportKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	tempFilePath, err := writeTempFile(requestReportFilePattern, report)
+	return m.openReadOnlyReport(requestReportFilePattern, report, requestReportLabel)
+}
+
+// openReadOnlyReport shows content in the editor from a temp file matching
+// pattern, removed when the editor exits.
+func (m Model) openReadOnlyReport(pattern, content, label string) (Model, tea.Cmd) {
+	tempFilePath, err := writeTempFile(pattern, content)
 	if err != nil {
 		m.statusMessage = err.Error()
 		return m, nil
 	}
 	return m, tea.ExecProcess(exec.Command(editorBin(), tempFilePath), func(err error) tea.Msg {
-		return VimRequestReportCompleteMsg{TempFile: tempFilePath, Err: err}
+		return VimRequestReportCompleteMsg{TempFile: tempFilePath, Label: label, Err: err}
 	})
 }
 
@@ -267,6 +277,6 @@ func (m Model) applyVimRequestReport(msg VimRequestReportCompleteMsg) Model {
 		m.statusMessage = fmt.Sprintf("Editor error: %v", msg.Err)
 		return m
 	}
-	m.statusMessage = "Closed request report"
+	m.statusMessage = "Closed " + msg.Label
 	return m
 }

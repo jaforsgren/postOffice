@@ -1162,6 +1162,11 @@ func (m Model) searchItemsRecursive(items []postman.Item, query string, parentPa
 
 func (m Model) filterItems() Model {
 	searchQuery := m.searchInput.Value()
+	if m.mode == ModeListeners {
+		m.listenerQuery = strings.ToLower(searchQuery)
+		m.listenerCursor = 0
+		return m
+	}
 	if searchQuery == "" {
 		m.items = m.allItems
 		m.currentItems = m.allCurrentItems
@@ -2402,17 +2407,26 @@ func (m Model) saveSession() {
 		Mode:            int(m.mode),
 		Breadcrumb:      m.breadcrumb,
 		Cursor:          m.cursor,
+		Watches:         m.watchedRequests(),
 	}
 
 	_ = m.parser.SaveSession(session)
 }
 
-func (m Model) restoreSession() Model {
+// restoreSession reopens the previous session's view and resumes its
+// watches. The command waits for the listeners it started.
+func (m Model) restoreSession() (Model, tea.Cmd) {
 	session, err := m.parser.LoadSession()
 	if err != nil || session == nil {
 		m.statusMessage = "No previous session found"
-		return m
+		return m, nil
 	}
+	return m.restoreSessionView(session).resumeListeners(session.Watches)
+}
+
+// restoreSessionView reopens the collection, environment, view and position
+// session recorded.
+func (m Model) restoreSessionView(session *postman.Session) Model {
 
 	collectionRestored := true
 	if session.CombinedView {

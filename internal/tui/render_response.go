@@ -58,7 +58,7 @@ func (m Model) buildResponseLines() []string {
 		lines = append(lines, m.buildTestResultsSection()...)
 	}
 
-	return lines
+	return append(lines, m.relatedMessagesSection()...)
 }
 
 func (m Model) buildRequestSection() []string {

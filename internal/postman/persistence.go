@@ -49,9 +49,19 @@ type Session struct {
 	Mode         int      `json:"mode"`
 	Breadcrumb   []string `json:"breadcrumb"`
 	Cursor       int      `json:"cursor"`
+	// Watches are the PEEK requests the TUI was watching, resumed on startup.
+	Watches []WatchedRequest `json:"watches,omitempty"`
 	// CLI is the headless commands' own selection, kept apart from the TUI's
 	// so neither overwrites the other.
 	CLI *CLISelection `json:"cli,omitempty"`
+}
+
+// WatchedRequest names a watched PEEK request by its collection, its folder
+// path within that collection and its name.
+type WatchedRequest struct {
+	Collection string   `json:"collection"`
+	FolderPath []string `json:"folder_path,omitempty"`
+	Request    string   `json:"request"`
 }
 
 // CLISelection is the collection, environment and workflow headless commands

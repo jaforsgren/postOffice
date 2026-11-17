@@ -8,7 +8,7 @@ import (
 )
 
 // searchableModes are the lists that / searches.
-var searchableModes = []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows}
+var searchableModes = []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeListeners}
 
 // clearSearch shows the unfiltered list again.
 func (m Model) clearSearch() Model {
@@ -22,6 +22,9 @@ func (m Model) clearSearch() Model {
 	case ModeWorkflows:
 		m.workflows = m.allWorkflows
 		m.workflowCursor = 0
+	case ModeListeners:
+		m.listenerQuery = ""
+		m.listenerCursor = 0
 	}
 	m.cursor = 0
 	return m
@@ -33,6 +36,8 @@ func (m Model) searchResultCount() int {
 		return len(m.variables)
 	case ModeWorkflows:
 		return len(m.workflows)
+	case ModeListeners:
+		return len(m.visibleListenedMessages())
 	default:
 		return len(m.items)
 	}

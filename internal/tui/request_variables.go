@@ -97,13 +97,7 @@ func (m Model) requestVariableRows() []requestVariableRow {
 
 // unresolvedVariables lists the {{variables}} req uses that nothing defines.
 func (m Model) unresolvedVariables(req *postman.Request, folderPath []string) []string {
-	var keys []string
-	for _, row := range m.variableRows(req, folderPath) {
-		if !row.Defined {
-			keys = append(keys, "{{"+row.Key+"}}")
-		}
-	}
-	return keys
+	return postman.UnresolvedVariables(req, m.variablesAt(folderPath))
 }
 
 // unresolvedVariablesLines is a warning naming the request's unresolved

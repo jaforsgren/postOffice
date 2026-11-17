@@ -1259,7 +1259,7 @@ func TestSaveSession(t *testing.T) {
 func TestRestoreSession_NoSession(t *testing.T) {
 	m := createTestModel()
 
-	m = m.restoreSession()
+	m, _ = m.restoreSession()
 
 	if m.statusMessage == "" {
 		t.Error("Expected a status message after restoring session")
