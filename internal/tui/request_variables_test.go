@@ -173,17 +173,6 @@ func TestRequestVariables_MergedEnvironmentsSaveToTheDefiningFile(t *testing.T) 
 	}
 }
 
-func TestRequestVariables_FolderIsRejected(t *testing.T) {
-	m := createTestModel()
-	m.cursor = 0
-
-	m = pressKeys(t, m, runes(requestVariablesKey))
-
-	if m.mode == ModeRequestVariables {
-		t.Error("expected a folder not to open the variables view")
-	}
-}
-
 func TestRequestVariables_CursorStartsOnTheFirstUnresolved(t *testing.T) {
 	m, _, _ := requestVariablesModel(t)
 

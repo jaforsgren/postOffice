@@ -14,6 +14,7 @@ Press `:` to enter command mode. `esc` leaves it, `enter` runs the command.
 | `:r` | Requests |
 | `:env` | Environments |
 | `:var` | Variables |
+| `:cv` | Edit the collection's own variables |
 | `:edit` | Edit the selected request |
 | `:wf` | Workflows |
 | `:wf new <id>` | Create a workflow |
@@ -70,7 +71,7 @@ Paths support `~/` expansion, e.g. `:load ~/postman/api.json`. Loaded collection
 | `i` | Request info + response |
 | `J` | Raw JSON |
 | `H` | Saved responses |
-| `V` | Edit used variables |
+| `V` | Edit used variables (on a folder: the folder's own variables) |
 | `ctrl+e` | Execute request / run folder |
 | `P` | Run stale prerequisites, then the request |
 | `L` | Edit request dependencies |

@@ -16,6 +16,8 @@ Press `tab` to insert the selected suggestion (a variable replaces the `{{…`, 
 
 Use `V` to edit a request's variables at their source, including the ones its scripts use (see [scripts](scripts.md)).
 
+Collection and folder variables are edited in the same panel: `V` on a folder lists the variables defined on that folder itself, and `:cv` the ones defined on the collection (in the combined view, the collection of the current or selected group folder). Besides editing, choices and notes, `n` adds a variable (type its name, then its value) and `d` deletes the selected one. Changes are saved to the collection file straight away; `u` undoes them.
+
 A variable can hold a list of choices (`"choices": ["01", "02"]` next to its `value` in the environment or collection file). Its `value` is the chosen one. In the `V` panel, `enter` opens a dropdown to pick another choice, `a` adds a choice (turning a plain variable into a choice list), `d` deletes one and `c` adds an optional note saying what the choice means (`"choiceNotes": {"02": "admin persona"}`; an empty note removes it). Reference a specific choice with `{{persona_id[1]}}` (zero-based).
 
 ## Saving and undo

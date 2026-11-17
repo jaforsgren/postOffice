@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -39,8 +40,11 @@ func (row requestVariableRow) variableValue() postman.VariableValue {
 // panel's request, or the request being edited.
 func handleRequestVariablesKey(m Model) (Model, tea.Cmd) {
 	item, folderPath, ok := m.requestVariablesTarget()
+	if ok && item.IsFolder() {
+		return m.openScopeVariables(append(slices.Clone(folderPath), item.Name)), nil
+	}
 	if !ok || !item.IsRequest() {
-		m.statusMessage = "Select a request to edit its variables"
+		m.statusMessage = "Select a request or folder to edit its variables"
 		return m, nil
 	}
 	if len(postman.ReferencedItemVariables(item)) == 0 {
@@ -48,6 +52,7 @@ func handleRequestVariablesKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 
+	m.requestVarsScope = false
 	m.requestVarsItem = item
 	m.requestVarsFolderPath = folderPath
 	m.requestVarsCursor = firstUndefinedRow(m.variableRows(item, folderPath))
@@ -97,6 +102,9 @@ func (m Model) closeRequestVariables() Model {
 }
 
 func (m Model) requestVariableRows() []requestVariableRow {
+	if m.requestVarsScope {
+		return m.scopeVariableRows()
+	}
 	return m.variableRows(m.requestVarsItem, m.requestVarsFolderPath)
 }
 
@@ -156,6 +164,9 @@ func (m Model) variableEnvironments() []*postman.Environment {
 }
 
 func (m Model) saveRequestVariable(key string, value postman.VariableValue) Model {
+	if m.requestVarsScope {
+		return m.saveScopeVariable(key, value)
+	}
 	collection, folderPath := m.collectionScope(m.requestVarsFolderPath)
 	owner := postman.SetVariable(collection, folderPath, m.variableEnvironments(), key, value)
 

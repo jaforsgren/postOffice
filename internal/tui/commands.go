@@ -106,6 +106,14 @@ func (cr *CommandRegistry) registerCommands() {
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables},
 		},
 		{
+			Name:        "cvars",
+			Aliases:     []string{"cv"},
+			Description: "Edit the current collection's own variables",
+			ShortHelp:   ":cv",
+			Handler:     handleCollectionVariablesCommand,
+			AvailableIn: []ViewMode{ModeRequests},
+		},
+		{
 			Name:        "info",
 			Aliases:     []string{"i"},
 			Description: "Show info for selected item",
@@ -770,7 +778,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 		},
 		{
 			Keys:        []string{requestVariablesKey},
-			Description: "Edit the variables this request uses",
+			Description: "Edit the variables this request uses (on a folder: its own variables)",
 			ShortHelp:   requestVariablesKey,
 			Handler:     handleRequestVariablesKey,
 			AvailableIn: []ViewMode{ModeRequests, ModeResponse},

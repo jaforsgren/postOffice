@@ -22,6 +22,8 @@ const (
 	requestVarEditNewChoice
 	// requestVarEditChoiceNote types the optional note explaining a choice.
 	requestVarEditChoiceNote
+	// requestVarEditNewKey types the name of a variable to add to a scope.
+	requestVarEditNewKey
 )
 
 const (
@@ -97,7 +99,12 @@ func (m Model) requestVariableShortcuts() []shortcutHint {
 		return requestVariableNewChoiceShortcuts
 	case requestVarEditChoiceNote:
 		return requestVariableChoiceNoteShortcuts
+	case requestVarEditNewKey:
+		return newVariableShortcuts
 	default:
+		if m.requestVarsScope {
+			return scopeVariablesShortcuts
+		}
 		return requestVariablesShortcuts
 	}
 }
@@ -121,6 +128,8 @@ func (m Model) handleRequestVariablesKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleRequestVariableNewChoiceKeys(msg, row)
 	case requestVarEditChoiceNote:
 		return m.handleRequestVariableChoiceNoteKeys(msg, row)
+	case requestVarEditNewKey:
+		return m.handleNewVariableKeys(msg)
 	}
 
 	switch msg.String() {
@@ -141,6 +150,14 @@ func (m Model) handleRequestVariablesKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case addChoiceKey:
 		if hasRow {
 			return m.startNewChoice(row)
+		}
+	case newVariableKey:
+		if m.requestVarsScope {
+			return m.startNewVariable()
+		}
+	case deleteVariableKey:
+		if m.requestVarsScope && hasRow {
+			return m.deleteScopeVariable(row), nil
 		}
 	}
 	return m, nil
@@ -276,7 +293,11 @@ func (m Model) renderRequestVariables(availableHeight int) string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	undefinedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 
-	lines := []string{titleStyle.Render("Variables used by " + m.requestVarsItem.Name), ""}
+	title := "Variables used by " + m.requestVarsItem.Name
+	if m.requestVarsScope {
+		title = "Variables of " + m.scopeLabel()
+	}
+	lines := []string{titleStyle.Render(title), ""}
 
 	const keyColWidth = 30
 	indent := strings.Repeat(" ", keyColWidth+4)
@@ -307,7 +328,15 @@ func (m Model) renderRequestVariables(availableHeight int) string {
 		if !row.Defined {
 			sourceStyle = undefinedStyle
 		}
-		lines = append(lines, indent+sourceStyle.Italic(true).Render(row.Source))
+		if !m.requestVarsScope {
+			lines = append(lines, indent+sourceStyle.Italic(true).Render(row.Source))
+		}
+	}
+	if m.requestVarsScope && len(m.requestVariableRows()) == 0 && m.requestVarEdit != requestVarEditNewKey {
+		lines = append(lines, dimStyle.Render(emptyScopeMessage))
+	}
+	if m.requestVarEdit == requestVarEditNewKey {
+		lines = append(lines, "  "+newChoicePrefix+m.editFieldInput.View())
 	}
 
 	lines = append(lines, "", dimStyle.Render(strings.Join(formatShortcuts(m.requestVariableShortcuts()), "  ")))

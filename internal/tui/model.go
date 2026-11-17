@@ -173,12 +173,16 @@ type Model struct {
 	// i, whose definition it shows above the exchange; nil otherwise.
 	responsePanelItem *postman.Item
 
-	requestVarsItem          postman.Item
-	requestVarsFolderPath    []string
-	requestVarsCursor        int
-	requestVarEdit           requestVarEditState
-	requestVarChoiceCursor   int
-	requestVarsReturnMode    ViewMode
+	requestVarsItem        postman.Item
+	requestVarsFolderPath  []string
+	requestVarsCursor      int
+	requestVarEdit         requestVarEditState
+	requestVarChoiceCursor int
+	requestVarsReturnMode  ViewMode
+	// requestVarsScope makes the panel list the variables defined on the
+	// collection or folder at requestVarsFolderPath, instead of the ones
+	// requestVarsItem uses.
+	requestVarsScope         bool
 	requestTypeSelectionMode bool
 
 	responseViewport viewport.Model
