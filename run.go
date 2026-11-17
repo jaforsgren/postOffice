@@ -198,28 +198,13 @@ func executeRun(out io.Writer, collectionRef string, opts executionOptions, buil
 // signal. A stopped run reports how far it got and persists nothing.
 func executeRunContext(ctx context.Context, out io.Writer, collectionRef string, opts executionOptions, buildWorkflow workflowBuilder) error {
 	opts = withSelectedEnvironment(opts)
-	collectionPath, err := resolveCollectionRef(collectionRef)
+	parser, collection, environment, err := loadCollectionAndEnvironment(collectionRef, opts.environmentPath)
 	if err != nil {
 		return err
 	}
 	if opts.persist {
+		collectionPath, _ := parser.GetCollectionPath(collection.Info.Name)
 		if err := requirePostmanCollection(collectionPath); err != nil {
-			return err
-		}
-	}
-
-	parser := postman.NewParser()
-	collection, err := parser.LoadCollection(collectionPath)
-	if err != nil {
-		return err
-	}
-	var environment *postman.Environment
-	if opts.environmentPath != "" {
-		environmentPath, err := resolveEnvironmentRef(opts.environmentPath)
-		if err != nil {
-			return err
-		}
-		if environment, err = parser.LoadEnvironment(environmentPath); err != nil {
 			return err
 		}
 	}
@@ -262,6 +247,32 @@ func executeRunContext(ctx context.Context, out io.Writer, collectionRef string,
 		return errRunFailed
 	}
 	return nil
+}
+
+// loadCollectionAndEnvironment loads the collection and, when environmentRef
+// is set, the environment. Each is a file path or a loaded one's name.
+func loadCollectionAndEnvironment(collectionRef, environmentRef string) (*postman.Parser, *postman.Collection, *postman.Environment, error) {
+	collectionPath, err := resolveCollectionRef(collectionRef)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	parser := postman.NewParser()
+	collection, err := parser.LoadCollection(collectionPath)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if environmentRef == "" {
+		return parser, collection, nil, nil
+	}
+	environmentPath, err := resolveEnvironmentRef(environmentRef)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	environment, err := parser.LoadEnvironment(environmentPath)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return parser, collection, environment, nil
 }
 
 func environmentName(environment *postman.Environment) string {

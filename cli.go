@@ -51,7 +51,7 @@ type cliCommand struct {
 var cliCommands []*cliCommand
 
 func init() {
-	cliCommands = []*cliCommand{runCommand, workflowCommand, lsCommand, useCommand, mergeCommand, aliasCommand, helpCommand}
+	cliCommands = []*cliCommand{runCommand, workflowCommand, watchCommand, lsCommand, useCommand, mergeCommand, aliasCommand, helpCommand}
 }
 
 func lookupCommand(name string) (*cliCommand, bool) {
