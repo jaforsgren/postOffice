@@ -29,10 +29,14 @@ const (
 	testPassedMarker = "- [x] "
 	testFailedMarker = "- [ ] "
 	blankLine        = ""
+	// sectionBreak sets the response apart from what was sent.
+	sectionBreak = "---"
 )
 
 // markdownReport is the request report as Markdown: one section per part,
-// with headers, bodies and scripts as fenced snippets.
+// with headers, bodies and scripts as fenced snippets. It reads top down as
+// the exchange happened: what was asked, what was sent, what came back and
+// how it tested, then the curl to repeat it, with the scripts last.
 func (t yankTarget) markdownReport() (string, error) {
 	if t.definition == nil && t.response == nil {
 		return "", errNothingToOpen
@@ -45,6 +49,7 @@ func (t yankTarget) markdownReport() (string, error) {
 	}
 	if t.response != nil {
 		lines = append(lines, sentRequestSection(t.response)...)
+		lines = append(lines, sectionBreak, blankLine)
 		lines = append(lines, responseSection(t.response)...)
 	}
 	if t.model.lastTestResult != nil && t.response != nil {
@@ -57,6 +62,9 @@ func (t yankTarget) markdownReport() (string, error) {
 	curl, kind := t.curl()
 	lines = append(lines, "## "+kind, blankLine)
 	lines = append(lines, fencedBlock(langShell, curl)...)
+	if t.definition != nil {
+		lines = append(lines, t.scriptsAndDescription()...)
+	}
 
 	return strings.Join(lines, "\n"), nil
 }
@@ -71,15 +79,19 @@ func (t yankTarget) reportTitle() string {
 	return untitledRequest
 }
 
+// definitionSection is the request as saved. Once it was sent, its headers
+// and body are left to the sent request section, which shows them resolved.
 func (t yankTarget) definitionSection() []string {
 	request := t.definition.Request
 	lines := []string{"## Definition", blankLine}
-	lines = append(lines, fmt.Sprintf("- **Method:** `%s`", request.Method))
-	lines = append(lines, fmt.Sprintf("- **URL:** `%s`", request.URL.Raw))
+	lines = append(lines, fmt.Sprintf("- **Method:** `%s`  **URL:** `%s`", request.Method, request.URL.Raw))
 	if resolved := t.url(); resolved != request.URL.Raw {
 		lines = append(lines, fmt.Sprintf("- **Resolved:** `%s`", resolved))
 	}
 	lines = append(lines, blankLine)
+	if t.response != nil {
+		return lines
+	}
 
 	if len(request.Header) > 0 {
 		var headers []string
@@ -93,6 +105,11 @@ func (t yankTarget) definitionSection() []string {
 		lines = append(lines, "### Body", blankLine)
 		lines = append(lines, bodyBlock(request.Body.Raw)...)
 	}
+	return lines
+}
+
+func (t yankTarget) scriptsAndDescription() []string {
+	var lines []string
 	for _, event := range t.definition.Events {
 		if len(event.Script.Exec) == 0 {
 			continue
@@ -140,8 +157,7 @@ func responseSection(response *http.Response) []string {
 		return append(lines, fencedBlock(langText, response.Error.Error())...)
 	}
 
-	lines = append(lines, fmt.Sprintf("- **Status:** `%s`", response.Status))
-	lines = append(lines, fmt.Sprintf("- **Duration:** %s", response.Duration), blankLine)
+	lines = append(lines, fmt.Sprintf("**Status:** `%s`  **Duration:** %s", response.Status, response.Duration), blankLine)
 
 	if len(response.Headers) > 0 {
 		var headers []string

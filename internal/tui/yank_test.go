@@ -124,7 +124,7 @@ func TestMarkdownReport_HasHeadingsAndFencedSnippets(t *testing.T) {
 		"# " + formRequestName,
 		"## Definition",
 		"## Sent request\n\n```http\nPOST https://sent.example.com/api/create\nX-A: 1\nX-B: 2\n```",
-		"## Response",
+		"---\n\n## Response\n\n**Status:** `",
 		"```json\n{\n  \"ok\": true\n}\n```",
 		"## curl\n\n```bash\ncurl",
 	} {
@@ -159,6 +159,41 @@ func TestMarkdownReport_ScriptsAndTestsAsSnippets(t *testing.T) {
 		if !strings.Contains(report, want) {
 			t.Errorf("expected the report to contain %q, got:\n%s", want, report)
 		}
+	}
+}
+
+func TestMarkdownReport_SectionOrder(t *testing.T) {
+	m := withExecutedResponse(modelWithCursorOn(t, formRequestName), formRequestName)
+	m.currentItems[m.cursor].Events = []postman.Event{{Listen: "test", Script: postman.Script{Exec: []string{"pm.test('ok', () => {})"}}}}
+	itemID := m.getRequestIdentifierByPath(m.collection.Info.Name, nil, formRequestName)
+	m.requestExecutions[itemID].TestResult = &script.TestResult{Tests: []script.Test{{Name: "ok", Passed: true}}}
+	target, _ := m.currentYankTarget()
+
+	report, _ := target.markdownReport()
+
+	order := []string{"## Definition", "## Sent request", sectionBreak, "## Response", "## Tests", "## curl", "### Test script"}
+	last := -1
+	for _, heading := range order {
+		index := strings.Index(report, heading)
+		if index <= last {
+			t.Fatalf("expected %q after the previous section, got:\n%s", heading, report)
+		}
+		last = index
+	}
+	definition := report[strings.Index(report, "## Definition"):strings.Index(report, "## Sent request")]
+	if strings.Contains(definition, "### Headers") || strings.Contains(definition, "### Body") {
+		t.Errorf("expected the sent request alone to show headers and body, got:\n%s", definition)
+	}
+}
+
+func TestMarkdownReport_UnsentRequestShowsItsDefinition(t *testing.T) {
+	m := modelWithCursorOn(t, formRequestName)
+	target, _ := m.currentYankTarget()
+
+	report, _ := target.markdownReport()
+
+	if !strings.Contains(report, "**URL:**") || strings.Contains(report, "## Response") {
+		t.Errorf("expected only the definition, got:\n%s", report)
 	}
 }
 
