@@ -6,95 +6,113 @@
   },
   "item": [
     {
-      "name": "claimdocumentation",
-      "request": {
-        "method": "PEEK",
-        "header": [
-          {
-            "key": "Connection-String",
-            "value": "{{sb_connection_string}}"
-          },
-          {
-            "key": "Max-Messages",
-            "value": "50"
-          }
-        ],
-        "url": {
-          "raw": "asb://{{sb_topic_claim}}/postoffice-tap"
-        }
-      },
-      "description": "Peeks the postoffice-tap subscription without consuming its messages. ctrl+e peeks once; w watches it in the background and W shows what arrives.",
-      "event": [
+      "name": "Taps",
+      "description": "One PEEK per topic's postoffice-tap subscription. Press w on this folder to watch them all.",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('peeked', () => pm.expect(pm.response.json()).to.be.an('array'));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "payments",
-      "request": {
-        "method": "PEEK",
-        "header": [
-          {
-            "key": "Connection-String",
-            "value": "{{sb_connection_string}}"
+          "name": "claimdocumentation",
+          "request": {
+            "method": "PEEK",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Max-Messages",
+                "value": "50"
+              },
+              {
+                "key": "Display-Property",
+                "value": "message-name"
+              }
+            ],
+            "url": {
+              "raw": "asb://{{sb_topic_claim}}/postoffice-tap"
+            }
           },
-          {
-            "key": "Max-Messages",
-            "value": "50"
-          }
-        ],
-        "url": {
-          "raw": "asb://{{sb_topic_payments}}/postoffice-tap"
-        }
-      },
-      "description": "Peeks the postoffice-tap subscription without consuming its messages. ctrl+e peeks once; w watches it in the background and W shows what arrives.",
-      "event": [
+          "description": "Peeks the postoffice-tap subscription without consuming its messages. ctrl+e peeks once; w watches it in the background (w on the Taps folder watches every topic) and W shows what arrives, labelled by its message-name property.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('peeked', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('peeked', () => pm.expect(pm.response.json()).to.be.an('array'));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "conversation",
-      "request": {
-        "method": "PEEK",
-        "header": [
-          {
-            "key": "Connection-String",
-            "value": "{{sb_connection_string}}"
+          "name": "payments",
+          "request": {
+            "method": "PEEK",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Max-Messages",
+                "value": "50"
+              },
+              {
+                "key": "Display-Property",
+                "value": "message-name"
+              }
+            ],
+            "url": {
+              "raw": "asb://{{sb_topic_payments}}/postoffice-tap"
+            }
           },
-          {
-            "key": "Max-Messages",
-            "value": "50"
-          }
-        ],
-        "url": {
-          "raw": "asb://{{sb_topic_conversation}}/postoffice-tap"
-        }
-      },
-      "description": "Peeks the postoffice-tap subscription without consuming its messages. ctrl+e peeks once; w watches it in the background and W shows what arrives.",
-      "event": [
+          "description": "Peeks the postoffice-tap subscription without consuming its messages. ctrl+e peeks once; w watches it in the background (w on the Taps folder watches every topic) and W shows what arrives, labelled by its message-name property.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('peeked', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('peeked', () => pm.expect(pm.response.json()).to.be.an('array'));"
-            ]
-          }
+          "name": "conversation",
+          "request": {
+            "method": "PEEK",
+            "header": [
+              {
+                "key": "Connection-String",
+                "value": "{{sb_connection_string}}"
+              },
+              {
+                "key": "Max-Messages",
+                "value": "50"
+              },
+              {
+                "key": "Display-Property",
+                "value": "message-name"
+              }
+            ],
+            "url": {
+              "raw": "asb://{{sb_topic_conversation}}/postoffice-tap"
+            }
+          },
+          "description": "Peeks the postoffice-tap subscription without consuming its messages. ctrl+e peeks once; w watches it in the background (w on the Taps folder watches every topic) and W shows what arrives, labelled by its message-name property.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('peeked', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -110,6 +128,10 @@
           {
             "key": "Dead-Letter",
             "value": "true"
+          },
+          {
+            "key": "Display-Property",
+            "value": "message-name"
           }
         ],
         "url": {

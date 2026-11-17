@@ -76,7 +76,7 @@ Paths support `~/` expansion, e.g. `:load ~/postman/api.json`. Loaded collection
 | `L` | Edit request dependencies |
 | `M` | Dependency graph |
 | `ctrl+x` | Cancel the request being sent; in the workflow views, stop the running workflow |
-| `w` | Watch the selected [PEEK request](servicebus.md#peeking) in the background (again: stop) |
+| `w` | Watch the selected [PEEK request](servicebus.md#peeking) in the background, or every one in the selected folder (again: stop) |
 | `W` | Listeners view |
 | `z` / `Z` | Expand/collapse the folder in place / all folders |
 | `shift+↑` / `shift+↓` | Jump to the previous/next folder |
@@ -136,8 +136,16 @@ The gRPC editor adds `enter` to toggle TLS and `ctrl+f` to browse server reflect
 
 | Key | Action |
 |---|---|
-| `j` / `k` | Navigate messages (newest first) |
+| `j` / `k` | Navigate messages (newest enqueued first) |
 | `enter` | Show the message's properties and body |
+| `n` / `N` | Next / previous message (message view) |
+| `ctrl+e` | Send the message again to its queue or topic |
+| `S` | Save the message as an `ASB` request next to its PEEK request |
+| `y` | Copy the message body |
+| `o` | Open the message (message view) or every listed message as JSON in `$EDITOR` |
+| `/` | Search subjects, properties and bodies (`esc` clears) |
+| `f` | Show one listener's messages; again for the next, then all |
+| `p` | Pause: hold new messages back until `p` again |
 | `c` | Clear the messages seen so far |
 | `ctrl+x` | Stop every listener |
 | `esc` / `q` | Close the message, then the listeners |

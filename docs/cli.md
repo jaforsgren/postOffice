@@ -74,6 +74,22 @@ JSON includes request results, tests, errors, timings, and console output. JUnit
 | `2` | Invalid arguments or input |
 | `130` | Interrupted (`ctrl+c` / SIGTERM): the request being sent is abandoned, the report shows the run as `stopped`, and `--persist` saves nothing |
 
+## Watching Service Bus
+
+Stream the messages arriving on the queues and subscriptions that [PEEK requests](servicebus.md#peeking) read, like the TUI's listeners:
+
+```bash
+# One request, every PEEK request in a folder, or every one in the collection
+postOffice watch events.json "Taps/payments" -e emulator.json
+postOffice watch events.json --folder Taps -e emulator.json
+postOffice watch events.json -e emulator.json
+
+# One JSON object per line, for jq
+postOffice watch events.json --folder Taps --output json | jq '.applicationProperties["message-name"]'
+```
+
+Text output is one line per message (`time  target  #sequence  label  body`), plus failed polls and recoveries. JSON output is a message per line (with `request` and `target`) or a failed poll (`{"request","target","error","retryAt"}`). A failing watch keeps retrying; `ctrl+c` stops it and exits 0.
+
 ## Listing
 
 Inspect loaded collections and environments:
