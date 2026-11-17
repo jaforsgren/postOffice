@@ -17,6 +17,7 @@ const (
 
 	splitNotExecutedMessage    = "Not executed yet — press enter to execute"
 	splitFolderResponseMessage = "Folders have no response"
+	splitVariablesHeading      = "Collection & folder variables:"
 )
 
 func (m Model) renderRequestSplitView() string {
@@ -69,7 +70,36 @@ func (m Model) splitInfoLines() []string {
 	if !ok {
 		return []string{noItemSelectedMessage}
 	}
-	return m.withInfoItemAtCursor(item).buildItemDetailLines()
+	lines := m.withInfoItemAtCursor(item).buildItemDetailLines()
+	return append(lines, m.scopeVariableLines(item)...)
+}
+
+// scopeVariableLines lists the collection and folder variables visible to
+// item (a folder sees its own), as each resolves without the environment.
+func (m Model) scopeVariableLines(item postman.Item) []string {
+	path := m.folderPathForCursor()
+	if item.IsFolder() {
+		path = append(path, item.Name)
+	}
+	collection, scopePath := m.collectionScope(path)
+	variables := postman.GetAllVariables(collection, scopePath, nil)
+	if len(variables) == 0 {
+		return nil
+	}
+
+	lines := []string{"", requestStyle.Render(splitVariablesHeading)}
+	for _, variable := range variables {
+		line := "  " + variable.Key + " = " + strings.ReplaceAll(variable.Value, "\n", " ")
+		value := postman.VariableValue{Value: variable.Value, Choices: variable.Choices, ChoiceNotes: variable.ChoiceNotes}
+		if value.IsChoice() {
+			line += "  " + subtleStyle.Render(choiceSummary(value))
+			if note := variable.ChoiceNotes[variable.Value]; note != "" {
+				line += " " + subtleStyle.Render(notePrefix+note)
+			}
+		}
+		lines = append(lines, line+"  "+subtleStyle.Render(variable.Source))
+	}
+	return lines
 }
 
 func (m Model) splitResponseContent() (string, lipgloss.Color) {

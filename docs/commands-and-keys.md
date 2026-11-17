@@ -54,7 +54,7 @@ Paths support `~/` expansion, e.g. `:load ~/postman/api.json`. Loaded collection
 | `h` / `esc` | Go back |
 | `/` | Search (collections, requests, environments, variables, workflows) |
 | `i` | Info (also on a collection) |
-| `tab` | Toggle split view |
+| `tab` | Toggle split view (info pane lists the collection and folder variables in scope) |
 | `ctrl+o` / `ctrl+]` | Jump back/forward (previous folder or collection, also from other lists) |
 | `O` | Reveal the collection/environment file (Finder/Explorer) |
 | `r` | Refresh |

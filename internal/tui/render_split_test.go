@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"postOffice/internal/http"
+	"postOffice/internal/postman"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -170,5 +171,32 @@ func TestRenderContent_SplitViewOffRendersMainWindow(t *testing.T) {
 	content := m.renderContent()
 	if len(content) != 1 || content[0] != m.renderMainWindow() {
 		t.Error("expected the single-pane main window when the split view is off")
+	}
+}
+
+func TestSplitInfoLines_ShowCollectionAndFolderVariables(t *testing.T) {
+	m, _, _ := combinedModel(t)
+	b, _ := m.parser.GetCollection(combinedB)
+	b.Items[0].Variables = []postman.Variable{{Key: "order_id", Value: "o2", Choices: []string{"o1", "o2"}, ChoiceNotes: map[string]string{"o2": "big order"}}}
+	m = m.reloadMergedCollection()
+	m = cursorOn(t, openFolder(t, openFolder(t, m, combinedB), ordersFolder), ordersRequest)
+
+	info := strings.Join(m.splitInfoLines(), "\n")
+
+	for _, want := range []string{splitVariablesHeading, "order_id = o2", notePrefix + "big order", "Folder: " + ordersFolder} {
+		if !strings.Contains(info, want) {
+			t.Errorf("expected %q in the info pane, got:\n%s", want, info)
+		}
+	}
+}
+
+func TestSplitInfoLines_FolderShowsItsCollectionVariables(t *testing.T) {
+	m, _, _ := combinedModel(t)
+	m = cursorOn(t, m, combinedA)
+
+	info := strings.Join(m.splitInfoLines(), "\n")
+
+	if !strings.Contains(info, combinedVarName+" = one") || !strings.Contains(info, "Collection: "+combinedA) {
+		t.Errorf("expected Collection A's variable, got:\n%s", info)
 	}
 }
