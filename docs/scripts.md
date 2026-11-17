@@ -12,7 +12,7 @@ Scripts share a sandbox. Implicit globals can be reused across scripts.
 
 ## {{variables}} in scripts
 
-Unlike Postman, PostOffice resolves `{{name}}` (and `{{name[N]}}` choice references) inside scripts just before each script runs, from iteration data, then the environment, then collection/folder variables, so values set by an earlier script in the chain are seen.
+Unlike Postman, PostOffice resolves `{{name}}` (and `{{name[N]}}` choice references) inside scripts just before each script runs, from iteration data, then the environment, the collection and the folders above the request (the same order as URLs and bodies), so values set by an earlier script in the chain are seen.
 
 - In code a reference becomes a JS string literal: `const persona_id = {{persona_id}};` declares the string `"p2"`. Convert numbers yourself (`Number({{count}})`).
 - Inside a string literal or comment the value is spliced in as text, escaped for the enclosing quote: `"Bearer {{token}}"`.

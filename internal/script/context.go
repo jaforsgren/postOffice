@@ -59,6 +59,9 @@ type ExecutionContext struct {
 	SendRequest     RequestSender
 	CollectionVars  []postman.Variable
 	EnvironmentVars []postman.EnvVariable
+	// FolderVars are the variables of the folders above the request,
+	// outermost first. Scripts read them but cannot set them.
+	FolderVars []postman.VariableSource
 }
 
 // NextRequest records a pm.execution.setNextRequest call. Name is empty with

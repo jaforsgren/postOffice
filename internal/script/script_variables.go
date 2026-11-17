@@ -25,7 +25,7 @@ const (
 
 // resolveScriptVariables replaces {{name}} references in code with the
 // values ctx resolves them to at the moment the script runs (iteration data,
-// then environment, then collection, as pm.variables.get does), so earlier
+// then environment, collection and folders, as pm.variables.get does), so earlier
 // scripts' pm.*.set calls are visible. A reference in code becomes a JS
 // string literal (`const id = {{persona_id}}` declares a string); inside a
 // string literal or comment the value is spliced in as text, escaped for the
@@ -112,19 +112,15 @@ func escapeForQuote(value string, quote byte) string {
 // scriptVariableSources lists ctx's variables in pm.variables.get's
 // precedence, without duplicate keys.
 func scriptVariableSources(ctx *ExecutionContext) []postman.VariableSource {
-	var data, environment, collection []postman.VariableSource
-	for key := range ctx.Iteration.Data {
-		if value, ok := ctx.Iteration.Data.value(key); ok {
-			data = append(data, postman.VariableSource{Key: key, Value: value})
-		}
-	}
+	var environment, collection []postman.VariableSource
 	for _, variable := range ctx.EnvironmentVars {
 		environment = append(environment, postman.VariableSource{Key: variable.Key, Value: variable.Value, Choices: variable.Choices})
 	}
 	for _, variable := range ctx.CollectionVars {
 		collection = append(collection, postman.VariableSource{Key: variable.Key, Value: variable.Value, Choices: variable.Choices})
 	}
-	return postman.OverrideVariables(data, postman.OverrideVariables(firstPerKey(environment), firstPerKey(collection)))
+	inScope := postman.OverrideVariables(firstPerKey(environment), firstPerKey(append(collection, ctx.FolderVars...)))
+	return postman.OverrideVariables(ctx.Iteration.Data.variables(), inScope)
 }
 
 // firstPerKey keeps each key's first occurrence, the one the pm getters return.

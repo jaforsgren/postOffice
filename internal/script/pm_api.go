@@ -224,8 +224,8 @@ func setupVariableAPIs(vm *goja.Runtime, pmObj *goja.Object, ctx *ExecutionConte
 		set:   makeEnvVariableSetter(&ctx.EnvironmentVars),
 		unset: makeUnsetter(&ctx.EnvironmentVars, func(v postman.EnvVariable) string { return v.Key }),
 	}
-	// pm.variables resolves iteration data, then environment, then collection,
-	// and writes to the collection scope, the closest postOffice has to
+	// pm.variables resolves iteration data, then environment, collection and
+	// folder variables (the {{variable}} order), and writes to the collection scope, the closest postOffice has to
 	// Postman's local scope. Gotcha: unlike Postman's local scope, a write
 	// does not shadow a data value, so get() keeps returning the data value.
 	merged := variableScope{
@@ -236,7 +236,10 @@ func setupVariableAPIs(vm *goja.Runtime, pmObj *goja.Object, ctx *ExecutionConte
 			if value, ok := environment.get(key); ok {
 				return value, true
 			}
-			return collection.get(key)
+			if value, ok := collection.get(key); ok {
+				return value, true
+			}
+			return folderVariable(ctx.FolderVars, key)
 		},
 		set:   collection.set,
 		unset: collection.unset,
@@ -426,6 +429,16 @@ func makeEnvVariableSetter(vars *[]postman.EnvVariable) func(string, string) {
 			Type:    "default",
 		})
 	}
+}
+
+// folderVariable is key's value in the first folder defining it.
+func folderVariable(variables []postman.VariableSource, key string) (string, bool) {
+	for _, variable := range variables {
+		if variable.Key == key {
+			return variable.Value, true
+		}
+	}
+	return "", false
 }
 
 func makeEnvVariableGetter(vars *[]postman.EnvVariable) func(string) (string, bool) {

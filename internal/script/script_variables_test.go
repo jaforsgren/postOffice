@@ -58,3 +58,33 @@ func TestExecuteChain_ScriptSeesVariablesSetByAnEarlierScript(t *testing.T) {
 		t.Errorf("expected the resolved token, got %q", value)
 	}
 }
+
+func TestRequestRun_ScriptsResolveFolderVariables(t *testing.T) {
+	item := &postman.Item{Name: "r", Request: &postman.Request{}, Events: []postman.Event{{
+		Listen: string(PhasePreRequest),
+		Script: postman.Script{Exec: []string{
+			`pm.collectionVariables.set("from_reference", {{tenant}});`,
+			`pm.collectionVariables.set("from_get", pm.variables.get("tenant"));`,
+			`pm.collectionVariables.set("shadowed", {{region}});`,
+		}},
+	}}}
+	collection := &postman.Collection{
+		Variables: []postman.Variable{{Key: "region", Value: "collection"}},
+		Items: []postman.Item{{Name: "Accounts", Variables: []postman.Variable{
+			{Key: "tenant", Value: "folder-tenant"},
+			{Key: "region", Value: "folder"},
+		}, Items: []postman.Item{*item}}},
+	}
+
+	result := NewRequestRun(RequestScope{Collection: collection, FolderPath: []string{"Accounts"}, Item: item}).run(PhasePreRequest, NewRequestData(item.Request), nil)
+
+	if len(result.Errors) > 0 {
+		t.Fatalf("expected no errors, got %v", result.Errors)
+	}
+	get := makeVariableGetter(&collection.Variables)
+	for key, want := range map[string]string{"from_reference": "folder-tenant", "from_get": "folder-tenant", "shadowed": "collection"} {
+		if got, _ := get(key); got != want {
+			t.Errorf("%s: got %q, want %q", key, got, want)
+		}
+	}
+}

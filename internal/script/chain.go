@@ -126,6 +126,7 @@ func (rr *RequestRun) run(phase Phase, request *RequestData, response *ResponseD
 	}
 	if scope.Collection != nil {
 		ctx.CollectionVars = scope.Collection.Variables
+		ctx.FolderVars = postman.FolderVariables(scope.Collection, scope.FolderPath)
 	}
 	if scope.Environment != nil {
 		ctx.EnvironmentVars = scope.Environment.Values

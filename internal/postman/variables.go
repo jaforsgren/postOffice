@@ -62,6 +62,16 @@ func VariableDefinitions(collection *Collection, breadcrumb []string, environmen
 		})
 	}
 
+	return append(variables, FolderVariables(collection, breadcrumb)...)
+}
+
+// FolderVariables returns the variables of each folder along breadcrumb,
+// outermost first.
+func FolderVariables(collection *Collection, breadcrumb []string) []VariableSource {
+	if collection == nil {
+		return nil
+	}
+	var variables []VariableSource
 	current := collection.Items
 	for i, crumbName := range breadcrumb {
 		for _, item := range current {
