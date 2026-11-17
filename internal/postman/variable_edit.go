@@ -55,7 +55,7 @@ type VariableOwner struct {
 	Name  string
 }
 
-// SetVariable stores value (and its choices) where GetAllVariables resolves
+// SetVariable stores value (and its choices and their notes) where GetAllVariables resolves
 // key from, so the new value is the one requests use. environments are in
 // precedence order: the first one defining key wins, as in
 // Parser.MergedEnvironment. A key defined nowhere becomes a new collection
@@ -66,6 +66,7 @@ func SetVariable(collection *Collection, folderPath []string, environments []*En
 			if environment.Values[i].Enabled && environment.Values[i].Key == key {
 				environment.Values[i].Value = value.Value
 				environment.Values[i].Choices = value.Choices
+				environment.Values[i].ChoiceNotes = value.ChoiceNotes
 				return VariableOwner{Scope: VariableScopeEnvironment, Name: environment.Name}
 			}
 		}
@@ -83,13 +84,14 @@ func SetVariable(collection *Collection, folderPath []string, environments []*En
 		return VariableOwner{Scope: VariableScopeFolder, Name: folderName}
 	}
 
-	collection.Variables = append(collection.Variables, Variable{Key: key, Value: value.Value, Choices: value.Choices})
+	collection.Variables = append(collection.Variables, Variable{Key: key, Value: value.Value, Choices: value.Choices, ChoiceNotes: value.ChoiceNotes})
 	return collectionOwner
 }
 
 func setValue(variable *Variable, value VariableValue) {
 	variable.Value = value.Value
 	variable.Choices = value.Choices
+	variable.ChoiceNotes = value.ChoiceNotes
 }
 
 // setFolderVariable walks folderPath from the root, as GetAllVariables does,

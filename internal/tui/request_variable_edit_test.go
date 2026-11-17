@@ -146,3 +146,33 @@ func TestRequestVariables_IndexedReferenceResolvesInTheRequest(t *testing.T) {
 		t.Errorf("expected the third choice, got %q", got)
 	}
 }
+
+func TestRequestVariables_NoteAChoice(t *testing.T) {
+	m, envPath := choiceVariablesModel(t)
+
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEnter}, runes("j"), runes(choiceNoteKey), runes("admin persona"), tea.KeyMsg{Type: tea.KeyEnter})
+
+	if got := savedPersona(t, m); got.ChoiceNotes["p2"] != "admin persona" || got.Value != "p1" {
+		t.Errorf("expected p2 noted without changing the chosen value, got %+v", got)
+	}
+	if m.requestVarEdit != requestVarEditChoices {
+		t.Errorf("expected the choices again, got %v", m.requestVarEdit)
+	}
+	if !fileContains(t, envPath, `"choiceNotes"`) {
+		t.Error("expected the environment file to hold the notes")
+	}
+	if view := m.renderRequestVariables(40); !strings.Contains(view, notePrefix+"admin persona") {
+		t.Errorf("expected the note shown next to its choice, got %s", view)
+	}
+}
+
+func TestRequestVariables_EmptyNoteRemovesIt(t *testing.T) {
+	m, _ := choiceVariablesModel(t)
+	m.environment.Values[0].ChoiceNotes = map[string]string{"p1": "old"}
+
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEnter}, runes(choiceNoteKey), tea.KeyMsg{Type: tea.KeyCtrlU}, tea.KeyMsg{Type: tea.KeyEnter})
+
+	if got := savedPersona(t, m); got.ChoiceNotes != nil {
+		t.Errorf("expected the note removed, got %+v", got.ChoiceNotes)
+	}
+}

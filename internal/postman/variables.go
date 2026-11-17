@@ -6,10 +6,11 @@ import (
 )
 
 type VariableSource struct {
-	Key     string
-	Value   string
-	Choices []string
-	Source  string
+	Key         string
+	Value       string
+	Choices     []string
+	ChoiceNotes map[string]string
+	Source      string
 }
 
 var variablePattern = regexp.MustCompile(`\{\{([^}]+)\}\}`)
@@ -38,10 +39,11 @@ func VariableDefinitions(collection *Collection, breadcrumb []string, environmen
 		for _, envVar := range environment.Values {
 			if envVar.Enabled {
 				variables = append(variables, VariableSource{
-					Key:     envVar.Key,
-					Value:   envVar.Value,
-					Choices: envVar.Choices,
-					Source:  "Environment: " + environment.Name,
+					Key:         envVar.Key,
+					Value:       envVar.Value,
+					Choices:     envVar.Choices,
+					ChoiceNotes: envVar.ChoiceNotes,
+					Source:      "Environment: " + environment.Name,
 				})
 			}
 		}
@@ -52,10 +54,11 @@ func VariableDefinitions(collection *Collection, breadcrumb []string, environmen
 	}
 	for _, collVar := range collection.Variables {
 		variables = append(variables, VariableSource{
-			Key:     collVar.Key,
-			Value:   collVar.Value,
-			Choices: collVar.Choices,
-			Source:  "Collection: " + collection.Info.Name,
+			Key:         collVar.Key,
+			Value:       collVar.Value,
+			Choices:     collVar.Choices,
+			ChoiceNotes: collVar.ChoiceNotes,
+			Source:      "Collection: " + collection.Info.Name,
 		})
 	}
 
@@ -66,10 +69,11 @@ func VariableDefinitions(collection *Collection, breadcrumb []string, environmen
 				folderPath := strings.Join(breadcrumb[:i+1], " / ")
 				for _, folderVar := range item.Variables {
 					variables = append(variables, VariableSource{
-						Key:     folderVar.Key,
-						Value:   folderVar.Value,
-						Choices: folderVar.Choices,
-						Source:  "Folder: " + folderPath,
+						Key:         folderVar.Key,
+						Value:       folderVar.Value,
+						Choices:     folderVar.Choices,
+						ChoiceNotes: folderVar.ChoiceNotes,
+						Source:      "Folder: " + folderPath,
 					})
 				}
 				current = item.Items

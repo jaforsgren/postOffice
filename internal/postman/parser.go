@@ -3,6 +3,7 @@ package postman
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"postOffice/internal/logger"
@@ -337,7 +338,7 @@ func firstDefining(environments []*Environment, key string) (*Environment, int) 
 }
 
 func sameEnvVariable(a, b EnvVariable) bool {
-	return a.Value == b.Value && a.Enabled == b.Enabled && a.Type == b.Type && slices.Equal(a.Choices, b.Choices)
+	return a.Value == b.Value && a.Enabled == b.Enabled && a.Type == b.Type && slices.Equal(a.Choices, b.Choices) && maps.Equal(a.ChoiceNotes, b.ChoiceNotes)
 }
 
 // MergedEnvironment combines every active environment into one, in

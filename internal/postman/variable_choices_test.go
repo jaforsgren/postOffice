@@ -125,3 +125,67 @@ func TestEnvVariable_ChoicesRoundTripThroughJSON(t *testing.T) {
 		t.Errorf("expected no choices key on a plain variable, got %s", plain)
 	}
 }
+
+func TestVariableValue_WithChoiceNoteSetsAndRemovesTheNote(t *testing.T) {
+	value := VariableValue{Value: "02", Choices: personaChoices}.WithChoiceNote(1, "admin persona")
+
+	if got := value.ChoiceNote(1); got != "admin persona" {
+		t.Errorf("expected the note on 02, got %q", got)
+	}
+	if got := value.WithChoiceNote(1, "").ChoiceNotes; got != nil {
+		t.Errorf("expected no notes left, got %v", got)
+	}
+}
+
+func TestVariableValue_NotesFollowTheirChoice(t *testing.T) {
+	value := VariableValue{Value: "02", Choices: personaChoices}.WithChoiceNote(2, "read only")
+
+	chosen := value.WithChosen(0).WithChoice("04")
+	if got := chosen.ChoiceNote(2); got != "read only" {
+		t.Errorf("expected the note kept when choosing and adding, got %q", got)
+	}
+	if got := value.WithoutChoice(0).ChoiceNote(1); got != "read only" {
+		t.Errorf("expected the note to move with 03, got %q", got)
+	}
+}
+
+func TestVariableValue_WithoutChoiceDropsItsNote(t *testing.T) {
+	value := VariableValue{Value: "01", Choices: personaChoices}.WithChoiceNote(1, "gone")
+
+	if got := value.WithoutChoice(1).ChoiceNotes; got != nil {
+		t.Errorf("expected the removed choice's note dropped, got %v", got)
+	}
+}
+
+func TestSetVariable_StoresChoiceNotes(t *testing.T) {
+	environment := &Environment{Name: "dev", Values: []EnvVariable{{Key: "persona_id", Value: "01", Enabled: true}}}
+	notes := map[string]string{"03": "admin"}
+
+	SetVariable(&Collection{}, nil, []*Environment{environment}, "persona_id", VariableValue{Value: "03", Choices: personaChoices, ChoiceNotes: notes})
+
+	if got := environment.Values[0].ChoiceNotes["03"]; got != "admin" {
+		t.Errorf("expected the note stored, got %+v", environment.Values[0])
+	}
+	variables := GetAllVariables(nil, nil, environment)
+	if got := variables[0].ChoiceNotes["03"]; got != "admin" {
+		t.Errorf("expected the note resolved, got %+v", variables[0])
+	}
+}
+
+func TestEnvVariable_ChoiceNotesRoundTripThroughJSON(t *testing.T) {
+	data, err := json.Marshal(EnvVariable{Key: "persona_id", Value: "02", Choices: personaChoices, ChoiceNotes: map[string]string{"02": "admin"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"choiceNotes":{"02":"admin"}`) {
+		t.Errorf("expected the notes written, got %s", data)
+	}
+
+	var decoded EnvVariable
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.ChoiceNotes["02"] != "admin" {
+		t.Errorf("expected the notes read back, got %+v", decoded)
+	}
+}

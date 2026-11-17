@@ -20,11 +20,15 @@ const (
 	requestVarEditChoices
 	// requestVarEditNewChoice types a choice to add and choose.
 	requestVarEditNewChoice
+	// requestVarEditChoiceNote types the optional note explaining a choice.
+	requestVarEditChoiceNote
 )
 
 const (
 	addChoiceKey    = "a"
 	deleteChoiceKey = "d"
+	choiceNoteKey   = "c"
+	notePrefix      = "# "
 	choiceMarker    = "▾"
 	chosenLabel     = "(current)"
 	newChoicePrefix = "+ "
@@ -51,10 +55,15 @@ var (
 		{"j/k", "Navigate"},
 		{addChoiceKey, "Add choice"},
 		{deleteChoiceKey, "Delete choice"},
+		{choiceNoteKey, "Note choice"},
 		{"esc", "Cancel"},
 	}
 	requestVariableNewChoiceShortcuts = []shortcutHint{
 		{"enter", "Add and choose"},
+		{"esc", "Cancel"},
+	}
+	requestVariableChoiceNoteShortcuts = []shortcutHint{
+		{"enter", "Save note (empty removes it)"},
 		{"esc", "Cancel"},
 	}
 )
@@ -86,6 +95,8 @@ func (m Model) requestVariableShortcuts() []shortcutHint {
 		return requestVariableChoicesShortcuts
 	case requestVarEditNewChoice:
 		return requestVariableNewChoiceShortcuts
+	case requestVarEditChoiceNote:
+		return requestVariableChoiceNoteShortcuts
 	default:
 		return requestVariablesShortcuts
 	}
@@ -108,6 +119,8 @@ func (m Model) handleRequestVariablesKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleRequestVariableChoiceKeys(msg, row)
 	case requestVarEditNewChoice:
 		return m.handleRequestVariableNewChoiceKeys(msg, row)
+	case requestVarEditChoiceNote:
+		return m.handleRequestVariableChoiceNoteKeys(msg, row)
 	}
 
 	switch msg.String() {
@@ -195,6 +208,8 @@ func (m Model) handleRequestVariableChoiceKeys(msg tea.KeyMsg, row requestVariab
 		return m.saveRequestVariable(row.Key, value.WithChosen(m.requestVarChoiceCursor)), nil
 	case addChoiceKey:
 		return m.startNewChoice(row)
+	case choiceNoteKey:
+		return m.startChoiceNote(row)
 	case deleteChoiceKey:
 		remaining := value.WithoutChoice(m.requestVarChoiceCursor)
 		m = m.saveRequestVariable(row.Key, remaining)
@@ -204,6 +219,34 @@ func (m Model) handleRequestVariableChoiceKeys(msg tea.KeyMsg, row requestVariab
 		m.requestVarChoiceCursor = min(m.requestVarChoiceCursor, max(len(remaining.Choices)-1, 0))
 	}
 	return m, nil
+}
+
+func (m Model) startChoiceNote(row requestVariableRow) (Model, tea.Cmd) {
+	m.editFieldInput.SetValue(row.variableValue().ChoiceNote(m.requestVarChoiceCursor))
+	m.editFieldInput.CursorEnd()
+	m.requestVarEdit = requestVarEditChoiceNote
+	m.statusMessage = fmt.Sprintf("Note for {{%s}} = %s", row.Key, row.Choices[m.requestVarChoiceCursor])
+	return m, m.editFieldInput.Focus()
+}
+
+// handleRequestVariableChoiceNoteKeys saves the typed note on the choice
+// under the cursor and returns to the choices either way.
+func (m Model) handleRequestVariableChoiceNoteKeys(msg tea.KeyMsg, row requestVariableRow) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m = m.stopRequestVariableEdit("Edit cancelled")
+		m.requestVarEdit = requestVarEditChoices
+		return m, nil
+	case tea.KeyEnter:
+		note := strings.TrimSpace(m.editFieldInput.Value())
+		m = m.stopRequestVariableEdit("")
+		m.requestVarEdit = requestVarEditChoices
+		return m.saveRequestVariable(row.Key, row.variableValue().WithChoiceNote(m.requestVarChoiceCursor, note)), nil
+	}
+
+	var cmd tea.Cmd
+	m.editFieldInput, cmd = m.editFieldInput.Update(msg)
+	return m, cmd
 }
 
 func (m Model) handleRequestVariableNewChoiceKeys(msg tea.KeyMsg, row requestVariableRow) (tea.Model, tea.Cmd) {
@@ -250,10 +293,13 @@ func (m Model) renderRequestVariables(availableHeight int) string {
 		}
 		if row.variableValue().IsChoice() {
 			value += "  " + dimStyle.Render(choiceSummary(row.variableValue()))
+			if note := row.ChoiceNotes[row.Value]; note != "" {
+				value += " " + dimStyle.Render(notePrefix+note)
+			}
 		}
 		lines = append(lines, prefix+style.Width(keyColWidth).Render("{{"+row.Key+"}}")+"  "+value)
 
-		if selected && (m.requestVarEdit == requestVarEditChoices || m.requestVarEdit == requestVarEditNewChoice) {
+		if selected && m.requestVarEdit.showsChoices() {
 			lines = append(lines, m.choiceListLines(row, indent, dimStyle)...)
 		}
 
@@ -272,6 +318,22 @@ func (m Model) renderRequestVariables(availableHeight int) string {
 		Render(strings.Join(lines, "\n"))
 }
 
+func (state requestVarEditState) showsChoices() bool {
+	return state == requestVarEditChoices || state == requestVarEditNewChoice || state == requestVarEditChoiceNote
+}
+
+// notedChoices lists the choices, each followed by its note when it has one.
+func notedChoices(value postman.VariableValue) []string {
+	labels := make([]string, len(value.Choices))
+	for i, choice := range value.Choices {
+		labels[i] = choice
+		if note := value.ChoiceNote(i); note != "" {
+			labels[i] += " (" + note + ")"
+		}
+	}
+	return labels
+}
+
 // choiceSummary marks a choice variable with which of its choices is chosen.
 func choiceSummary(value postman.VariableValue) string {
 	return fmt.Sprintf("%s %d/%d", choiceMarker, value.ChoiceIndex()+1, len(value.Choices))
@@ -283,12 +345,19 @@ func (m Model) choiceListLines(row requestVariableRow, indent string, dimStyle l
 	var lines []string
 	for i, choice := range row.Choices {
 		prefix, style := "  ", normalItemStyle
-		if m.requestVarEdit == requestVarEditChoices && i == m.requestVarChoiceCursor {
+		underCursor := m.requestVarEdit != requestVarEditNewChoice && i == m.requestVarChoiceCursor
+		if underCursor {
 			prefix, style = "▸ ", selectedItemStyle
 		}
 		line := indent + prefix + style.Render(fmt.Sprintf("[%d] %s", i, choice))
 		if choice == row.Value {
 			line += " " + dimStyle.Render(chosenLabel)
+		}
+		switch {
+		case underCursor && m.requestVarEdit == requestVarEditChoiceNote:
+			line += " " + notePrefix + m.editFieldInput.View()
+		case row.ChoiceNotes[choice] != "":
+			line += " " + dimStyle.Render(notePrefix+row.ChoiceNotes[choice])
 		}
 		lines = append(lines, line)
 	}

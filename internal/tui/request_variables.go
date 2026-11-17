@@ -21,15 +21,16 @@ var unresolvedVariablesStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"
 // requestVariableRow is one {{variable}} a request uses, with the value and
 // source it currently resolves to.
 type requestVariableRow struct {
-	Key     string
-	Value   string
-	Choices []string
-	Source  string
-	Defined bool
+	Key         string
+	Value       string
+	Choices     []string
+	ChoiceNotes map[string]string
+	Source      string
+	Defined     bool
 }
 
 func (row requestVariableRow) variableValue() postman.VariableValue {
-	return postman.VariableValue{Value: row.Value, Choices: row.Choices}
+	return postman.VariableValue{Value: row.Value, Choices: row.Choices, ChoiceNotes: row.ChoiceNotes}
 }
 
 // handleRequestVariablesKey lists the variables a request uses, so just
@@ -120,7 +121,7 @@ func (m Model) variableRows(req *postman.Request, requestFolderPath []string) []
 	var rows []requestVariableRow
 	for _, key := range postman.ReferencedVariables(req) {
 		variable, defined := resolved[key]
-		row := requestVariableRow{Key: key, Value: variable.Value, Choices: variable.Choices, Source: variable.Source, Defined: defined}
+		row := requestVariableRow{Key: key, Value: variable.Value, Choices: variable.Choices, ChoiceNotes: variable.ChoiceNotes, Source: variable.Source, Defined: defined}
 		if !defined {
 			row.Source = undefinedVariableSource
 		}
