@@ -14,9 +14,9 @@ Press `tab` to insert the selected suggestion (a variable replaces the `{{…`, 
 
 ## Variables
 
-Use `V` to edit a request's variables at their source.
+Use `V` to edit a request's variables at their source, including the ones its scripts use (see [scripts](scripts.md)).
 
-A variable can hold a list of choices (`"choices": ["01", "02"]` next to its `value` in the environment or collection file). Its `value` is the chosen one. In the `V` panel, `enter` opens a dropdown to pick another choice, `a` adds a choice (turning a plain variable into a choice list) `d` deletes one and `c` adds an optional note saying what the choice means (`"choiceNotes": {"02": "admin persona"}`; an empty note removes it). Reference a specific choice with `{{persona_id[1]}}` (zero-based).
+A variable can hold a list of choices (`"choices": ["01", "02"]` next to its `value` in the environment or collection file). Its `value` is the chosen one. In the `V` panel, `enter` opens a dropdown to pick another choice, `a` adds a choice (turning a plain variable into a choice list), `d` deletes one and `c` adds an optional note saying what the choice means (`"choiceNotes": {"02": "admin persona"}`; an empty note removes it). Reference a specific choice with `{{persona_id[1]}}` (zero-based).
 
 ## Saving and undo
 

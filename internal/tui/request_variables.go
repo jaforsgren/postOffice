@@ -43,14 +43,14 @@ func handleRequestVariablesKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Select a request to edit its variables"
 		return m, nil
 	}
-	if len(postman.ReferencedVariables(item.Request)) == 0 {
+	if len(postman.ReferencedItemVariables(item)) == 0 {
 		m.statusMessage = fmt.Sprintf("%s uses no {{variables}}", item.Name)
 		return m, nil
 	}
 
 	m.requestVarsItem = item
 	m.requestVarsFolderPath = folderPath
-	m.requestVarsCursor = firstUndefinedRow(m.variableRows(item.Request, folderPath))
+	m.requestVarsCursor = firstUndefinedRow(m.variableRows(item, folderPath))
 	m.requestVarEdit = requestVarEditNone
 	m.requestVarsReturnMode = m.mode
 	m.mode = ModeRequestVariables
@@ -61,7 +61,11 @@ func handleRequestVariablesKey(m Model) (Model, tea.Cmd) {
 func (m Model) requestVariablesTarget() (postman.Item, []string, bool) {
 	switch {
 	case m.mode == ModeEdit && m.editRequest != nil:
-		return postman.Item{Name: m.editItemName, Request: m.editRequest}, m.editItemPath, true
+		item := postman.Item{Name: m.editItemName, Request: m.editRequest}
+		if saved := m.findItemByPath(m.editItemPath, m.editOriginalName); saved != nil {
+			item.Events = saved.Events
+		}
+		return item, m.editItemPath, true
 	case m.mode == ModeResponse && m.responsePanelItem != nil:
 		return *m.responsePanelItem, m.requestsViewFolderPath(), true
 	case m.mode == ModeRequests:
@@ -93,7 +97,7 @@ func (m Model) closeRequestVariables() Model {
 }
 
 func (m Model) requestVariableRows() []requestVariableRow {
-	return m.variableRows(m.requestVarsItem.Request, m.requestVarsFolderPath)
+	return m.variableRows(m.requestVarsItem, m.requestVarsFolderPath)
 }
 
 // unresolvedVariables lists the {{variables}} req uses that nothing defines.
@@ -112,14 +116,14 @@ func (m Model) unresolvedVariablesLines(req *postman.Request, folderPath []strin
 	return []string{unresolvedVariablesStyle.Render(warning)}
 }
 
-func (m Model) variableRows(req *postman.Request, requestFolderPath []string) []requestVariableRow {
+func (m Model) variableRows(item postman.Item, requestFolderPath []string) []requestVariableRow {
 	resolved := make(map[string]postman.VariableSource)
 	for _, variable := range m.variablesAt(requestFolderPath) {
 		resolved[variable.Key] = variable
 	}
 
 	var rows []requestVariableRow
-	for _, key := range postman.ReferencedVariables(req) {
+	for _, key := range postman.ReferencedItemVariables(item) {
 		variable, defined := resolved[key]
 		row := requestVariableRow{Key: key, Value: variable.Value, Choices: variable.Choices, ChoiceNotes: variable.ChoiceNotes, Source: variable.Source, Defined: defined}
 		if !defined {

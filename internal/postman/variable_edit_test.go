@@ -120,3 +120,16 @@ func TestUnresolvedVariables(t *testing.T) {
 		t.Errorf("UnresolvedVariables() = %v, want only {{connection}}", got)
 	}
 }
+
+func TestReferencedItemVariables_AddsScriptOnlyVariablesAfterTheRequests(t *testing.T) {
+	item := Item{
+		Request: &Request{URL: URL{Raw: "https://x/{{base}}"}},
+		Events: []Event{
+			{Listen: "prerequest", Script: Script{Exec: []string{"const id = {{persona_id[1]}};", "x({{base}}, {{$guid}})"}}},
+		},
+	}
+
+	if got := ReferencedItemVariables(item); !slices.Equal(got, []string{"base", "persona_id"}) {
+		t.Errorf("expected base then persona_id, got %v", got)
+	}
+}

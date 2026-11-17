@@ -254,3 +254,16 @@ func TestEditMode_WarnsAboutUnresolvedAndReturnsFromVariables(t *testing.T) {
 		t.Errorf("expected the edit form's esc to still return to the requests list, got %v", m.mode)
 	}
 }
+
+func TestRequestVariables_ListsVariablesOnlyTheScriptsUse(t *testing.T) {
+	m, _, _ := requestVariablesModel(t)
+	m.collection.Items[0].Events = []postman.Event{{Listen: "prerequest", Script: postman.Script{Exec: []string{"const tenant = {{tenant}};"}}}}
+	m = m.loadRequestsList()
+
+	m = pressKeys(t, m, runes(requestVariablesKey))
+
+	rows := m.requestVariableRows()
+	if last := rows[len(rows)-1]; last.Key != "tenant" || last.Defined {
+		t.Errorf("expected the script's undefined {{tenant}} listed last, got %+v", rows)
+	}
+}

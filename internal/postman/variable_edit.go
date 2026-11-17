@@ -10,10 +10,23 @@ const dynamicVariablePrefix = "$"
 // headers and body, in order of first use, leaving out dynamic variables. A
 // {{name[N]}} choice reference counts as a use of name.
 func ReferencedVariables(req *Request) []string {
+	return referencedNames(requestTexts(req))
+}
+
+// ReferencedItemVariables lists the variables item's request uses, then the
+// ones only its own scripts use, which are resolved when the scripts run.
+func ReferencedItemVariables(item Item) []string {
+	texts := requestTexts(item.Request)
+	for _, event := range item.Events {
+		texts = append(texts, event.Script.Exec...)
+	}
+	return referencedNames(texts)
+}
+
+func requestTexts(req *Request) []string {
 	if req == nil {
 		return nil
 	}
-
 	texts := []string{req.URL.Raw}
 	for _, header := range req.Header {
 		texts = append(texts, header.Key, header.Value)
@@ -24,7 +37,10 @@ func ReferencedVariables(req *Request) []string {
 			texts = append(texts, param.Key, param.Value)
 		}
 	}
+	return texts
+}
 
+func referencedNames(texts []string) []string {
 	var names []string
 	seen := make(map[string]bool)
 	for _, text := range texts {

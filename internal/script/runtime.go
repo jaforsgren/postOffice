@@ -76,7 +76,7 @@ func (r *Runtime) execute(phase Phase, scripts []postman.Script, ctx *ExecutionC
 		if result.Skipped {
 			break
 		}
-		if err := loop.RunScript(isolateScope(script)); err != nil {
+		if err := loop.RunScript(isolateScope(resolveScriptVariables(strings.Join(script.Exec, "\n"), ctx))); err != nil {
 			result.AddError(scriptErrorMessage(err))
 		}
 		for _, err := range loop.Drain() {
@@ -101,8 +101,8 @@ func nonEmptyScripts(scripts []postman.Script) []postman.Script {
 // same: SAPI's collection and request test scripts both declare
 // `const CLIENT_ERROR`, which would be a redeclaration error in one shared
 // scope, while implicit globals (`sapi = {...}`) still carry over.
-func isolateScope(script postman.Script) string {
-	return "(function () {\n" + strings.Join(script.Exec, "\n") + "\n})();"
+func isolateScope(code string) string {
+	return "(function () {\n" + code + "\n})();"
 }
 
 func scriptErrorMessage(err error) string {
