@@ -1,11 +1,14 @@
 package servicebus
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"postOffice/internal/http"
 	"postOffice/internal/postman"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,9 +19,12 @@ import (
 // Peek request headers. Like Connection-String, they configure the peek and
 // are not message properties.
 const (
-	headerMaxMessages  = "Max-Messages"
-	headerDeadLetter   = "Dead-Letter"
-	headerPollInterval = "Poll-Interval"
+	headerMaxMessages           = "Max-Messages"
+	headerDeadLetter            = "Dead-Letter"
+	headerPollInterval          = "Poll-Interval"
+	headerBacklog               = "Backlog"
+	headerDisplayProperty       = "Display-Property"
+	headerTemporarySubscription = "Temporary-Subscription"
 
 	// DefaultMaxMessages is how many messages one peek returns without Max-Messages.
 	DefaultMaxMessages = 50
@@ -26,9 +32,17 @@ const (
 	DefaultPollInterval = time.Second
 	// minPollInterval keeps a watcher from hammering the broker.
 	minPollInterval = 100 * time.Millisecond
+	// DefaultBacklog is how many of the messages already waiting a watch
+	// shows first without Backlog.
+	DefaultBacklog = 100
 
 	peekStatusCode = 200
 	deadLetterTag  = " (dead-letter)"
+	temporaryTag   = " (temporary)"
+	// bodyPreviewWidth bounds a message's one-line body preview.
+	bodyPreviewWidth = 120
+	// emulatorSetting marks an emulator connection string.
+	emulatorSetting = "usedevelopmentemulator=true"
 )
 
 // peekRequest is a PEEK request with its variables resolved and headers parsed.
@@ -37,6 +51,8 @@ type peekRequest struct {
 	connectionString string
 	maxMessages      int
 	pollInterval     time.Duration
+	backlog          int
+	displayProperty  string
 	url              string
 	headers          map[string]string
 }
@@ -50,6 +66,9 @@ func (t PeekTarget) String() string {
 	}
 	if t.DeadLetter {
 		name += deadLetterTag
+	}
+	if t.Temporary {
+		name += temporaryTag
 	}
 	return name
 }
@@ -72,6 +91,16 @@ func ParsePeekTarget(rawURL string) (PeekTarget, error) {
 	}
 }
 
+// SendURL is the URL that sends to the queue or topic a PEEK URL reads, e.g.
+// asb://topic for asb://topic/subscription. {{variables}} are kept.
+func SendURL(peekURL string) (string, error) {
+	target, err := ParsePeekTarget(peekURL)
+	if err != nil {
+		return "", err
+	}
+	return urlScheme + target.Entity, nil
+}
+
 func invalidPeekTarget(rawURL string) error {
 	return fmt.Errorf("%w: %q, want %s<queue> or %s<topic>/<subscription>", ErrInvalidPeekTarget, rawURL, urlScheme, urlScheme)
 }
@@ -82,6 +111,7 @@ func resolvePeekRequest(req *postman.Request, variables []postman.VariableSource
 		headers:      resolveHeaders(req, variables),
 		maxMessages:  DefaultMaxMessages,
 		pollInterval: DefaultPollInterval,
+		backlog:      DefaultBacklog,
 	}
 	target, err := ParsePeekTarget(request.url)
 	if err != nil {
@@ -107,90 +137,33 @@ func resolvePeekRequest(req *postman.Request, variables []postman.VariableSource
 			return request, fmt.Errorf("%w: %s must be a duration of at least %v, got %q", ErrInvalidPeekHeader, headerPollInterval, minPollInterval, value)
 		}
 	}
-	return request, nil
-}
-
-// Watcher peeks a queue or subscription repeatedly, each time returning only
-// the messages that arrived since the previous peek. A Watcher is not safe
-// for concurrent use.
-type Watcher struct {
-	request  peekRequest
-	client   *azservicebus.Client
-	receiver *azservicebus.Receiver
-}
-
-// OpenWatcher resolves req against variables and prepares a peek of its
-// target. It doesn't connect: the first Poll does.
-func OpenWatcher(req *postman.Request, variables []postman.VariableSource) (*Watcher, error) {
-	request, err := resolvePeekRequest(req, variables)
-	if err != nil {
-		return nil, err
-	}
-	return openWatcher(request)
-}
-
-func openWatcher(request peekRequest) (*Watcher, error) {
-	client, err := azservicebus.NewClientFromConnectionString(request.connectionString, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Service Bus client: %w", err)
-	}
-	options := &azservicebus.ReceiverOptions{}
-	if request.target.DeadLetter {
-		options.SubQueue = azservicebus.SubQueueDeadLetter
-	}
-	var receiver *azservicebus.Receiver
-	if request.target.Subscription == "" {
-		receiver, err = client.NewReceiverForQueue(request.target.Entity, options)
-	} else {
-		receiver, err = client.NewReceiverForSubscription(request.target.Entity, request.target.Subscription, options)
-	}
-	if err != nil {
-		_ = client.Close(context.Background())
-		return nil, fmt.Errorf("failed to create receiver for %q: %w", request.target, err)
-	}
-	return &Watcher{request: request, client: client, receiver: receiver}, nil
-}
-
-// Target is the queue or subscription the watcher peeks.
-func (w *Watcher) Target() PeekTarget {
-	return w.request.target
-}
-
-// PollInterval is how long to wait between polls.
-func (w *Watcher) PollInterval() time.Duration {
-	return w.request.pollInterval
-}
-
-// Poll returns every message that arrived since the previous poll, oldest
-// first. The first poll returns the messages already waiting.
-func (w *Watcher) Poll(ctx context.Context) ([]PeekedMessage, error) {
-	var messages []PeekedMessage
-	for {
-		page, err := w.peekPage(ctx)
-		messages = append(messages, page...)
-		if err != nil || len(page) < w.request.maxMessages {
-			return messages, err
+	if value := request.headers[headerBacklog]; value != "" {
+		if request.backlog, err = strconv.Atoi(value); err != nil || request.backlog < 0 {
+			return request, fmt.Errorf("%w: %s must be zero or a positive number, got %q", ErrInvalidPeekHeader, headerBacklog, value)
 		}
 	}
+	request.displayProperty = request.headers[headerDisplayProperty]
+	if value := request.headers[headerTemporarySubscription]; value != "" {
+		if request.target.Temporary, err = strconv.ParseBool(value); err != nil {
+			return request, fmt.Errorf("%w: %s must be true or false, got %q", ErrInvalidPeekHeader, headerTemporarySubscription, value)
+		}
+	}
+	return request, validateTemporarySubscription(request)
 }
 
-// peekPage peeks up to Max-Messages messages after the last one peeked.
-func (w *Watcher) peekPage(ctx context.Context) ([]PeekedMessage, error) {
-	received, err := w.receiver.PeekMessages(ctx, w.request.maxMessages, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to peek %q: %w", w.request.target, err)
+// validateTemporarySubscription checks a temporary subscription is asked for
+// on a topic (asb://topic) of a real namespace.
+func validateTemporarySubscription(request peekRequest) error {
+	if !request.target.Temporary {
+		return nil
 	}
-	messages := make([]PeekedMessage, len(received))
-	for i, message := range received {
-		messages[i] = newPeekedMessage(message)
+	if request.target.Subscription != "" || request.target.DeadLetter {
+		return fmt.Errorf("%w: %s needs a topic URL such as %s<topic>, without a subscription or %s", ErrInvalidPeekHeader, headerTemporarySubscription, urlScheme, headerDeadLetter)
 	}
-	return messages, nil
-}
-
-// Close releases the watcher's connection.
-func (w *Watcher) Close() {
-	_ = w.receiver.Close(context.Background())
-	_ = w.client.Close(context.Background())
+	if strings.Contains(strings.ToLower(request.connectionString), emulatorSetting) {
+		return fmt.Errorf("%w: the emulator only has the subscriptions in its config file; add one there and peek it", ErrTemporarySubscriptionUnsupported)
+	}
+	return nil
 }
 
 // PeekContext peeks up to Max-Messages messages waiting in the queue or
@@ -202,6 +175,8 @@ func (w *Watcher) Close() {
 //   - Connection-String: Azure Service Bus connection string (required)
 //   - Max-Messages: how many messages to return (default DefaultMaxMessages)
 //   - Dead-Letter: true peeks the dead-letter queue
+//   - Poll-Interval, Backlog, Display-Property, Temporary-Subscription: only
+//     used by watches (see Watcher)
 //
 // The response body is a JSON array of PeekedMessage, oldest first.
 func PeekContext(ctx context.Context, req *postman.Request, variables []postman.VariableSource) *http.Response {
@@ -210,6 +185,9 @@ func PeekContext(ctx context.Context, req *postman.Request, variables []postman.
 	request, err := resolvePeekRequest(req, variables)
 	resp.RequestURL = request.url
 	resp.RequestHeaders = request.headers
+	if err == nil && request.target.Temporary {
+		err = fmt.Errorf("%w: a new subscription is empty, so %s only applies to watches", ErrTemporarySubscriptionUnsupported, headerTemporarySubscription)
+	}
 	if err == nil {
 		err = peekInto(ctx, request, resp)
 	}
@@ -227,7 +205,7 @@ func peekInto(ctx context.Context, request peekRequest, resp *http.Response) err
 
 	peekCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
-	messages, err := watcher.peekPage(peekCtx)
+	messages, err := watcher.peekPage(peekCtx, firstSequenceNumber)
 	if err != nil {
 		return err
 	}
@@ -251,12 +229,16 @@ func nonNil(messages []PeekedMessage) []PeekedMessage {
 
 func newPeekedMessage(message *azservicebus.ReceivedMessage) PeekedMessage {
 	peeked := PeekedMessage{
-		MessageID:             message.MessageID,
-		Subject:               valueOf(message.Subject),
-		ContentType:           valueOf(message.ContentType),
-		CorrelationID:         valueOf(message.CorrelationID),
-		ApplicationProperties: message.ApplicationProperties,
-		Body:                  jsonBody(message.Body),
+		DeliveryCount:              message.DeliveryCount,
+		MessageID:                  message.MessageID,
+		Subject:                    valueOf(message.Subject),
+		ContentType:                valueOf(message.ContentType),
+		CorrelationID:              valueOf(message.CorrelationID),
+		ApplicationProperties:      message.ApplicationProperties,
+		DeadLetterReason:           valueOf(message.DeadLetterReason),
+		DeadLetterErrorDescription: valueOf(message.DeadLetterErrorDescription),
+		DeadLetterSource:           valueOf(message.DeadLetterSource),
+		Body:                       jsonBody(message.Body),
 	}
 	if message.SequenceNumber != nil {
 		peeked.SequenceNumber = *message.SequenceNumber
@@ -264,7 +246,83 @@ func newPeekedMessage(message *azservicebus.ReceivedMessage) PeekedMessage {
 	if message.EnqueuedTime != nil {
 		peeked.EnqueuedTime = *message.EnqueuedTime
 	}
+	// The SDK adds the message's own time-to-live to its enqueued time. A
+	// message sent without one carries 0 and expires with the entity's
+	// default instead, which a peek doesn't see, so it gets no ExpiresAt.
+	if message.ExpiresAt != nil && message.TimeToLive != nil && *message.TimeToLive > 0 {
+		peeked.ExpiresAt = *message.ExpiresAt
+	}
 	return peeked
+}
+
+// Label names the message in lists: its displayProperty application
+// property, else its subject, else its first application property by key.
+func (m PeekedMessage) Label(displayProperty string) string {
+	if value, ok := m.ApplicationProperties[displayProperty]; ok && displayProperty != "" {
+		return fmt.Sprint(value)
+	}
+	if m.Subject != "" {
+		return m.Subject
+	}
+	if keys := slices.Sorted(maps.Keys(m.ApplicationProperties)); len(keys) > 0 {
+		return fmt.Sprintf("%s=%v", keys[0], m.ApplicationProperties[keys[0]])
+	}
+	return ""
+}
+
+// BodyPreview is the body on one line, compacted when it is JSON and cut
+// at bodyPreviewWidth bytes.
+func (m PeekedMessage) BodyPreview() string {
+	var compact bytes.Buffer
+	preview := string(m.Body)
+	if json.Compact(&compact, m.Body) == nil {
+		preview = compact.String()
+	}
+	if len(preview) > bodyPreviewWidth {
+		preview = preview[:bodyPreviewWidth] + "…"
+	}
+	return preview
+}
+
+// BodyText is the body as sent: JSON as-is, and a text body (peeked as a
+// JSON string) unwrapped.
+func (m PeekedMessage) BodyText() string {
+	var text string
+	if json.Unmarshal(m.Body, &text) == nil {
+		return text
+	}
+	return string(m.Body)
+}
+
+// SendRequest is a request that sends message again to the queue or topic
+// peek reads, connecting with peek's Connection-String as defined, so its
+// {{variables}} resolve when it is sent. The message ID is left for the
+// broker to assign.
+func SendRequest(peek *postman.Request, message PeekedMessage) (*postman.Request, error) {
+	rawURL, err := SendURL(peek.URL.Raw)
+	if err != nil {
+		return nil, err
+	}
+	request := &postman.Request{
+		Method: methodSend,
+		URL:    postman.URL{Raw: rawURL},
+		Body:   &postman.Body{Mode: postman.BodyModeRaw, Raw: message.BodyText()},
+	}
+	for _, header := range peek.Header {
+		if header.Key == headerConnectionString {
+			request.Header = append(request.Header, header)
+		}
+	}
+	if message.Subject != "" {
+		request.Header = append(request.Header, postman.Header{Key: headerSubject, Value: message.Subject})
+	}
+	if message.ContentType != "" {
+		request.Header = append(request.Header, postman.Header{Key: headerContentType, Value: message.ContentType})
+	}
+	for _, key := range slices.Sorted(maps.Keys(message.ApplicationProperties)) {
+		request.Header = append(request.Header, postman.Header{Key: key, Value: fmt.Sprint(message.ApplicationProperties[key])})
+	}
+	return request, nil
 }
 
 func jsonBody(body []byte) json.RawMessage {

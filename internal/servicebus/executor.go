@@ -19,6 +19,8 @@ const (
 
 	defaultTimeout = 30 * time.Second
 
+	methodSend = "ASB"
+
 	urlScheme = "asb://"
 )
 
@@ -36,7 +38,7 @@ const (
 func SendContext(ctx context.Context, req *postman.Request, variables []postman.VariableSource) *http.Response {
 	start := time.Now()
 	resp := &http.Response{
-		RequestMethod: "ASB",
+		RequestMethod: methodSend,
 	}
 
 	rawURL := postman.ResolveVariables(req.URL.Raw, variables)

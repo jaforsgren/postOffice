@@ -120,3 +120,19 @@ func findFolder(items []Item, name string) *Item {
 	}
 	return nil
 }
+
+// UnresolvedVariables lists, as {{key}}, the variables req uses that
+// variables don't define.
+func UnresolvedVariables(req *Request, variables []VariableSource) []string {
+	defined := make(map[string]bool, len(variables))
+	for _, variable := range variables {
+		defined[variable.Key] = true
+	}
+	var keys []string
+	for _, key := range ReferencedVariables(req) {
+		if !defined[key] {
+			keys = append(keys, "{{"+key+"}}")
+		}
+	}
+	return keys
+}

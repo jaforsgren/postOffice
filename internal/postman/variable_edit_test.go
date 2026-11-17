@@ -107,3 +107,16 @@ func TestSetVariable_UndefinedBecomesCollectionVariable(t *testing.T) {
 		t.Errorf("expected the new variable to be appended, got %+v", last)
 	}
 }
+
+func TestUnresolvedVariables(t *testing.T) {
+	req := &Request{
+		URL:    URL{Raw: "asb://{{topic}}/tap"},
+		Header: []Header{{Key: "Connection-String", Value: "{{connection}}"}},
+	}
+
+	got := UnresolvedVariables(req, []VariableSource{{Key: "topic", Value: "payments"}})
+
+	if len(got) != 1 || got[0] != "{{connection}}" {
+		t.Errorf("UnresolvedVariables() = %v, want only {{connection}}", got)
+	}
+}
