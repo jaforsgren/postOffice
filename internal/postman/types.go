@@ -33,11 +33,14 @@ type Item struct {
 }
 
 type Request struct {
-	Method  string   `json:"method"`
-	Header  []Header `json:"header"`
-	Body    *Body    `json:"body,omitempty"`
-	URL     URL      `json:"url"`
-	unknown unknownFields
+	Method string   `json:"method"`
+	Header []Header `json:"header"`
+	Body   *Body    `json:"body,omitempty"`
+	URL    URL      `json:"url"`
+	// InjectDefaults makes a gRPC response list fields left at their default
+	// value (0, "", false, empty lists), which protobuf JSON omits otherwise.
+	InjectDefaults bool `json:"injectDefaults,omitempty"`
+	unknown        unknownFields
 }
 
 type Header struct {

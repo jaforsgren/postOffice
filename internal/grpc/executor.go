@@ -45,7 +45,8 @@ type Result struct {
 // req.Header entries are sent as request metadata. Message types come from
 // server reflection, or from the descriptor set at protosetPath when the
 // server does not offer reflection; an empty protosetPath disables that.
-// The response body is serialised as JSON.
+// The response body is serialised as JSON, with default-valued fields when
+// req.InjectDefaults is set.
 func ExecuteRequest(ctx context.Context, req *postman.Request, protosetPath string) (*Result, error) {
 	start := time.Now()
 	sequence := timing.NewSequence(start)
@@ -71,7 +72,7 @@ func ExecuteRequest(ctx context.Context, req *postman.Request, protosetPath stri
 		jsonBody = req.Body.Raw
 	}
 
-	result.Body, err = client.invoke(metadata.NewOutgoingContext(ctx, buildMetadata(req.Header)), service, method, jsonBody, protosetPath, sequence)
+	result.Body, err = client.invoke(metadata.NewOutgoingContext(ctx, buildMetadata(req.Header)), service, method, jsonBody, protosetPath, req.InjectDefaults, sequence)
 	return result, err
 }
 
@@ -148,7 +149,8 @@ var ErrReflectionUnavailable = errors.New("server does not offer gRPC reflection
 
 // invoke calls a single unary gRPC method, taking type information from
 // fileDescriptors and marking the reflection and invocation phases on sequence.
-func (c *Client) invoke(ctx context.Context, service, method, jsonBody, protosetPath string, sequence *timing.Sequence) (string, error) {
+// injectDefaults writes fields left at their default value into the JSON.
+func (c *Client) invoke(ctx context.Context, service, method, jsonBody, protosetPath string, injectDefaults bool, sequence *timing.Sequence) (string, error) {
 	methodDesc, err := c.resolveMethod(ctx, service, method, protosetPath)
 	sequence.Mark(PhaseReflect)
 	if err != nil {
@@ -171,7 +173,7 @@ func (c *Client) invoke(ctx context.Context, service, method, jsonBody, protoset
 		return "", callError(fullMethod, err)
 	}
 
-	out, err := protojson.Marshal(resMsg)
+	out, err := protojson.MarshalOptions{EmitUnpopulated: injectDefaults}.Marshal(resMsg)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal response: %w", err)
 	}

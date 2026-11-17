@@ -24,16 +24,18 @@ import (
 )
 
 const (
-	healthCheckPath  = "/grpc.health.v1.Health/Check"
-	callerKey        = "x-caller-info-bin"
-	callerValue      = "caller"
-	servingService   = "claims"
-	unknownService   = "missing"
-	statusVariable   = "health_status"
-	serviceVariable  = "service_name"
-	callerKeyVar     = "callerkey"
-	callerValueVar   = "callerVal"
-	expectedNotFound = "NotFound"
+	healthCheckPath = "/grpc.health.v1.Health/Check"
+	callerKey       = "x-caller-info-bin"
+	callerValue     = "caller"
+	servingService  = "claims"
+	unknownService  = "missing"
+	// defaultStatusService reports the zero status, which protobuf JSON omits.
+	defaultStatusService = "idle"
+	statusVariable       = "health_status"
+	serviceVariable      = "service_name"
+	callerKeyVar         = "callerkey"
+	callerValueVar       = "callerVal"
+	expectedNotFound     = "NotFound"
 )
 
 // healthServer serves grpc.health.v1 with reflection on a local port and
@@ -73,6 +75,7 @@ func startHealthServer(t *testing.T, mode reflectionMode) *healthServer {
 	}))
 	checker := health.NewServer()
 	checker.SetServingStatus(servingService, healthpb.HealthCheckResponse_SERVING)
+	checker.SetServingStatus(defaultStatusService, healthpb.HealthCheckResponse_UNKNOWN)
 	healthpb.RegisterHealthServer(server, checker)
 	switch mode {
 	case withReflection:

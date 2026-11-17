@@ -74,3 +74,32 @@ func TestExecuteRequest_InvalidURLHasNoPhases(t *testing.T) {
 		t.Error("expected total duration to be recorded")
 	}
 }
+
+func TestExecuteRequest_InjectDefaultsListsDefaultValuedFields(t *testing.T) {
+	addr := startHealthServer(t, withReflection).endpoint
+	request := func(injectDefaults bool) *postman.Request {
+		return &postman.Request{
+			URL:            postman.URL{Raw: "grpc://" + addr + healthCheckPath},
+			Body:           &postman.Body{Mode: postman.BodyModeRaw, Raw: `{"service": "` + defaultStatusService + `"}`},
+			InjectDefaults: injectDefaults,
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), testCallTimeout)
+	defer cancel()
+
+	omitted, err := ExecuteRequest(ctx, request(false), "")
+	if err != nil {
+		t.Fatalf("ExecuteRequest: %v", err)
+	}
+	injected, err := ExecuteRequest(ctx, request(true), "")
+	if err != nil {
+		t.Fatalf("ExecuteRequest: %v", err)
+	}
+
+	if strings.Contains(omitted.Body, "status") {
+		t.Errorf("expected the default status omitted, got %s", omitted.Body)
+	}
+	if !strings.Contains(injected.Body, "UNKNOWN") {
+		t.Errorf("expected the default status injected, got %s", injected.Body)
+	}
+}

@@ -113,6 +113,7 @@ func (m Model) buildGRPCEditFields() []string {
 		{"Metadata", metadataText},
 		{"Message", bodyText},
 		{"TLS", tlsValue},
+		{"Inject defaults", onOffLabel(m.editRequest.InjectDefaults)},
 	}
 
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -132,10 +133,10 @@ func (m Model) buildGRPCEditFields() []string {
 
 		lines = append(lines, prefix+labelStyle.Render(field.label+":"))
 
-		// TLS field: show coloured status + toggle hint, never enter text-edit mode.
-		if i == 5 {
+		// Toggle fields: show coloured status + toggle hint, never enter text-edit mode.
+		if i == grpcFieldTLS || i == grpcFieldInjectDefaults {
 			style := tlsDisabledStyle
-			if m.grpcEditTLS {
+			if (i == grpcFieldTLS && m.grpcEditTLS) || (i == grpcFieldInjectDefaults && m.editRequest.InjectDefaults) {
 				style = tlsEnabledStyle
 			}
 			lines = append(lines, "    "+style.Render(field.value))

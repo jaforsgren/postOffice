@@ -1487,7 +1487,12 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "enter":
 		// TLS field is a boolean toggle, not a text field.
-		if m.editType == EditTypeGRPCRequest && m.editFieldCursor == 5 {
+		if m.editType == EditTypeGRPCRequest && m.editFieldCursor == grpcFieldInjectDefaults {
+			m.editRequest.InjectDefaults = !m.editRequest.InjectDefaults
+			m.statusMessage = fmt.Sprintf("Inject defaults %s (use :w to save)", onOffLabel(m.editRequest.InjectDefaults))
+			return m, nil
+		}
+		if m.editType == EditTypeGRPCRequest && m.editFieldCursor == grpcFieldTLS {
 			m.grpcEditTLS = !m.grpcEditTLS
 			m.editRequest.URL.Raw = m.buildGRPCURL()
 			tlsLabel := "Disabled (insecure)"
@@ -1921,7 +1926,7 @@ func (m Model) getEditFieldCount() int {
 		}
 		return 5
 	case EditTypeGRPCRequest:
-		return 6
+		return len(grpcEditFieldNames)
 	default:
 		return 0
 	}
@@ -1929,7 +1934,7 @@ func (m Model) getEditFieldCount() int {
 
 func (m Model) editFieldNames() []string {
 	if m.editType == EditTypeGRPCRequest {
-		return []string{"Name", "Endpoint", "Service/Method", "Metadata", "Message", "TLS"}
+		return grpcEditFieldNames
 	}
 	names := []string{"Name", "Method", "URL"}
 	if m.editRequest != nil {
@@ -2089,11 +2094,13 @@ func (m Model) getCurrentFieldValue() string {
 			if m.editRequest.Body != nil {
 				return m.editRequest.Body.Raw
 			}
-		case 5:
+		case grpcFieldTLS:
 			if m.grpcEditTLS {
 				return "Enabled"
 			}
 			return "Disabled (insecure)"
+		case grpcFieldInjectDefaults:
+			return onOffLabel(m.editRequest.InjectDefaults)
 		}
 	}
 	return ""

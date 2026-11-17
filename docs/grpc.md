@@ -14,12 +14,14 @@ Supports:
 
 ## Editing
 
-Press `e` on a gRPC request. Fields include endpoint, service/method, metadata, JSON message, and TLS.
+Press `e` on a gRPC request. Fields include endpoint, service/method, metadata, JSON message, TLS and inject defaults.
+
+**Inject defaults** (off by default, `enter` toggles it) makes the response JSON list fields left at their default value (`0`, `""`, `false`, empty lists, the first enum value), which protobuf JSON leaves out otherwise, like grpcurl's `-emit-defaults`. It is saved on the request as `"injectDefaults": true`.
 
 | Key | Action |
 |---|---|
 | `j` / `k` | Select field |
-| `enter` | Edit / toggle TLS |
+| `enter` | Edit / toggle TLS or inject defaults |
 | `ctrl+s` | Save a multi-line field |
 | `ctrl+f` | Browse server reflection |
 | `esc` | Back |
