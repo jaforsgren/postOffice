@@ -64,7 +64,7 @@ Paths support `~/` expansion, e.g. `:load ~/postman/api.json`. Loaded collection
 
 | Key | Action |
 |---|---|
-| `e` / `E` | Edit request / scripts |
+| `e` / `E` | Edit request / all scripts in `$EDITOR` (one tab each) |
 | `d` / `D` | Delete / duplicate |
 | `f` | Toggle favorite |
 | `i` | Request info + response |

@@ -107,18 +107,6 @@ func TestApplyVimBulkEdit_UnchangedFileLeavesCollectionClean(t *testing.T) {
 	}
 }
 
-func TestApplyVimScriptEdit_UnchangedFileKeepsTextArea(t *testing.T) {
-	m := createTestModel()
-	m.editFieldTextArea.SetValue("pm.test()")
-	original := []byte("pm.test()")
-
-	m = m.applyVimScriptEdit(VimScriptEditCompleteMsg{TempFile: writeEditorResult(t, original), OriginalContent: original})
-
-	if m.statusMessage != noEditorChangesMessage {
-		t.Errorf("expected %q, got %q", noEditorChangesMessage, m.statusMessage)
-	}
-}
-
 func TestEditModeEsc_UnchangedRequestIsNotMarkedModified(t *testing.T) {
 	m := createTestModel()
 	m = m.enterEditMode(findRootItem(m, formRequestName), nil)

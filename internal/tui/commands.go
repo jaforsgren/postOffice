@@ -527,7 +527,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Keys:        []string{"E"},
 			Description: "Edit step scripts",
 			ShortHelp:   "E",
-			Handler:     Model.enterWorkflowStepScriptSelection,
+			Handler:     Model.openWorkflowStepScripts,
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
@@ -1768,20 +1768,6 @@ func handleToggleSplitViewKey(m Model) (Model, tea.Cmd) {
 	return m.focusSplitPane(splitPaneNone), nil
 }
 
-func handleEditScriptKey(m Model) (Model, tea.Cmd) {
-	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
-		item := m.currentItems[m.cursor]
-		if item.IsRequest() {
-			m = m.enterScriptSelectionMode(item, m.folderPathForCursor())
-		} else {
-			m.statusMessage = "Can only edit scripts for requests, not folders"
-		}
-	} else {
-		m.statusMessage = "No request selected"
-	}
-	return m, nil
-}
-
 func handleDiscardSelectedKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeChanges && m.cursor < len(m.items) {
 		itemID := m.items[m.cursor]
@@ -1992,42 +1978,6 @@ func handleRunFullWorkflowKey(m Model) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) enterWorkflowStepScriptSelection() (Model, tea.Cmd) {
-	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
-		m.statusMessage = "No step selected"
-		return m, nil
-	}
-	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
-		m.statusMessage = "No step selected"
-		return m, nil
-	}
-
-	step := m.activeWorkflow.Steps[m.workflowStepCursor]
-	m.editingWorkflowStepIdx = m.workflowStepCursor
-	m.editScriptItemName = step.ID
-	m.previousMode = m.mode
-	m.mode = ModeEdit
-	m.cursor = 0
-	m.editType = EditTypeWorkflowStepScript
-
-	var options []string
-	if step.PreScript != "" {
-		options = append(options, "Pre-step Script")
-	} else {
-		options = append(options, "Create Pre-step Script")
-	}
-	if step.PostScript != "" {
-		options = append(options, "Post-step Script")
-	} else {
-		options = append(options, "Create Post-step Script")
-	}
-
-	m.items = options
-	m.scriptSelectionMode = true
-	m.statusMessage = "Select script type (j/k navigate, Enter select, Esc cancel)"
-	return m, nil
-}
-
 func handleWorkflowRunUpToKey(m Model) (Model, tea.Cmd) {
 	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
 		m.statusMessage = "No steps to run"
@@ -2050,20 +2000,6 @@ func handleWorkflowRunStepKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 	return m.startWorkflowPartial(m.activeWorkflow, m.workflowStepCursor, m.workflowStepCursor)
-}
-
-func handleEditScriptCommand(m Model, args []string) (Model, tea.Cmd) {
-	if m.mode == ModeRequests && m.cursor < len(m.currentItems) {
-		item := m.currentItems[m.cursor]
-		if item.IsRequest() {
-			m = m.enterScriptSelectionMode(item, m.folderPathForCursor())
-		} else {
-			m.statusMessage = "Can only edit scripts for requests, not folders"
-		}
-	} else {
-		m.statusMessage = "No request selected"
-	}
-	return m, nil
 }
 
 func handleToggleExpandKey(m Model) (Model, tea.Cmd) {

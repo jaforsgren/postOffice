@@ -191,18 +191,13 @@ func TestCombinedView_RequestVariablesUseTheOwningCollection(t *testing.T) {
 func TestCombinedView_ScriptSavesToTheOwningCollection(t *testing.T) {
 	m, pathA, _ := combinedModel(t)
 	m = cursorOn(t, openFolder(t, m, combinedA), usersRequest)
-	item := m.currentItems[m.cursor]
-	m = m.enterScriptSelectionMode(item, m.folderPathForCursor())
-	if m.mode != ModeEdit {
-		t.Fatalf("expected script editing in the combined view, got %v (%s)", m.mode, m.statusMessage)
-	}
-	m = m.selectScriptType(item, ScriptTypeTest)
-	m.editFieldTextArea.SetValue("pm.test('combined', () => {})")
+	msg := requestScriptsMsg(t, m.currentItems[m.cursor], m.folderPathForCursor())
+	writeScriptBuffer(t, msg, testScriptLabel, "pm.test('combined', () => {})")
 
-	m, err := m.saveEdit()
+	m = m.applyVimScriptsEdit(msg)
 
-	if err != nil || !fileContains(t, pathA, "combined") {
-		t.Errorf("expected Collection A's file to hold the script, got %v", err)
+	if !fileContains(t, pathA, "combined") {
+		t.Errorf("expected Collection A's file to hold the script (%s)", m.statusMessage)
 	}
 }
 

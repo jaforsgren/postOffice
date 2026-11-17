@@ -282,15 +282,7 @@ func (m Model) applyVimEditToCollection(msg VimEditCompleteMsg, payload vimEditP
 	return m
 }
 
-// ── script editing via temp file ─────────────────────────────────────────────
-
-// VimScriptEditCompleteMsg is sent when the editor exits after editing a
-// pre-request/test/workflow-step script's content in an external editor.
-type VimScriptEditCompleteMsg struct {
-	TempFile        string
-	OriginalContent []byte
-	Err             error
-}
+// ── temp files ───────────────────────────────────────────────────────────────
 
 // writeTempFile writes content to a new temp file named after pattern
 // (os.CreateTemp syntax) and returns its path. The caller removes it.
@@ -309,43 +301,6 @@ func writeTempFile(pattern, content string) (string, error) {
 		return "", fmt.Errorf("failed to close temp file: %w", err)
 	}
 	return tmpFile.Name(), nil
-}
-
-func (m Model) openVimForScript() (Model, tea.Cmd) {
-	content := m.editFieldTextArea.Value()
-	tempFilePath, err := writeTempFile("postoffice-script-*.js", content)
-	if err != nil {
-		m.statusMessage = err.Error()
-		return m, nil
-	}
-
-	return m, tea.ExecProcess(exec.Command(editorBin(), tempFilePath), func(err error) tea.Msg {
-		return VimScriptEditCompleteMsg{TempFile: tempFilePath, OriginalContent: []byte(content), Err: err}
-	})
-}
-
-func (m Model) applyVimScriptEdit(msg VimScriptEditCompleteMsg) Model {
-	defer os.Remove(msg.TempFile)
-
-	if msg.Err != nil {
-		m.statusMessage = fmt.Sprintf("Editor error: %v", msg.Err)
-		return m
-	}
-
-	data, changed, err := readEditedFile(msg.TempFile, msg.OriginalContent)
-	if err != nil {
-		m.statusMessage = fmt.Sprintf("Failed to read edited file: %v", err)
-		return m
-	}
-	m.editFieldTextArea.Focus()
-	if !changed {
-		m.statusMessage = noEditorChangesMessage
-		return m
-	}
-
-	m.editFieldTextArea.SetValue(strings.TrimRight(string(data), "\n"))
-	m.statusMessage = "Updated from editor (:w to save, :wq to save & exit)"
-	return m
 }
 
 // ── run report (read-only) ───────────────────────────────────────────────────

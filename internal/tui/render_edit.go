@@ -31,24 +31,8 @@ func (m Model) buildEditLines() []string {
 	lines = append(lines, "")
 
 	if m.requestTypeSelectionMode {
-		lines = append(lines, m.buildScriptSelectionList()...)
+		lines = append(lines, m.buildRequestTypeSelectionList()...)
 		shortcuts := "<Enter> Select  <j/k> Navigate  <Esc> Cancel"
-		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(shortcuts))
-		return lines
-	}
-
-	if m.scriptSelectionMode {
-		lines = append(lines, m.buildScriptSelectionList()...)
-		shortcuts := "<Enter> Select  <j/k> Navigate  <Esc> Cancel"
-		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(shortcuts))
-		return lines
-	}
-
-	if m.editType == EditTypeScript {
-		lines = append(lines, m.buildScriptEditor()...)
-		shortcuts := "<:w> Save  <:wq> Save & Exit  <Esc> Cancel"
 		lines = append(lines, "")
 		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(shortcuts))
 		return lines
@@ -101,26 +85,6 @@ func (m Model) buildEditTitle() string {
 		title += "Environment Variable"
 	case EditTypeCollectionVariable:
 		title += "Collection Variable"
-	case EditTypeScript:
-		if m.scriptSelectionMode {
-			title = "Select Script Type - " + m.editScriptItemName
-		} else {
-			scriptTypeName := "Pre-request"
-			if m.editScriptType == ScriptTypeTest {
-				scriptTypeName = "Test"
-			}
-			title = scriptTypeName + " Script - " + m.editScriptItemName
-		}
-	case EditTypeWorkflowStepScript:
-		if m.scriptSelectionMode {
-			title = "Select Script Type - Step " + m.editScriptItemName
-		} else {
-			scriptTypeName := "Pre-step"
-			if m.editScriptType == ScriptTypeStepPost {
-				scriptTypeName = "Post-step"
-			}
-			title = scriptTypeName + " Script - Step " + m.editScriptItemName
-		}
 	}
 	return title
 }
@@ -384,7 +348,7 @@ func (m Model) buildFieldCompletionDisplay() []string {
 	return lines
 }
 
-func (m Model) buildScriptSelectionList() []string {
+func (m Model) buildRequestTypeSelectionList() []string {
 	var lines []string
 
 	for i, option := range m.items {
@@ -398,17 +362,6 @@ func (m Model) buildScriptSelectionList() []string {
 
 		lines = append(lines, prefix+style.Render(option))
 	}
-
-	return lines
-}
-
-func (m Model) buildScriptEditor() []string {
-	var lines []string
-
-	lineCount := strings.Count(m.editFieldTextArea.Value(), "\n") + 1
-	lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("Lines: %d", lineCount)))
-	lines = append(lines, "")
-	lines = append(lines, m.editFieldTextArea.View())
 
 	return lines
 }

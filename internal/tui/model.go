@@ -68,18 +68,7 @@ const (
 	EditTypeEnvVariable
 	EditTypeCollectionVariable
 	EditTypeFolderVariable
-	EditTypeScript
 	EditTypeGRPCRequest
-	EditTypeWorkflowStepScript
-)
-
-type ScriptType int
-
-const (
-	ScriptTypePreRequest ScriptType = iota
-	ScriptTypeTest
-	ScriptTypeStepPre
-	ScriptTypeStepPost
 )
 
 type RequestExecution struct {
@@ -178,12 +167,8 @@ type Model struct {
 	fieldCompletion fieldCompletion
 	fieldValueIndex *suggest.Index
 
-	editScript          *postman.Script
-	editScriptType      ScriptType
-	editScriptItemName  string
-	scriptSelectionMode bool
-	editIsNewItem       bool
-	pendingYank         bool
+	editIsNewItem bool
+	pendingYank   bool
 	// responsePanelItem is the request the Response view was opened on with
 	// i, whose definition it shows above the exchange; nil otherwise.
 	responsePanelItem *postman.Item
@@ -239,10 +224,9 @@ type Model struct {
 	workflowStepPanelScroll int
 	// workflowPreviewOpen shows the selected workflow's steps and last run
 	// beside the workflows list; workflowPreviewScroll scrolls it.
-	workflowPreviewOpen    bool
-	workflowPreviewScroll  int
-	addingWorkflowStep     bool
-	editingWorkflowStepIdx int
+	workflowPreviewOpen   bool
+	workflowPreviewScroll int
+	addingWorkflowStep    bool
 
 	// pendingFolderRun holds the folder awaiting a y/n answer to "run as workflow?";
 	// while set, the next key press answers the prompt instead of reaching normal mode.

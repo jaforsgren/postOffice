@@ -160,8 +160,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.applyVimEdit(msg)
 		return m, nil
 
-	case VimScriptEditCompleteMsg:
-		m = m.applyVimScriptEdit(msg)
+	case VimScriptsEditCompleteMsg:
+		m = m.applyVimScriptsEdit(msg)
 		return m, nil
 
 	case VimRequestReportCompleteMsg:
@@ -1371,19 +1371,6 @@ func (m Model) saveEdit() (Model, error) {
 		if len(m.modifiedItems) == 0 {
 			delete(m.modifiedCollections, m.owningCollectionName(m.editItemPath))
 		}
-	case EditTypeScript:
-		m = m.saveScript()
-		if err := m.saveOwningCollection(m.editItemPath); err != nil {
-			m.statusMessage = fmt.Sprintf("Failed to save collection: %v", err)
-			return m, err
-		}
-		itemID := m.requestItemID(m.editItemPath, m.editScriptItemName)
-		delete(m.modifiedItems, itemID)
-		if len(m.modifiedItems) == 0 {
-			delete(m.modifiedCollections, m.owningCollectionName(m.editItemPath))
-		}
-	case EditTypeWorkflowStepScript:
-		m = m.saveWorkflowStepScript()
 	}
 
 	return m, nil
@@ -1429,14 +1416,6 @@ func (m Model) handleEditModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.requestTypeSelectionMode {
 		return m.handleRequestTypeSelectionKeys(msg)
 	}
-	if m.scriptSelectionMode {
-		return m.handleScriptSelectionKeys(msg)
-	}
-
-	if m.editType == EditTypeScript {
-		return m.handleScriptEditKeys(msg)
-	}
-
 	switch msg.String() {
 	case "esc":
 		if m.editIsNewItem {
@@ -1746,106 +1725,6 @@ func (m Model) enterNewItemEditMode(requestType string) Model {
 	}
 
 	return m
-}
-
-func (m Model) handleScriptSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.mode = m.previousMode
-		m.editType = EditTypeNone
-		m.scriptSelectionMode = false
-		m = m.refreshCurrentView()
-		m.statusMessage = "Cancelled script editing"
-		return m, nil
-
-	case "j", "down":
-		if m.cursor < len(m.items)-1 {
-			m.cursor++
-		}
-		return m, nil
-
-	case "k", "up":
-		if m.cursor > 0 {
-			m.cursor--
-		}
-		return m, nil
-
-	case "enter":
-		if m.cursor >= len(m.items) {
-			return m, nil
-		}
-
-		selection := m.items[m.cursor]
-
-		if m.editType == EditTypeWorkflowStepScript {
-			var scriptType ScriptType
-			switch selection {
-			case "Pre-step Script", "Create Pre-step Script":
-				scriptType = ScriptTypeStepPre
-			case "Post-step Script", "Create Post-step Script":
-				scriptType = ScriptTypeStepPost
-			default:
-				m.statusMessage = "Unknown script type selected"
-				return m, nil
-			}
-			m = m.selectWorkflowStepScriptType(scriptType)
-			return m.openVimForScript()
-		}
-
-		var scriptType ScriptType
-		if selection == "Pre-request Script" || selection == "Create Pre-request Script" {
-			scriptType = ScriptTypePreRequest
-		} else if selection == "Test Script" || selection == "Create Test Script" {
-			scriptType = ScriptTypeTest
-		} else {
-			m.statusMessage = "Unknown script type selected"
-			return m, nil
-		}
-
-		item := m.findItemByPath(m.editItemPath, m.editScriptItemName)
-		if item == nil {
-			m.statusMessage = "Error: Could not find request"
-			return m, nil
-		}
-
-		m = m.selectScriptType(*item, scriptType)
-		return m.openVimForScript()
-	}
-
-	return m, nil
-}
-
-func (m Model) handleScriptEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-
-	switch msg.Type {
-	case tea.KeyEsc:
-		m.mode = m.previousMode
-		m.editType = EditTypeNone
-		m.editScript = nil
-		m.scriptSelectionMode = false
-		m.editFieldTextArea.Blur()
-		m.editFieldTextArea.SetValue("")
-		m = m.refreshCurrentView()
-		m.statusMessage = "Cancelled script editing"
-		return m, nil
-
-	case tea.KeyRunes:
-		if msg.String() == ":" {
-			m.commandMode = true
-			m.commandInput.SetValue("")
-			m.commandInput.Focus()
-			m.editFieldTextArea.Blur()
-			return m, m.commandInput.Focus()
-		}
-	}
-
-	if msg.String() == "ctrl+g" {
-		return m.openVimForScript()
-	}
-
-	m.editFieldTextArea, cmd = m.editFieldTextArea.Update(msg)
-	return m, cmd
 }
 
 func (m Model) handleFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -2504,183 +2383,6 @@ func (m Model) restoreSessionView(session *postman.Session) Model {
 	return m
 }
 
-func (m Model) enterScriptSelectionMode(item postman.Item, folderPath []string) Model {
-	if !item.IsRequest() {
-		m.statusMessage = "Can only edit scripts for requests"
-		return m
-	}
-
-	preReqCount := 0
-	testCount := 0
-	for _, event := range item.Events {
-		if event.Listen == "prerequest" {
-			preReqCount++
-		} else if event.Listen == "test" {
-			testCount++
-		}
-	}
-
-	m.scriptSelectionMode = true
-	m.editScriptItemName = item.Name
-	m.editItemPath = append([]string{}, folderPath...)
-	m.previousMode = m.mode
-	m.mode = ModeEdit
-	m.cursor = 0
-
-	options := []string{}
-	if preReqCount > 0 {
-		options = append(options, "Pre-request Script")
-	}
-	if testCount > 0 {
-		options = append(options, "Test Script")
-	}
-	if preReqCount == 0 {
-		options = append(options, "Create Pre-request Script")
-	}
-	if testCount == 0 {
-		options = append(options, "Create Test Script")
-	}
-
-	m.items = options
-	m.statusMessage = "Select script type to edit (j/k to navigate, Enter to select, Esc to cancel)"
-	return m
-}
-
-func (m Model) selectScriptType(item postman.Item, scriptType ScriptType) Model {
-	var foundScript *postman.Script
-	listenType := "prerequest"
-	if scriptType == ScriptTypeTest {
-		listenType = "test"
-	}
-
-	for i := range item.Events {
-		if item.Events[i].Listen == listenType {
-			foundScript = &item.Events[i].Script
-			break
-		}
-	}
-
-	if foundScript == nil {
-		foundScript = &postman.Script{
-			Type: "text/javascript",
-			Exec: []string{},
-		}
-	}
-
-	m.editScript = foundScript
-	m.editScriptType = scriptType
-	m.editType = EditTypeScript
-	m.scriptSelectionMode = false
-
-	scriptContent := ""
-	if len(foundScript.Exec) > 0 {
-		for i, line := range foundScript.Exec {
-			scriptContent += line
-			if i < len(foundScript.Exec)-1 {
-				scriptContent += "\n"
-			}
-		}
-	}
-
-	m.editFieldTextArea.SetValue(scriptContent)
-	m.editFieldTextArea.Focus()
-
-	scriptTypeName := "pre-request"
-	if scriptType == ScriptTypeTest {
-		scriptTypeName = "test"
-	}
-	m.statusMessage = fmt.Sprintf("Editing %s script - :w to save, :wq to save & exit, Esc to cancel", scriptTypeName)
-	return m
-}
-
-func (m Model) selectWorkflowStepScriptType(scriptType ScriptType) Model {
-	if m.activeWorkflow == nil || m.editingWorkflowStepIdx >= len(m.activeWorkflow.Steps) {
-		m.statusMessage = "Error: Step not found"
-		return m
-	}
-
-	step := m.activeWorkflow.Steps[m.editingWorkflowStepIdx]
-	var content string
-	switch scriptType {
-	case ScriptTypeStepPre:
-		content = step.PreScript
-	case ScriptTypeStepPost:
-		content = step.PostScript
-	}
-
-	m.editScriptType = scriptType
-	m.scriptSelectionMode = false
-	m.editFieldTextArea.SetValue(content)
-	m.editFieldTextArea.Focus()
-
-	var scriptTypeName string
-	if scriptType == ScriptTypeStepPre {
-		scriptTypeName = "pre-step"
-	} else {
-		scriptTypeName = "post-step"
-	}
-	m.statusMessage = fmt.Sprintf("Editing %s script for %q — :w to save, :wq to save & exit, Esc to cancel", scriptTypeName, step.ID)
-	return m
-}
-
-func (m Model) saveScript() Model {
-	if m.editScript == nil || m.collection == nil {
-		m.statusMessage = "Error: No script to save"
-		return m
-	}
-
-	scriptContent := m.editFieldTextArea.Value()
-	lines := []string{}
-	if scriptContent != "" {
-		for _, line := range splitLines(scriptContent) {
-			lines = append(lines, line)
-		}
-	}
-
-	m.editScript.Type = "text/javascript"
-	m.editScript.Exec = lines
-
-	item := m.findItemByPath(m.editItemPath, m.editScriptItemName)
-	if item == nil {
-		m.statusMessage = "Error: Could not find request item"
-		return m
-	}
-
-	listenType := "prerequest"
-	if m.editScriptType == ScriptTypeTest {
-		listenType = "test"
-	}
-
-	eventFound := false
-	for i := range item.Events {
-		if item.Events[i].Listen == listenType {
-			item.Events[i].Script = *m.editScript
-			eventFound = true
-			break
-		}
-	}
-
-	if !eventFound {
-		newEvent := postman.Event{
-			Listen: listenType,
-			Script: *m.editScript,
-		}
-		item.Events = append(item.Events, newEvent)
-	}
-
-	m.markCollectionModified(m.editItemPath)
-	itemID := m.requestItemID(m.editItemPath, m.editScriptItemName)
-	m.modifiedItems[itemID] = true
-
-	scriptTypeName := "pre-request"
-	if m.editScriptType == ScriptTypeTest {
-		scriptTypeName = "test"
-	}
-
-	m.statusMessage = fmt.Sprintf("Saved %s script for '%s'", scriptTypeName, m.editScriptItemName)
-	return m
-}
-
 func (m Model) saveActiveWorkflow() (Model, error) {
 	if m.collection == nil {
 		return m, fmt.Errorf("no collection loaded")
@@ -2691,46 +2393,6 @@ func (m Model) saveActiveWorkflow() (Model, error) {
 	}
 	wfPath := workflow.WorkflowPath(collectionPath, m.activeWorkflow.ID)
 	return m, workflow.SaveWorkflow(m.activeWorkflow, wfPath)
-}
-
-func (m Model) saveWorkflowStepScript() Model {
-	if m.activeWorkflow == nil {
-		m.statusMessage = "Error: No active workflow"
-		return m
-	}
-	if m.editingWorkflowStepIdx < 0 || m.editingWorkflowStepIdx >= len(m.activeWorkflow.Steps) {
-		m.statusMessage = "Error: Invalid step index"
-		return m
-	}
-
-	content := m.editFieldTextArea.Value()
-	step := &m.activeWorkflow.Steps[m.editingWorkflowStepIdx]
-
-	var scriptTypeName string
-	switch m.editScriptType {
-	case ScriptTypeStepPre:
-		step.PreScript = content
-		scriptTypeName = "pre-step"
-	case ScriptTypeStepPost:
-		step.PostScript = content
-		scriptTypeName = "post-step"
-	default:
-		m.statusMessage = "Error: Unknown workflow script type"
-		return m
-	}
-
-	if m.collection == nil {
-		m.statusMessage = "Error: No collection loaded"
-		return m
-	}
-	var err error
-	if m, err = m.saveActiveWorkflow(); err != nil {
-		m.statusMessage = fmt.Sprintf("Failed to save workflow: %v", err)
-		return m
-	}
-
-	m.statusMessage = fmt.Sprintf("Saved %s script for step %q", scriptTypeName, step.ID)
-	return m
 }
 
 func (m Model) findItemByPath(path []string, itemName string) *postman.Item {
