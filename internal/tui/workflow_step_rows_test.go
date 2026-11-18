@@ -125,20 +125,31 @@ func TestWorkflowStepRows_cursorMovesThroughExpandedRows(t *testing.T) {
 	}
 }
 
-func TestWorkflowStepRows_nestedStepCannotChangeTheWorkflow(t *testing.T) {
+func TestWorkflowStepRows_nestedStepCannotBeDeleted(t *testing.T) {
 	m := cursorOnStep(t, folderWorkflowDetailModel(t), "invite")
 	m, _ = pressKey(m, expandStepKeyMsg)
 	m = cursorOnStep(t, m, "invite/redeem")
 	steps := slices.Clone(m.activeWorkflow.Steps)
 
 	deleted, _ := m.deleteWorkflowStep()
-	ran, cmd := handleWorkflowRunStepKey(m)
 
 	if !slices.Equal(deleted.activeWorkflow.Steps, steps) || !strings.Contains(deleted.statusMessage, errNestedWorkflowStep.Error()) {
-		t.Errorf("delete: steps %v, status %q, want nothing deleted and the reason", deleted.activeWorkflow.Steps, deleted.statusMessage)
+		t.Errorf("steps %v, status %q, want nothing deleted and the reason", deleted.activeWorkflow.Steps, deleted.statusMessage)
 	}
-	if cmd != nil || !strings.Contains(ran.statusMessage, errNestedWorkflowStep.Error()) {
-		t.Errorf("run step: status %q, want no run and the reason", ran.statusMessage)
+}
+
+func TestWorkflowStepRows_runStepOnANestedStepRunsIt(t *testing.T) {
+	m := cursorOnStep(t, folderWorkflowDetailModel(t), "invite")
+	m, _ = pressKey(m, expandStepKeyMsg)
+	m = cursorOnStep(t, m, "invite/redeem")
+
+	m, cmd := handleWorkflowRunStepKey(m)
+
+	if cmd == nil || !strings.Contains(m.statusMessage, "step: invite/redeem") {
+		t.Errorf("status %q, want a run of invite/redeem started", m.statusMessage)
+	}
+	if m.cancelWorkflowRun != nil {
+		m.cancelWorkflowRun()
 	}
 }
 

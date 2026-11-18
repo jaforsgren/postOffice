@@ -144,6 +144,8 @@ var (
 	ErrRunCancelled = errors.New("run cancelled")
 	// ErrStepAborted is logged on a step stopped with Abort.
 	ErrStepAborted = errors.New("aborted by the user, the run carries on")
+	// ErrNestedStepNotFound is the step error when a qualified step ID names no step inside the folder steps.
+	ErrNestedStepNotFound = errors.New("no such step inside the folder steps")
 	// ErrFolderCycle is the step error when a folder step's sub-workflow would run itself.
 	ErrFolderCycle = errors.New("folder workflow runs itself")
 	// errStageAborted ends the steps and script of a sub-workflow whose folder step was aborted.
@@ -630,6 +632,9 @@ func (r *Runner) stepState(stepID string) *StepState {
 
 func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error) {
 	wfStep := r.findStep(stepID)
+	if wfStep == nil && strings.Contains(stepID, SubStepSeparator) {
+		return r.runNestedStep(stepID, opts)
+	}
 	if wfStep != nil && wfStep.IsFolder() {
 		return r.runFolderStep(*wfStep, opts.Entry)
 	}
@@ -815,6 +820,51 @@ func (r *Runner) runFolderStep(step Step, entry string) (*StepRunResult, error) 
 		r.notifyProgress()
 	}
 	return &StepRunResult{Status: ss.Status, NextRequest: child.jump}, nil
+}
+
+// runNestedStep runs one step inside folder steps' sub-workflows on its own, by
+// its qualified ID (e.g. "invite/redeem"): the enclosing sub-workflows get
+// frames so the step runs and reports exactly as it does inside them, but their
+// scripts and other steps do not run. Its step scripts run in the current VM.
+func (r *Runner) runNestedStep(qualifiedID string, opts RunOptions) (*StepRunResult, error) {
+	outer := r.frame
+	defer func() { r.frame = outer }()
+
+	names := strings.Split(qualifiedID, SubStepSeparator)
+	for _, name := range names[:len(names)-1] {
+		step := r.findStep(name)
+		if step == nil || !step.IsFolder() {
+			return nil, r.failNestedStep(outer, qualifiedID, fmt.Errorf("%w: %q has no folder step %q", ErrNestedStepNotFound, qualifiedID, name))
+		}
+		sub, err := r.folderWorkflow(step.Folder)
+		if err != nil {
+			return nil, r.failNestedStep(outer, qualifiedID, fmt.Errorf("cannot resolve folder %q: %w", step.Folder, err))
+		}
+		parent := r.frame
+		r.frame = &frame{
+			parent:      parent,
+			ctx:         parent.ctx,
+			steps:       sub.Steps,
+			group:       r.stepState(step.ID),
+			folders:     append(slices.Clone(parent.folders), step.Folder),
+			vm:          parent.vm,
+			loop:        parent.loop,
+			scriptTimer: parent.scriptTimer,
+		}
+	}
+	last := names[len(names)-1]
+	if r.findStep(last) == nil {
+		return nil, r.failNestedStep(outer, qualifiedID, fmt.Errorf("%w: %q", ErrNestedStepNotFound, qualifiedID))
+	}
+	return r.runStep(last, opts)
+}
+
+// failNestedStep fails the nested step qualifiedID that could not be reached
+// from outer, like an undeclared top-level step, and returns err.
+func (r *Runner) failNestedStep(outer *frame, qualifiedID string, err error) error {
+	r.frame = outer
+	r.failStep(r.stepState(qualifiedID))
+	return err
 }
 
 // runFolderStepScript runs a folder step's pre- or post-script, logging to the step.

@@ -202,6 +202,8 @@ await wf.run("wait-for-token", {
 });
 ```
 
+A step inside folder steps' sub-workflows can be run on its own by its qualified ID, e.g. `wf.run("invite/redeem")`. Only that step runs; the enclosing sub-workflows' scripts and other steps do not. `x` on an expanded sub-step does this.
+
 #### wf.fail(reason?)
 
 Marks the workflow as failed and halts execution.

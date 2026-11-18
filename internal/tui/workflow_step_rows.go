@@ -12,7 +12,7 @@ import (
 
 var errNoWorkflowStepSelected = errors.New("no step selected")
 
-var errNestedWorkflowStep = errors.New("a sub-workflow's step belongs to its folder's workflow: open that workflow to change or run it on its own")
+var errNestedWorkflowStep = errors.New("a sub-workflow's step belongs to its folder's workflow: run it alone with x, or open that workflow to change it")
 
 // workflowStepRow is one line of the workflow detail step list: a step of the
 // active workflow or, under an expanded folder step, a step of its sub-workflow.

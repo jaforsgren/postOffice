@@ -2016,6 +2016,9 @@ func handleWorkflowRunFromKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleWorkflowRunStepKey(m Model) (Model, tea.Cmd) {
+	if row, ok := m.selectedWorkflowRow(); ok && !row.isTopLevel() {
+		return m.runWorkflowScript(m.activeWorkflow, workflow.PartialScript([]workflow.Step{{ID: row.runID}}, 0, 0), "step: "+row.runID)
+	}
 	return m.runSelectedStepRange(func(selected, last int) (int, int) { return selected, selected })
 }
 

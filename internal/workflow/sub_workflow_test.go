@@ -219,3 +219,61 @@ func TestQualifiedAndLocalStepID(t *testing.T) {
 		t.Errorf("qualified %q, local %q", qualified, LocalStepID(qualified))
 	}
 }
+
+// runOnly runs the collection workflow with a script that runs just stepID.
+func runOnly(t *testing.T, server *recordingServer, stepID string, items ...postman.Item) ExecutionState {
+	t.Helper()
+	return runWorkflowOver(t, server, func(c *postman.Collection) (*Workflow, error) {
+		wf, err := NewCollectionWorkflow(c)
+		if err == nil {
+			wf.Script = PartialScript([]Step{{ID: stepID}}, 0, 0)
+		}
+		return wf, err
+	}, items...)
+}
+
+func TestNestedStep_runsAloneByItsQualifiedID(t *testing.T) {
+	server := newRecordingServer(t)
+
+	state := runOnly(t, server, "outer/inner/c",
+		recordedRequest("a"),
+		folder("outer", recordedRequest("b"), folder("inner", recordedRequest("c"), recordedRequest("d"))),
+	)
+
+	if state.Status != StatusSuccess || server.paths() != "c" {
+		t.Fatalf("got %s (%s) sending %s, want only c sent", state.Status, state.Error, server.paths())
+	}
+	if got := state.StepIndex["outer/inner/c"].Status; got != StatusSuccess {
+		t.Errorf("outer/inner/c = %s, want its result on its own run state", got)
+	}
+	if got := state.StepIndex["outer/b"].Status; got != StatusSkipped {
+		t.Errorf("outer/b = %s, want the rest of the sub-workflow not run", got)
+	}
+}
+
+func TestNestedStep_folderStepRunsItsSubWorkflow(t *testing.T) {
+	server := newRecordingServer(t)
+
+	state := runOnly(t, server, "outer/inner",
+		folder("outer", recordedRequest("b"), folder("inner", recordedRequest("c"), recordedRequest("d"))),
+	)
+
+	if state.Status != StatusSuccess || server.paths() != "c,d" {
+		t.Errorf("got %s (%s) sending %s, want inner's requests only", state.Status, state.Error, server.paths())
+	}
+}
+
+func TestNestedStep_unknownPathFailsTheStep(t *testing.T) {
+	state := runOnly(t, newRecordingServer(t), "outer/missing", folder("outer", recordedRequest("b")))
+
+	if state.Status != StatusFailed {
+		t.Errorf("status = %s, want failed", state.Status)
+	}
+	var reported bool
+	for _, entry := range state.Logs {
+		reported = reported || strings.Contains(entry.Message, ErrNestedStepNotFound.Error())
+	}
+	if !reported {
+		t.Errorf("logs = %+v, want the missing step reported", state.Logs)
+	}
+}
