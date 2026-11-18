@@ -2431,6 +2431,9 @@ func (m Model) findItemByPath(path []string, itemName string) *postman.Item {
 func (m Model) activateWorkflow(wf *workflow.Workflow) Model {
 	m.activeWorkflow = wf
 	m.activeWorkflowCollection = m.workflowCollectionName()
+	if m.isViewingMergedCollection() {
+		m.combinedWorkflowCollection = m.activeWorkflowCollection
+	}
 	return m
 }
 

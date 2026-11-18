@@ -377,13 +377,15 @@ The result object is the same as HTTP: `response.code`, `response.body`, `respon
 
 Opens the workflow browser. Navigate with `j/k`. Press `enter` to open the selected workflow's steps, or `ctrl+e` to run it.
 
+With several collections loaded, it lists every active collection's workflows. Each line names its collection. A workflow always runs and saves in its own collection.
+
 ### Run a workflow by ID
 
 ```
 :wf run <id>
 ```
 
-Runs the workflow with the given ID immediately.
+Runs the workflow with the given ID immediately, from any active collection.
 
 ### Create a new workflow
 

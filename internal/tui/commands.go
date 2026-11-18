@@ -1905,13 +1905,7 @@ func (m Model) loadWorkflows() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m, err := m.scopeWorkflowsToCursor()
-	if err != nil {
-		m.statusMessage = err.Error()
-		return m, nil
-	}
-
-	_, wfs, err := m.discoverWorkflows(m.workflowCollectionName())
+	m, err := m.listWorkflows()
 	if errors.Is(err, errCollectionPathNotFound) {
 		m.statusMessage = "Collection path not found"
 		return m, nil
@@ -1921,16 +1915,14 @@ func (m Model) loadWorkflows() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.workflows = wfs
-	m = m.cacheSavedWorkflowIDs(m.workflowCollectionName(), wfs)
 	m.workflowCursor = 0
 	m.previousMode = m.mode
 	m.mode = ModeWorkflows
 
-	if len(wfs) == 0 {
+	if len(m.workflows) == 0 {
 		m.statusMessage = "No workflows found. Create one with :wf new <id>"
 	} else {
-		m.statusMessage = fmt.Sprintf("%d workflow(s) — enter or %s to run", len(wfs), runKey)
+		m.statusMessage = fmt.Sprintf("%d workflow(s) — enter or %s to run", len(m.workflows), runKey)
 	}
 	return m, nil
 }
@@ -1941,17 +1933,25 @@ func (m Model) runWorkflowByID(id string) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m, err := m.scopeWorkflowsToCursor()
-	if err != nil {
-		m.statusMessage = err.Error()
+	m, err := m.listWorkflows()
+	if err != nil && !errors.Is(err, errCollectionPathNotFound) {
+		m.statusMessage = fmt.Sprintf("Failed to discover workflows: %v", err)
 		return m, nil
 	}
-
-	// Try loaded workflows first.
-	for _, wf := range m.workflows {
+	for i, wf := range m.workflows {
 		if wf.ID == id || wf.Name == id {
+			m.workflowCursor = i
+			if m, err = m.scopeWorkflowsTo(m.workflowOwners[wf]); err != nil {
+				m.statusMessage = err.Error()
+				return m, nil
+			}
 			return m.startWorkflow(wf)
 		}
+	}
+
+	if m, err = m.scopeWorkflowsToCursor(); err != nil {
+		m.statusMessage = err.Error()
+		return m, nil
 	}
 
 	// Try loading from file.

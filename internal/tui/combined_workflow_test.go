@@ -3,6 +3,8 @@ package tui
 import (
 	"errors"
 	"os"
+	"slices"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -79,7 +81,7 @@ func TestCombinedView_SavedFolderWorkflowIsMarked(t *testing.T) {
 	}
 }
 
-func TestCombinedView_WorkflowsListTheCursorsCollection(t *testing.T) {
+func TestCombinedView_NewWorkflowGoesToTheCursorsCollection(t *testing.T) {
 	m, pathA, _ := combinedModel(t)
 	m = openFolder(t, m, combinedA)
 
@@ -93,14 +95,69 @@ func TestCombinedView_WorkflowsListTheCursorsCollection(t *testing.T) {
 	}
 }
 
-func TestCombinedView_WorkflowsNeedACollectionAtTheCursor(t *testing.T) {
-	m, _, _ := combinedModel(t)
+// saveWorkflowsOfBoth saves workflow aID next to collection A and bID next to B.
+func saveWorkflowsOfBoth(t *testing.T, pathA, pathB, aID, bID string) {
+	t.Helper()
+	for path, id := range map[string]string{pathA: aID, pathB: bID} {
+		if err := workflow.SaveWorkflow(workflow.NewWorkflow(id), workflow.WorkflowPath(path, id)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestCombinedView_WorkflowsListEveryActiveCollection(t *testing.T) {
+	m, pathA, pathB := combinedModel(t)
+	saveWorkflowsOfBoth(t, pathA, pathB, "a-flow", "b-flow")
+	// As on startup: the cursor is on no collection's item.
 	m.currentItems = nil
 	m.cursor = 0
 
 	m, _ = m.loadWorkflows()
 
-	if m.mode == ModeWorkflows || m.statusMessage != errCombinedWorkflowScope.Error() {
-		t.Errorf("expected the workflows view refused, got %v (%s)", m.mode, m.statusMessage)
+	if m.mode != ModeWorkflows || len(m.workflows) != 2 {
+		t.Fatalf("expected both collections' workflows listed, got %d (%s)", len(m.workflows), m.statusMessage)
+	}
+	owners := map[string]string{}
+	for _, wf := range m.workflows {
+		owners[wf.ID] = m.workflowOwners[wf]
+	}
+	if owners["a-flow"] != combinedA || owners["b-flow"] != combinedB {
+		t.Errorf("owners = %v, want each workflow owned by its collection", owners)
+	}
+	if lines := strings.Join(m.buildWorkflowListLines(splitTestHeight), "\n"); !strings.Contains(lines, "["+combinedB+"]") {
+		t.Errorf("list should name each workflow's collection:\n%s", lines)
+	}
+}
+
+func TestCombinedView_OpeningAListedWorkflowScopesToItsCollection(t *testing.T) {
+	m, pathA, pathB := combinedModel(t)
+	saveWorkflowsOfBoth(t, pathA, pathB, "a-flow", "b-flow")
+	m = openFolder(t, m, combinedA)
+	m, _ = m.loadWorkflows()
+	wf, ok := m.findListedWorkflow(combinedB, "b-flow")
+	if !ok {
+		t.Fatal("b-flow not listed")
+	}
+	m.workflowCursor = slices.Index(m.workflows, wf)
+
+	m, _ = m.openWorkflowDetail(wf)
+
+	if m.activeWorkflowCollection != combinedB || m.workflowCollectionName() != combinedB {
+		t.Errorf("active collection %q, scope %q, want %s", m.activeWorkflowCollection, m.workflowCollectionName(), combinedB)
+	}
+}
+
+func TestCombinedView_RunWorkflowByIDFindsItInAnyCollection(t *testing.T) {
+	m, pathA, pathB := combinedModel(t)
+	saveWorkflowsOfBoth(t, pathA, pathB, "a-flow", "b-flow")
+	m = openFolder(t, m, combinedA)
+
+	m, cmd := m.runWorkflowByID("b-flow")
+
+	if cmd == nil || m.activeWorkflowCollection != combinedB {
+		t.Errorf("expected b-flow run against %s, got %q (%s)", combinedB, m.activeWorkflowCollection, m.statusMessage)
+	}
+	if m.cancelWorkflowRun != nil {
+		m.cancelWorkflowRun()
 	}
 }

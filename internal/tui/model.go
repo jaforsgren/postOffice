@@ -213,7 +213,9 @@ type Model struct {
 	grpcSelectedService int
 	grpcReflectPhase    GRPCReflectPhase
 
-	workflows      []*workflow.Workflow
+	workflows []*workflow.Workflow
+	// workflowOwners is the collection each listed workflow belongs to (see listWorkflows).
+	workflowOwners map[*workflow.Workflow]string
 	workflowCursor int
 	// workflowStepCursor indexes workflowStepRows: steps and the sub-steps of expanded folder steps.
 	workflowStepCursor int

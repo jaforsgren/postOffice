@@ -66,6 +66,9 @@ func (m Model) workflowListLine(wf *workflow.Workflow, selected bool) string {
 	}
 
 	line := prefix + icon + " " + name + "  " + workflowMetaStyle.Render(stepCountLabel(len(wf.Steps)))
+	if m.isViewingMergedCollection() {
+		line += "  " + workflowMetaStyle.Render("["+m.workflowOwners[wf]+"]")
+	}
 	if wf.Description != "" {
 		line += "  " + subtleStyle.Render(wf.Description)
 	}

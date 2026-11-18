@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -429,6 +430,7 @@ func (m Model) applyVimEnvEdit(msg VimEnvEditCompleteMsg) Model {
 // VimWorkflowEditCompleteMsg is sent when the editor exits after editing a workflow file.
 type VimWorkflowEditCompleteMsg struct {
 	WorkflowID     string
+	CollectionName string
 	CollectionPath string
 	Err            error
 }
@@ -451,7 +453,8 @@ func (m Model) openVimForWorkflow() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	collectionPath, exists := m.parser.GetCollectionPath(m.workflowCollectionName())
+	collectionName := m.workflowCollectionName()
+	collectionPath, exists := m.parser.GetCollectionPath(collectionName)
 	if !exists {
 		m.statusMessage = "Collection path not found"
 		return m, nil
@@ -461,6 +464,7 @@ func (m Model) openVimForWorkflow() (Model, tea.Cmd) {
 	return m, tea.ExecProcess(exec.Command(editorBin(), wfPath), func(err error) tea.Msg {
 		return VimWorkflowEditCompleteMsg{
 			WorkflowID:     wf.ID,
+			CollectionName: collectionName,
 			CollectionPath: collectionPath,
 			Err:            err,
 		}
@@ -480,14 +484,13 @@ func (m Model) applyVimWorkflowEdit(msg VimWorkflowEditCompleteMsg) Model {
 		return m
 	}
 
-	for i, w := range m.workflows {
-		if w.ID == msg.WorkflowID {
-			m.workflows[i] = wf
-			break
-		}
+	if listed, ok := m.findListedWorkflow(msg.CollectionName, msg.WorkflowID); ok {
+		m.workflows[slices.Index(m.workflows, listed)] = wf
+		delete(m.workflowOwners, listed)
+		m.workflowOwners[wf] = msg.CollectionName
 	}
 
-	if m.activeWorkflow != nil && m.activeWorkflow.ID == msg.WorkflowID {
+	if m.activeWorkflow != nil && m.activeWorkflow.ID == msg.WorkflowID && m.activeWorkflowCollection == msg.CollectionName {
 		m.activeWorkflow = wf
 	}
 

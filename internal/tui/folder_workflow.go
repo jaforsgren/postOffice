@@ -79,12 +79,10 @@ func (m Model) runFolderAsWorkflow(run folderRun) (Model, tea.Cmd) {
 		if err := workflow.SaveWorkflow(wf, workflow.WorkflowPath(collectionPath, wf.ID)); err != nil {
 			return m.folderRunError(fmt.Errorf("failed to save workflow: %w", err)), nil
 		}
-		if _, saved, err = m.discoverWorkflows(collection.Info.Name); err != nil {
-			return m.folderRunError(err), nil
-		}
 	}
-	m.workflows = saved
-	m = m.cacheSavedWorkflowIDs(collection.Info.Name, saved)
+	if m, err = m.listWorkflows(); err != nil {
+		return m.folderRunError(err), nil
+	}
 
 	m, cmd := m.startWorkflow(wf)
 	if cmd != nil {
