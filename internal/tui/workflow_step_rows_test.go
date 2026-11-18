@@ -25,9 +25,7 @@ func folderWorkflowDetailModel(t *testing.T) Model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.activeWorkflow = wf
-	m.mode = ModeWorkflowDetail
-	m.workflowStepCursor = 0
+	m, _ = m.openWorkflowDetail(wf)
 	return m
 }
 
@@ -178,5 +176,30 @@ func TestWorkflowStepRows_expansionBelongsToOneWorkflow(t *testing.T) {
 
 	if got := rowRunIDs(m); slices.Contains(got, "invite/redeem") {
 		t.Errorf("rows = %v, want another workflow's expansion not to carry over", got)
+	}
+}
+
+func TestWorkflowStepRows_expansionResolvesInTheWorkflowsOwnCollectionAfterRescoping(t *testing.T) {
+	m, _, _ := combinedModel(t)
+	m, err := m.scopeWorkflowsTo(combinedB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := m.parser.GetCollection(combinedB)
+	wf, err := workflow.NewCollectionWorkflow(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ = m.openWorkflowDetail(wf)
+	// The combined view rescopes the workflow commands to the cursor's collection, e.g. on :wf.
+	if m, err = m.scopeWorkflowsTo(combinedA); err != nil {
+		t.Fatal(err)
+	}
+
+	m = cursorOnStep(t, m, workflow.FolderWorkflowID([]string{ordersFolder}))
+	m, _ = pressKey(m, expandStepKeyMsg)
+
+	if len(m.workflowStepRows()) != len(wf.Steps)+1 || m.statusIsError {
+		t.Errorf("rows %v, status %q, want the folder expanded from collection B", rowRunIDs(m), m.statusMessage)
 	}
 }

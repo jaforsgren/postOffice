@@ -218,6 +218,8 @@ type Model struct {
 	// workflowStepCursor indexes workflowStepRows: steps and the sub-steps of expanded folder steps.
 	workflowStepCursor int
 	activeWorkflow     *workflow.Workflow
+	// activeWorkflowCollection is the collection activeWorkflow belongs to (see activateWorkflow).
+	activeWorkflowCollection string
 	// expandedWorkflowSteps are the run IDs of expandedWorkflowID's expanded folder steps;
 	// folderStepDefinitions caches the sub-workflow steps of those that have not run.
 	expandedWorkflowID    string

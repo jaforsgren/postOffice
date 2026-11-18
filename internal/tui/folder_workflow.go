@@ -122,13 +122,13 @@ func (m Model) generateFolderWorkflow(collection *postman.Collection, folder pos
 }
 
 // folderWorkflowSource gives folder steps the workflow running their folder on
-// its own would, from those saved next to the workflow collection; a collection
+// its own would, from the named collection's saved workflows; a collection
 // without a file on disk has none saved, so its folders run generated ones.
-func (m Model) folderWorkflowSource() workflow.FolderWorkflowSource {
-	collection := m.workflowCollection()
-	_, saved, err := m.discoverWorkflows(m.workflowCollectionName())
+func (m Model) folderWorkflowSource(collectionName string) workflow.FolderWorkflowSource {
+	collection, _ := m.parser.GetCollection(collectionName)
+	_, saved, err := m.discoverWorkflows(collectionName)
 	if err != nil && !errors.Is(err, errCollectionPathNotFound) {
-		logger.LogError("folderWorkflowSource", m.workflowCollectionName(), err)
+		logger.LogError("folderWorkflowSource", collectionName, err)
 	}
 	return workflow.SavedFolderWorkflows(collection, saved)
 }

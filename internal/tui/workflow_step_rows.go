@@ -161,8 +161,9 @@ func (m Model) expandWorkflowStep(row workflowStepRow) Model {
 	if _, known := m.folderStepDefinitions[row.runID]; known || len(m.ranSubWorkflowSteps(row.runID)) > 0 {
 		return m
 	}
-	sub, err := m.folderWorkflowSource()(postman.SplitItemPath(row.step.Folder))
+	sub, err := m.folderWorkflowSource(m.activeWorkflowCollection)(postman.SplitItemPath(row.step.Folder))
 	if err != nil {
+		err = fmt.Errorf("in collection %q: %w", m.activeWorkflowCollection, err)
 		logger.LogError("expandWorkflowStep", row.step.Folder, err)
 		m.statusMessage = fmt.Sprintf("Cannot show folder %q: %v", row.step.Folder, err)
 		m.statusIsError = true

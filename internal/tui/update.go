@@ -2425,9 +2425,18 @@ func (m Model) findItemByPath(path []string, itemName string) *postman.Item {
 	return nil
 }
 
+// activateWorkflow makes wf the active workflow of the collection the workflow
+// commands are scoped to now, so its folder steps keep resolving there however
+// the scope changes later (the combined view rescopes to the cursor).
+func (m Model) activateWorkflow(wf *workflow.Workflow) Model {
+	m.activeWorkflow = wf
+	m.activeWorkflowCollection = m.workflowCollectionName()
+	return m
+}
+
 // openWorkflowDetail sets the active workflow and enters the detail view.
 func (m Model) openWorkflowDetail(wf *workflow.Workflow) (Model, tea.Cmd) {
-	m.activeWorkflow = wf
+	m = m.activateWorkflow(wf)
 	m.workflowStepCursor = 0
 	m.previousMode = m.mode
 	m.mode = ModeWorkflowDetail
@@ -2648,7 +2657,7 @@ func (m Model) runWorkflowScript(wf *workflow.Workflow, script, runLabel string)
 		return m, nil
 	}
 
-	m.activeWorkflow = wf
+	m = m.activateWorkflow(wf)
 	m.workflowState = workflow.ExecutionState{
 		WorkflowID:   wf.ID,
 		WorkflowName: wf.Name,
@@ -2691,7 +2700,7 @@ func (m Model) launchRun(environment *postman.Environment, run workflowRun) (Mod
 	progressChan := make(chan workflow.ExecutionState, workflowProgressBuffer)
 	m.workflowChan = progressChan
 
-	runner := workflow.NewRunner(m.workflowCollection(), environment, m.engine).WithFolderWorkflows(m.folderWorkflowSource())
+	runner := workflow.NewRunner(m.workflowCollection(), environment, m.engine).WithFolderWorkflows(m.folderWorkflowSource(m.workflowCollectionName()))
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelWorkflowRun = cancel
 	m.abortWorkflowStep = runner.Abort
