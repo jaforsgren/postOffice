@@ -177,20 +177,23 @@ func TestFolderRunConfirm_SavesAndRunsGeneratedWorkflow(t *testing.T) {
 	if saved.Name != "policies/TEST" {
 		t.Errorf("saved Name = %q, want %q", saved.Name, "policies/TEST")
 	}
-	wantRequests := []string{"policies/TEST/setup", "policies/TEST/invite/redeem", "policies/TEST/cleanup"}
-	if len(saved.Steps) != len(wantRequests) {
-		t.Fatalf("saved %d steps, want %d", len(saved.Steps), len(wantRequests))
+	wantTargets := []string{"policies/TEST/setup", "policies/TEST/invite", "policies/TEST/cleanup"}
+	if len(saved.Steps) != len(wantTargets) {
+		t.Fatalf("saved %d steps, want %d", len(saved.Steps), len(wantTargets))
 	}
-	for i, request := range wantRequests {
-		if saved.Steps[i].Request != request {
-			t.Errorf("Steps[%d].Request = %q, want %q", i, saved.Steps[i].Request, request)
+	for i, target := range wantTargets {
+		if saved.Steps[i].Target() != target {
+			t.Errorf("Steps[%d].Target() = %q, want %q", i, saved.Steps[i].Target(), target)
 		}
+	}
+	if !saved.Steps[1].IsFolder() {
+		t.Errorf("Steps[1] = %+v, want the invite subfolder as a folder step", saved.Steps[1])
 	}
 
 	if m.activeWorkflow == nil || m.activeWorkflow.ID != "policies-test" {
 		t.Errorf("activeWorkflow = %v, want the folder workflow", m.activeWorkflow)
 	}
-	if findWorkflowByID(m.workflows, "policies-test") == nil {
+	if workflow.FindWorkflow(m.workflows, "policies-test") == nil {
 		t.Error("the saved workflow should be in the workflow list")
 	}
 	if m.previousMode != ModeRequests {
@@ -274,7 +277,7 @@ func TestFolderWorkflowIndicator_ShownOnceSaved(t *testing.T) {
 	m, _ = pressKey(m, confirmKey)
 	escKey := tea.KeyMsg{Type: tea.KeyEsc}
 	m, _ = pressKey(m, escKey) // workflow progress view → workflow list
-	if findWorkflowByID(m.workflows, "policies-test") == nil {
+	if workflow.FindWorkflow(m.workflows, "policies-test") == nil {
 		t.Error("the workflow list should show the saved folder workflow")
 	}
 	m, _ = pressKey(m, escKey) // workflow list → requests view

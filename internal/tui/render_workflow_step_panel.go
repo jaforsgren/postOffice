@@ -82,7 +82,7 @@ func (m Model) buildStepPanelLines(width int) []string {
 	if ss == nil {
 		return wrapLines([]string{
 			styledRunStyler.title(step.ID),
-			subtleStyle.Render(step.Request),
+			subtleStyle.Render(stepTargetLabel(step)),
 			"",
 			subtleStyle.Render(stepPanelNotRunMessage),
 		}, width)
@@ -90,7 +90,7 @@ func (m Model) buildStepPanelLines(width int) []string {
 
 	lines := []string{
 		styledRunStyler.title(ss.ID) + " " + styledRunStyler.status(ss.Status, "["+ss.Status+"]"),
-		subtleStyle.Render(ss.Request),
+		subtleStyle.Render(ss.Target()),
 	}
 	if ss.Total > 1 {
 		lines = append(lines, subtleStyle.Render(fmt.Sprintf("attempt %d/%d", ss.Progress, ss.Total)))

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"testing"
 
@@ -77,5 +78,36 @@ func TestRun_TextReportStreamsStepsBeforeTheSummary(t *testing.T) {
 	header, getUser, health, summary := strings.Index(out, "Run "), strings.Index(out, "✓ Users/Get User"), strings.Index(out, "✓ Health"), strings.Index(out, "requests:")
 	if header != 0 || getUser < 0 || health < getUser || summary < health || strings.Count(out, "✓ Health") != 1 {
 		t.Errorf("expected header, steps once each, then summary:\n%s", out)
+	}
+}
+
+func folderRunState() workflow.ExecutionState {
+	outer := &workflow.StepState{ID: "outer", Folder: "outer", Status: workflow.StatusSuccess, Iteration: 1}
+	inner := &workflow.StepState{ID: "outer/a", Request: "outer/a", Groups: []string{"outer"}, Status: workflow.StatusSuccess, Iteration: 1}
+	return workflow.ExecutionState{
+		Status:    workflow.StatusSuccess,
+		Steps:     []*workflow.StepState{outer, inner},
+		StepIndex: map[string]*workflow.StepState{outer.ID: outer, inner.ID: inner},
+		Logs:      []workflow.LogEntry{{StepID: "outer", Iteration: 1, Message: "inside outer"}},
+	}
+}
+
+func TestStepStream_WritesRequestsNotFolderSteps(t *testing.T) {
+	var out bytes.Buffer
+	newStepStream(&out, newTextStyles(&out)).onChange(folderRunState())
+
+	if want := "✓ outer/a  success\n"; out.String() != want {
+		t.Errorf("got %q, want %q", out.String(), want)
+	}
+}
+
+func TestRunReport_CountsRequestsAndLabelsFolderStepLogs(t *testing.T) {
+	report := newRunReport(folderRunState(), "Collection", "")
+
+	if report.Summary.Requests != 1 || len(report.Requests) != 1 || report.Requests[0].Step != "outer/a" {
+		t.Errorf("requests = %+v, want only outer/a", report.Requests)
+	}
+	if want := []string{"outer" + folderLogSeparator + "inside outer"}; !slices.Equal(report.Logs, want) {
+		t.Errorf("logs = %q, want %q", report.Logs, want)
 	}
 }

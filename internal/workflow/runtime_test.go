@@ -81,7 +81,7 @@ func twoStepWorkflow() *Workflow {
 
 // runnerAtIteration prepares a runner as Run does before its first iteration.
 func runnerAtIteration(wf *Workflow, opts ExecutionOptions) *Runner {
-	runner := &Runner{wfSteps: wf.Steps, options: opts, ctx: &script.ExecutionContext{}}
+	runner := &Runner{frame: &frame{steps: wf.Steps}, options: opts, ctx: &script.ExecutionContext{}}
 	runner.state = ExecutionState{
 		WorkflowID: wf.ID,
 		Status:     StatusRunning,
@@ -174,18 +174,16 @@ func TestResolveRequest_noCollection(t *testing.T) {
 	}
 }
 
-func TestFindRequestPath(t *testing.T) {
-	runner := &Runner{
-		wfSteps: []Step{
-			{ID: "login", Request: "Auth/Login"},
-			{ID: "list-users", Request: "Users/List"},
-		},
-	}
+func TestFindStep(t *testing.T) {
+	runner := &Runner{frame: &frame{steps: []Step{
+		{ID: "login", Request: "Auth/Login"},
+		{ID: "admin", Folder: "Auth/Admin"},
+	}}}
 
-	if got := runner.findRequestPath("login"); got != "Auth/Login" {
-		t.Errorf("findRequestPath(login) = %q, want %q", got, "Auth/Login")
+	if got := runner.findStep("admin"); got == nil || got.Folder != "Auth/Admin" {
+		t.Errorf("findStep(admin) = %+v, want the Auth/Admin folder step", got)
 	}
-	if got := runner.findRequestPath("unknown"); got != "" {
-		t.Errorf("findRequestPath(unknown) = %q, want empty", got)
+	if got := runner.findStep("unknown"); got != nil {
+		t.Errorf("findStep(unknown) = %+v, want nil", got)
 	}
 }

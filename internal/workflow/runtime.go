@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -33,7 +34,9 @@ type Runner struct {
 	// runCtx cancels the run: the request being sent, wf.sleep and the script.
 	runCtx context.Context
 
-	wfSteps []Step
+	// frame is the workflow script running: the run's workflow, or the
+	// sub-workflow of the folder step it is inside.
+	frame   *frame
 	options ExecutionOptions
 	// iteration is the pass in progress; every request in it sees its data row.
 	iteration script.Iteration
@@ -43,17 +46,63 @@ type Runner struct {
 	ctx           *script.ExecutionContext
 	state         ExecutionState
 	status        string
-	vm            *goja.Runtime
-	loop          *script.EventLoop
 	onChange      func(ExecutionState)
-	// currentStepID attributes logs to the step being run; empty between steps.
+	// currentStepID attributes logs to the step being run (its qualified ID);
+	// empty between steps.
 	currentStepID string
 	scriptTimeout time.Duration
-	scriptTimer   *time.Timer
-	timedOut      atomic.Bool
+
+	folderSource FolderWorkflowSource
+	// folderWorkflows caches folderSource per folder path for the run.
+	folderWorkflows map[string]*Workflow
+}
+
+// frame is one workflow script being run: the run's workflow, or a folder
+// step's sub-workflow inside it. Each runs in its own VM with its own timeout.
+type frame struct {
+	parent *frame
+	steps  []Step
+	// group is the folder step this frame runs the sub-workflow of; nil at the top.
+	group *StepState
+	// folders are the folder paths of this and the enclosing frames, to refuse
+	// a sub-workflow that runs itself.
+	folders []string
+	// entry is the request the sub-workflow starts at, empty to start at its first step.
+	entry string
+	// jump is the setNextRequest target the script handed to the enclosing workflow (wf.jump).
+	jump script.NextRequest
+	// failed is set when any step inside the frame failed.
+	failed bool
+
+	vm          *goja.Runtime
+	loop        *script.EventLoop
+	scriptTimer *time.Timer
+	timedOut    atomic.Bool
+}
+
+// qualify is the run state ID of the frame's step stepID.
+func (f *frame) qualify(stepID string) string {
+	return QualifiedStepID(f.groupID(), stepID)
+}
+
+// groupID is the folder step's run state ID; empty at the top or before a run.
+func (f *frame) groupID() string {
+	if f == nil || f.group == nil {
+		return ""
+	}
+	return f.group.ID
+}
+
+// groups are the Groups of the frame's step states.
+func (f *frame) groups() []string {
+	if f.group == nil {
+		return nil
+	}
+	return append(slices.Clone(f.group.Groups), f.group.ID)
 }
 
 // NewRunner creates a runner bound to the given collection and environment.
+// Folder steps run generated folder workflows unless WithFolderWorkflows says otherwise.
 func NewRunner(
 	collection *postman.Collection,
 	environment *postman.Environment,
@@ -65,7 +114,14 @@ func NewRunner(
 		engine:        requestEngine,
 		runCtx:        context.Background(),
 		scriptTimeout: defaultScriptTimeout,
+		folderSource:  GeneratedFolderWorkflows(collection),
 	}
+}
+
+// WithFolderWorkflows sets where folder steps get the workflow they run.
+func (r *Runner) WithFolderWorkflows(source FolderWorkflowSource) *Runner {
+	r.folderSource = source
+	return r
 }
 
 var (
@@ -78,6 +134,11 @@ var (
 	ErrScriptFailed = errors.New("script error")
 	// ErrRunCancelled is the run error when the run's context is cancelled.
 	ErrRunCancelled = errors.New("run cancelled")
+	// ErrFolderCycle is the step error when a folder step's sub-workflow would run itself.
+	ErrFolderCycle = errors.New("folder workflow runs itself")
+	// errJumped ends a workflow script that handed a setNextRequest target to
+	// its enclosing workflow; the script completed, it did not fail.
+	errJumped = errors.New("workflow.jump")
 )
 
 // Run executes wf once per iteration of opts, calling onChange after each
@@ -91,7 +152,8 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow, opts ExecutionOptions, o
 	r.status = StatusRunning
 	r.anyStepFailed = false
 	r.options = opts
-	r.wfSteps = wf.Steps
+	r.frame = &frame{steps: wf.Steps}
+	r.folderWorkflows = make(map[string]*Workflow)
 	r.state = ExecutionState{
 		WorkflowID:   wf.ID,
 		WorkflowName: wf.Name,
@@ -122,15 +184,44 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow, opts ExecutionOptions, o
 }
 
 // beginIteration selects the iteration's data row and adds a pending state
-// for each declared step, so the run view lists every iteration's steps.
+// for each declared step, so the run view lists every iteration's steps,
+// those inside folder steps' sub-workflows included.
 func (r *Runner) beginIteration(index int) {
 	r.iteration = r.options.iteration(index)
 	r.ctx.Iteration = r.iteration
 	r.state.Iteration = index + 1
-	for _, s := range r.wfSteps {
-		r.addStepState(&StepState{ID: s.ID, Request: s.Request, Status: StatusPending})
-	}
+	r.addPendingSteps(r.frame.steps, nil, nil)
 	r.notifyProgress()
+}
+
+// addPendingSteps adds a pending state for each of steps, enclosed by the
+// folder steps groups names, then for the steps of each folder step's
+// sub-workflow. folders are the enclosing folder paths, so a sub-workflow
+// that runs itself is listed once; running it fails the step.
+func (r *Runner) addPendingSteps(steps []Step, groups, folders []string) {
+	for _, step := range steps {
+		ss := &StepState{
+			ID:      QualifiedStepID(lastOf(groups), step.ID),
+			Request: step.Request,
+			Folder:  step.Folder,
+			Groups:  groups,
+			Status:  StatusPending,
+		}
+		r.addStepState(ss)
+		if !step.IsFolder() || slices.Contains(folders, step.Folder) {
+			continue
+		}
+		if sub, err := r.folderWorkflow(step.Folder); err == nil {
+			r.addPendingSteps(sub.Steps, append(slices.Clone(groups), ss.ID), append(slices.Clone(folders), step.Folder))
+		}
+	}
+}
+
+func lastOf(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[len(values)-1]
 }
 
 func (r *Runner) addStepState(ss *StepState) {
@@ -143,7 +234,15 @@ func (r *Runner) addStepState(ss *StepState) {
 // (or wf.fail/wf.stop) are reported through r.status, not the returned error,
 // which is reserved for the script itself not running to completion.
 func (r *Runner) runIteration(wf *Workflow) error {
-	r.vm = goja.New()
+	r.frame = &frame{steps: wf.Steps}
+	return r.runScript(wf.Script)
+}
+
+// runScript runs src as r.frame's workflow script in a fresh VM, with its own
+// timeout. It returns an error only when the script did not run to completion.
+func (r *Runner) runScript(src string) error {
+	f := r.frame
+	f.vm = goja.New()
 
 	if err := r.setupPmAPI(); err != nil {
 		return fmt.Errorf("pm API setup failed: %w", err)
@@ -155,7 +254,7 @@ func (r *Runner) runIteration(wf *Workflow) error {
 		return fmt.Errorf("console setup failed: %w", err)
 	}
 
-	if err := script.SetupCryptoJS(r.vm); err != nil {
+	if err := script.SetupCryptoJS(f.vm); err != nil {
 		return fmt.Errorf("CryptoJS setup failed: %w", err)
 	}
 
@@ -163,26 +262,28 @@ func (r *Runner) runIteration(wf *Workflow) error {
 		return fmt.Errorf("wf API setup failed: %w", err)
 	}
 
-	transformed := transformScript(wf.Script)
+	transformed := transformScript(src)
 
-	r.timedOut.Store(false)
-	r.scriptTimer = time.AfterFunc(r.scriptTimeout, func() {
-		r.timedOut.Store(true)
-		r.vm.Interrupt("workflow timeout")
+	f.timedOut.Store(false)
+	f.scriptTimer = time.AfterFunc(r.scriptTimeout, func() {
+		f.timedOut.Store(true)
+		f.vm.Interrupt("workflow timeout")
 	})
-	vm := r.vm
-	stopInterruptOnCancel := context.AfterFunc(r.runCtx, func() { vm.Interrupt(ErrRunCancelled) })
+	stopInterruptOnCancel := context.AfterFunc(r.runCtx, func() { f.vm.Interrupt(ErrRunCancelled) })
 
-	_, err := r.vm.RunString(transformed)
+	_, err := f.vm.RunString(transformed)
+	if f.jump.Set {
+		err = nil
+	}
 	if err == nil {
-		for _, callbackErr := range r.loop.Drain() {
+		for _, callbackErr := range f.loop.Drain() {
 			r.addLog(fmt.Sprintf("[SCRIPT ERROR] %v", callbackErr))
 		}
 	}
-	r.scriptTimer.Stop()
+	f.scriptTimer.Stop()
 	stopInterruptOnCancel()
 
-	if r.timedOut.Load() {
+	if f.timedOut.Load() {
 		return fmt.Errorf("%w after %v", ErrWorkflowTimeout, r.scriptTimeout)
 	}
 	if r.runCtx.Err() != nil {
@@ -194,6 +295,22 @@ func (r *Runner) runIteration(wf *Workflow) error {
 		return fmt.Errorf("%w: %v", ErrScriptFailed, err)
 	}
 	return nil
+}
+
+// failRun fails the run with reason and returns the error to panic with,
+// which ends the workflow script.
+func (r *Runner) failRun(reason string) *goja.Object {
+	r.markRunFailed(reason)
+	return r.frame.vm.NewGoError(fmt.Errorf("workflow.fail: %s", reason))
+}
+
+// markRunFailed fails the run with reason; later wf.run() calls return skipped.
+func (r *Runner) markRunFailed(reason string) {
+	r.status = StatusFailed
+	r.state.Status = StatusFailed
+	r.state.Error = reason
+	r.addLog(fmt.Sprintf("[FAIL] %s", reason))
+	r.notifyProgress()
 }
 
 // stop ends the run as stopped; later wf.run() calls return skipped.
@@ -221,12 +338,16 @@ func (r *Runner) finalize(status, errMsg string) ExecutionState {
 	return r.state
 }
 
-// summarizeSteps counts every iteration's final step statuses into the
-// summary; test counts accumulate as steps finish (see countTests).
+// summarizeSteps counts every iteration's final request step statuses into
+// the summary; folder steps only group them. Test counts accumulate as steps
+// finish (see countTests).
 func (r *Runner) summarizeSteps() {
 	summary := &r.state.Summary
 	summary.StepsPassed, summary.StepsFailed, summary.StepsSkipped = 0, 0, 0
 	for _, ss := range r.state.Steps {
+		if ss.IsFolder() {
+			continue
+		}
 		switch ss.Status {
 		case StatusSuccess:
 			summary.StepsPassed++
@@ -275,9 +396,14 @@ func (r *Runner) notifyProgress() {
 	r.onChange(snap)
 }
 
-// addLog records msg against the step currently running, if any.
+// addLog records msg against the step currently running; between steps of a
+// sub-workflow, against its folder step.
 func (r *Runner) addLog(msg string) {
-	r.addStepLog(r.currentStepID, msg)
+	stepID := r.currentStepID
+	if stepID == "" {
+		stepID = r.frame.groupID()
+	}
+	r.addStepLog(stepID, msg)
 }
 
 func (r *Runner) addStepLog(stepID, msg string) {
@@ -308,7 +434,7 @@ func (r *Runner) syncFromCollection() {
 // --- JavaScript API setup ---
 
 func (r *Runner) setupConsole() error {
-	consoleObj := r.vm.NewObject()
+	consoleObj := r.frame.vm.NewObject()
 	logFn := func(call goja.FunctionCall) goja.Value {
 		parts := make([]string, len(call.Arguments))
 		for i, a := range call.Arguments {
@@ -322,7 +448,7 @@ func (r *Runner) setupConsole() error {
 			return err
 		}
 	}
-	return r.vm.Set("console", consoleObj)
+	return r.frame.vm.Set("console", consoleObj)
 }
 
 func (r *Runner) setupPmAPI() error {
@@ -330,16 +456,16 @@ func (r *Runner) setupPmAPI() error {
 	if r.environment != nil {
 		r.ctx.EnvironmentName = r.environment.Name
 	}
-	loop, err := script.SetupPmAPI(r.vm, r.ctx, &script.TestResult{})
+	loop, err := script.SetupPmAPI(r.frame.vm, r.ctx, &script.TestResult{})
 	if err != nil {
 		return err
 	}
-	r.loop = loop
+	r.frame.loop = loop
 	return nil
 }
 
 func (r *Runner) setupWFAPI() error {
-	wfObj := r.vm.NewObject()
+	wfObj := r.frame.vm.NewObject()
 
 	if err := wfObj.Set("run", func(call goja.FunctionCall) goja.Value {
 		r.abortIfCancelled()
@@ -361,7 +487,7 @@ func (r *Runner) setupWFAPI() error {
 			r.abortIfCancelled()
 		}
 		if err != nil {
-			r.addStepLog(stepID, fmt.Sprintf("[ERROR] %v", err))
+			r.addStepLog(r.frame.qualify(stepID), fmt.Sprintf("[ERROR] %v", err))
 			return r.emptyResultJS(StatusFailed)
 		}
 		return r.resultToJS(result)
@@ -374,14 +500,34 @@ func (r *Runner) setupWFAPI() error {
 		if len(call.Arguments) > 0 {
 			reason = call.Arguments[0].String()
 		}
-		r.status = StatusFailed
-		r.state.Status = StatusFailed
-		r.state.Error = reason
-		r.addLog(fmt.Sprintf("[FAIL] %s", reason))
-		r.notifyProgress()
-		panic(r.vm.NewGoError(fmt.Errorf("workflow.fail: %s", reason)))
+		panic(r.failRun(reason))
 	}); err != nil {
 		return err
+	}
+
+	if err := wfObj.Set("jump", func(call goja.FunctionCall) goja.Value {
+		target := script.NextRequest{Set: true}
+		if len(call.Arguments) > 0 && !goja.IsNull(call.Arguments[0]) && !goja.IsUndefined(call.Arguments[0]) {
+			target.Name = call.Arguments[0].String()
+		}
+		if r.frame.group == nil && target.Name != "" {
+			panic(r.failRun(fmt.Sprintf("setNextRequest target %q is not in this run", target.Name)))
+		}
+		r.frame.jump = target
+		panic(r.frame.vm.NewGoError(errJumped))
+	}); err != nil {
+		return err
+	}
+
+	if r.frame.entry != "" {
+		if err := wfObj.Set("entry", r.frame.entry); err != nil {
+			return err
+		}
+		if stepID, ok := r.nextStepFor(r.frame.entry); ok {
+			if err := wfObj.Set("entryStep", stepID); err != nil {
+				return err
+			}
+		}
 	}
 
 	if err := wfObj.Set("stop", func(call goja.FunctionCall) goja.Value {
@@ -390,14 +536,14 @@ func (r *Runner) setupWFAPI() error {
 			reason = call.Arguments[0].String()
 		}
 		r.stop(reason)
-		panic(r.vm.NewGoError(fmt.Errorf("workflow.stop: %s", reason)))
+		panic(r.frame.vm.NewGoError(fmt.Errorf("workflow.stop: %s", reason)))
 	}); err != nil {
 		return err
 	}
 
 	if err := wfObj.Set("skip", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) > 0 {
-			stepID := call.Arguments[0].String()
+			stepID := r.frame.qualify(call.Arguments[0].String())
 			if ss, ok := r.state.StepIndex[stepID]; ok {
 				ss.Status = StatusSkipped
 				r.addStepLog(stepID, "[SKIP] skipped by the workflow script")
@@ -423,20 +569,20 @@ func (r *Runner) setupWFAPI() error {
 		return err
 	}
 
-	if err := wfObj.Set("context", r.vm.NewObject()); err != nil {
+	if err := wfObj.Set("context", r.frame.vm.NewObject()); err != nil {
 		return err
 	}
 
 	// wf.status getter
-	if err := r.vm.Set("__wf__", wfObj); err != nil {
+	if err := r.frame.vm.Set("__wf__", wfObj); err != nil {
 		return err
 	}
-	if err := r.vm.Set("__wfStatusGetter__", func(call goja.FunctionCall) goja.Value {
-		return r.vm.ToValue(r.status)
+	if err := r.frame.vm.Set("__wfStatusGetter__", func(call goja.FunctionCall) goja.Value {
+		return r.frame.vm.ToValue(r.status)
 	}); err != nil {
 		return err
 	}
-	if _, err := r.vm.RunString(`
+	if _, err := r.frame.vm.RunString(`
 Object.defineProperty(__wf__, 'status', {
     get: function() { return __wfStatusGetter__(); },
     enumerable: true
@@ -446,28 +592,37 @@ delete __wfStatusGetter__;
 		return err
 	}
 
-	return r.vm.Set("__wf__", wfObj)
+	return r.frame.vm.Set("__wf__", wfObj)
 }
 
 // --- Step execution ---
 
+// stepState is the run state of the frame's step stepID, added for a step the
+// workflow script runs without declaring it.
+func (r *Runner) stepState(stepID string) *StepState {
+	qualifiedID := r.frame.qualify(stepID)
+	if ss, ok := r.state.StepIndex[qualifiedID]; ok {
+		return ss
+	}
+	ss := &StepState{ID: qualifiedID, Groups: r.frame.groups(), Status: StatusPending}
+	if step := r.findStep(stepID); step != nil {
+		ss.Request, ss.Folder = step.Request, step.Folder
+	}
+	r.addStepState(ss)
+	return ss
+}
+
 func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error) {
-	r.currentStepID = stepID
+	wfStep := r.findStep(stepID)
+	if wfStep != nil && wfStep.IsFolder() {
+		return r.runFolderStep(*wfStep, opts.Entry)
+	}
+
+	ss := r.stepState(stepID)
+	r.currentStepID = ss.ID
 	defer func() { r.currentStepID = "" }()
 
-	ss, ok := r.state.StepIndex[stepID]
-	if !ok {
-		// Step not declared in YAML — create a transient entry for tracking.
-		ss = &StepState{ID: stepID, Request: r.findRequestPath(stepID), Status: StatusPending}
-		r.addStepState(ss)
-	}
-
 	requestPath := ss.Request
-	if requestPath == "" {
-		requestPath = r.findRequestPath(stepID)
-		ss.Request = requestPath
-	}
-
 	if requestPath == "" {
 		r.failStep(ss)
 		return nil, fmt.Errorf("step %q has no request path", stepID)
@@ -486,8 +641,6 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 	ss.Total = repeat
 	ss.Status = StatusRunning
 	r.notifyProgress()
-
-	wfStep := r.findStep(stepID)
 
 	if wfStep != nil && wfStep.PreScript != "" {
 		if err := r.runStepScript(wfStep.PreScript, stepID, nil); err != nil {
@@ -562,6 +715,99 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 	}, nil
 }
 
+// runFolderStep runs the sub-workflow of the folder step in its own frame,
+// entering it at the step running entry when set. The step fails when a step
+// inside it failed; a setNextRequest target its sub-workflow handed up
+// (wf.jump) becomes the step's nextRequest.
+func (r *Runner) runFolderStep(step Step, entry string) (*StepRunResult, error) {
+	ss := r.stepState(step.ID)
+	if slices.Contains(r.frame.folders, step.Folder) {
+		r.failStep(ss)
+		return nil, fmt.Errorf("%w: %q", ErrFolderCycle, step.Folder)
+	}
+	sub, err := r.folderWorkflow(step.Folder)
+	if err != nil {
+		r.failStep(ss)
+		return nil, fmt.Errorf("cannot resolve folder %q: %w", step.Folder, err)
+	}
+
+	ss.Status = StatusRunning
+	r.notifyProgress()
+
+	if err := r.runFolderStepScript(step.PreScript, ss); err != nil {
+		r.failStep(ss)
+		return nil, fmt.Errorf("pre-script for step %q failed: %w", step.ID, err)
+	}
+
+	parent := r.frame
+	child := &frame{
+		parent:  parent,
+		steps:   sub.Steps,
+		group:   ss,
+		folders: append(slices.Clone(parent.folders), step.Folder),
+		entry:   entry,
+	}
+	var scriptErr error
+	r.outsideScriptTimeout(func() {
+		r.frame = child
+		scriptErr = r.runScript(sub.Script)
+		r.frame = parent
+	})
+
+	switch {
+	case r.runCtx.Err() != nil:
+		ss.Status = StatusStopped
+		return nil, ErrRunCancelled
+	case scriptErr != nil:
+		r.markRunFailed(fmt.Sprintf("folder step %q: %v", ss.ID, scriptErr))
+		r.failStep(ss)
+		return nil, scriptErr
+	case r.status == StatusStopped:
+		ss.Status = StatusStopped
+		r.notifyProgress()
+		return &StepRunResult{Status: StatusStopped}, nil
+	}
+
+	if err := r.runFolderStepScript(step.PostScript, ss); err != nil {
+		r.failStep(ss)
+		return nil, fmt.Errorf("post-script for step %q failed: %w", step.ID, err)
+	}
+
+	if child.failed || r.status == StatusFailed {
+		r.failStep(ss)
+	} else {
+		ss.Status = StatusSuccess
+		r.notifyProgress()
+	}
+	return &StepRunResult{Status: ss.Status, NextRequest: child.jump}, nil
+}
+
+// runFolderStepScript runs a folder step's pre- or post-script, logging to the step.
+func (r *Runner) runFolderStepScript(src string, ss *StepState) error {
+	if src == "" {
+		return nil
+	}
+	r.currentStepID = ss.ID
+	defer func() { r.currentStepID = "" }()
+	return r.runStepScript(src, LocalStepID(ss.ID), nil)
+}
+
+// folderWorkflow is the workflow a folder step for folder runs, resolved once per run.
+func (r *Runner) folderWorkflow(folder string) (*Workflow, error) {
+	if wf, ok := r.folderWorkflows[folder]; ok {
+		return wf, nil
+	}
+	wf, err := r.folderSource(postman.SplitItemPath(folder))
+	if err != nil {
+		return nil, err
+	}
+	if r.folderWorkflows == nil {
+		r.folderWorkflows = make(map[string]*Workflow)
+	}
+	r.folderWorkflows[folder] = wf
+	return wf, nil
+}
+
 // abortIfCancelled stops the run and ends the workflow script once the run's
 // context is cancelled. Cancelling also interrupts the VM, but only at its
 // next instruction, which may already start another step.
@@ -570,7 +816,7 @@ func (r *Runner) abortIfCancelled() {
 		return
 	}
 	r.markCancelled()
-	panic(r.vm.NewGoError(ErrRunCancelled))
+	panic(r.frame.vm.NewGoError(ErrRunCancelled))
 }
 
 // markCancelled stops the run as cancelled unless it already stopped.
@@ -592,12 +838,12 @@ func (r *Runner) sleep(duration time.Duration) {
 
 // outsideScriptTimeout runs wait with the workflow script timer paused.
 func (r *Runner) outsideScriptTimeout(wait func()) {
-	if r.scriptTimer == nil || !r.scriptTimer.Stop() {
+	if r.frame.scriptTimer == nil || !r.frame.scriptTimer.Stop() {
 		wait()
 		return
 	}
 	wait()
-	r.scriptTimer.Reset(r.scriptTimeout)
+	r.frame.scriptTimer.Reset(r.scriptTimeout)
 }
 
 // executeItemWithSelfRetries re-sends the request while its scripts call
@@ -623,22 +869,48 @@ func (r *Runner) executeItemWithSelfRetries(item *postman.Item, requestPath stri
 
 // nextStepFor finds the step a pm.execution.setNextRequest target refers to:
 // first by request name, then by Postman request id or request path, in step
-// order. It reports false when no step in this workflow matches.
+// order. A folder step matches when a step of its sub-workflow, at any depth,
+// does. It reports false when no step in this workflow matches.
 func (r *Runner) nextStepFor(target string) (string, bool) {
-	for _, step := range r.wfSteps {
-		if requestNameOf(step.Request) == target {
-			return step.ID, true
+	byName := func(requestPath string) bool { return requestNameOf(requestPath) == target }
+	byPathOrID := func(requestPath string) bool {
+		if requestPath == target {
+			return true
 		}
+		item, err := r.resolveRequest(requestPath)
+		return err == nil && item.ID != "" && item.ID == target
 	}
-	for _, step := range r.wfSteps {
-		if step.Request == target {
-			return step.ID, true
-		}
-		if item, err := r.resolveRequest(step.Request); err == nil && item.ID != "" && item.ID == target {
-			return step.ID, true
+	for _, matches := range []func(string) bool{byName, byPathOrID} {
+		for _, step := range r.frame.steps {
+			if r.stepRunsRequest(step, matches, r.frame.folders) {
+				return step.ID, true
+			}
 		}
 	}
 	return "", false
+}
+
+// stepRunsRequest reports whether step runs a request matches accepts, itself
+// or inside its sub-workflow. folders are the folder workflows already being
+// searched, which a sub-workflow running itself would search again.
+func (r *Runner) stepRunsRequest(step Step, matches func(requestPath string) bool, folders []string) bool {
+	if !step.IsFolder() {
+		return step.Request != "" && matches(step.Request)
+	}
+	if slices.Contains(folders, step.Folder) {
+		return false
+	}
+	sub, err := r.folderWorkflow(step.Folder)
+	if err != nil {
+		return false
+	}
+	folders = append(slices.Clone(folders), step.Folder)
+	for _, subStep := range sub.Steps {
+		if r.stepRunsRequest(subStep, matches, folders) {
+			return true
+		}
+	}
+	return false
 }
 
 // recordOutcome logs a request's test results and console output and returns
@@ -676,6 +948,9 @@ func (r *Runner) recordOutcome(outcome itemOutcome) string {
 func (r *Runner) failStep(ss *StepState) {
 	ss.Status = StatusFailed
 	r.anyStepFailed = true
+	for f := r.frame; f != nil; f = f.parent {
+		f.failed = true
+	}
 	if r.options.StopOnFailure && r.status == StatusRunning {
 		r.status = StatusFailed
 		r.state.Error = fmt.Sprintf("%v: step %q", ErrStoppedOnFailure, ss.ID)
@@ -696,19 +971,10 @@ func requestNameOf(requestPath string) string {
 	return parts[len(parts)-1]
 }
 
-func (r *Runner) findRequestPath(stepID string) string {
-	for _, s := range r.wfSteps {
-		if s.ID == stepID {
-			return s.Request
-		}
-	}
-	return ""
-}
-
 func (r *Runner) findStep(stepID string) *Step {
-	for i := range r.wfSteps {
-		if r.wfSteps[i].ID == stepID {
-			return &r.wfSteps[i]
+	for i := range r.frame.steps {
+		if r.frame.steps[i].ID == stepID {
+			return &r.frame.steps[i]
 		}
 	}
 	return nil
@@ -718,22 +984,22 @@ func (r *Runner) findStep(stepID string) *Step {
 // response is nil for pre-scripts; post-scripts receive a `step` object with the response.
 func (r *Runner) runStepScript(script, stepID string, response *StepResponse) error {
 	if response != nil {
-		stepObj := r.vm.NewObject()
+		stepObj := r.frame.vm.NewObject()
 		stepObj.Set("id", stepID)
 		stepObj.Set("response", r.responseToJS(response))
-		if err := r.vm.Set("step", stepObj); err != nil {
+		if err := r.frame.vm.Set("step", stepObj); err != nil {
 			return err
 		}
-		defer r.vm.Set("step", goja.Undefined())
+		defer r.frame.vm.Set("step", goja.Undefined())
 	}
 
-	_, err := r.vm.RunString(script)
+	_, err := r.frame.vm.RunString(script)
 	return err
 }
 
 func (r *Runner) resolveRequest(path string) (*postman.Item, error) {
 	if r.collection == nil {
-		return nil, fmt.Errorf("no collection loaded")
+		return nil, ErrNoCollection
 	}
 
 	parts := postman.SplitItemPath(path)
@@ -829,6 +1095,10 @@ func (r *Runner) parseRunOptions(val goja.Value) RunOptions {
 		}
 	}
 
+	if entryVal := obj.Get("entry"); entryVal != nil && !goja.IsUndefined(entryVal) && !goja.IsNull(entryVal) {
+		opts.Entry = entryVal.String()
+	}
+
 	if untilFnVal := obj.Get("until"); untilFnVal != nil && !goja.IsUndefined(untilFnVal) {
 		if fn, ok := goja.AssertFunction(untilFnVal); ok {
 			opts.Until = func(resp *StepResponse) bool {
@@ -846,20 +1116,20 @@ func (r *Runner) parseRunOptions(val goja.Value) RunOptions {
 }
 
 func (r *Runner) responseToJS(resp *StepResponse) *goja.Object {
-	obj := r.vm.NewObject()
+	obj := r.frame.vm.NewObject()
 	obj.Set("code", resp.Code)
 	obj.Set("body", resp.Body)
 	obj.Set("headers", resp.Headers)
 	obj.Set("time", resp.Time)
 	obj.Set("text", func(goja.FunctionCall) goja.Value {
-		return r.vm.ToValue(resp.Body)
+		return r.frame.vm.ToValue(resp.Body)
 	})
 	obj.Set("json", func(call goja.FunctionCall) goja.Value {
 		var data any
 		if err := json.Unmarshal([]byte(resp.Body), &data); err != nil {
-			panic(r.vm.NewGoError(fmt.Errorf("response.json() failed: %w", err)))
+			panic(r.frame.vm.NewGoError(fmt.Errorf("response.json() failed: %w", err)))
 		}
-		return r.vm.ToValue(data)
+		return r.frame.vm.ToValue(data)
 	})
 	return obj
 }
@@ -868,7 +1138,7 @@ func (r *Runner) resultToJS(result *StepRunResult) goja.Value {
 	if result == nil {
 		return r.emptyResultJS(StatusFailed)
 	}
-	obj := r.vm.NewObject()
+	obj := r.frame.vm.NewObject()
 	obj.Set("status", result.Status)
 
 	var lastJS goja.Value = goja.Null()
@@ -883,7 +1153,7 @@ func (r *Runner) resultToJS(result *StepRunResult) goja.Value {
 
 	obj.Set("response", lastJS)
 	obj.Set("last", lastJS)
-	obj.Set("responses", r.vm.ToValue(responsesJS))
+	obj.Set("responses", r.frame.vm.ToValue(responsesJS))
 	r.setNextRequestJS(obj, result.NextRequest)
 	return obj
 }
@@ -907,18 +1177,18 @@ func (r *Runner) setNextRequestJS(obj *goja.Object, next script.NextRequest) {
 }
 
 func (r *Runner) emptyResultJS(status string) goja.Value {
-	obj := r.vm.NewObject()
+	obj := r.frame.vm.NewObject()
 	obj.Set("status", status)
-	emptyResp := r.vm.NewObject()
+	emptyResp := r.frame.vm.NewObject()
 	emptyResp.Set("code", 0)
 	emptyResp.Set("body", "")
-	emptyResp.Set("headers", r.vm.NewObject())
+	emptyResp.Set("headers", r.frame.vm.NewObject())
 	emptyResp.Set("time", 0)
-	emptyResp.Set("text", func(goja.FunctionCall) goja.Value { return r.vm.ToValue("") })
-	emptyResp.Set("json", func(goja.FunctionCall) goja.Value { return r.vm.NewObject() })
+	emptyResp.Set("text", func(goja.FunctionCall) goja.Value { return r.frame.vm.ToValue("") })
+	emptyResp.Set("json", func(goja.FunctionCall) goja.Value { return r.frame.vm.NewObject() })
 	obj.Set("response", emptyResp)
 	obj.Set("last", emptyResp)
-	obj.Set("responses", r.vm.ToValue([]any{}))
+	obj.Set("responses", r.frame.vm.ToValue([]any{}))
 	return obj
 }
 

@@ -3,6 +3,7 @@ package workflow
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/script"
@@ -18,18 +19,54 @@ type Workflow struct {
 	Script      string `yaml:"script"`
 }
 
-// Step is a named reference to a request within the collection.
+// Step is a named reference to a request, or to a folder whose workflow runs
+// as a sub-workflow, within the collection. A step sets Request or Folder.
 type Step struct {
 	ID         string `yaml:"id"`
-	Request    string `yaml:"request"`               // collection path, e.g. "Auth/Login"
-	PreScript  string `yaml:"pre_script,omitempty"`  // JS executed before the request
-	PostScript string `yaml:"post_script,omitempty"` // JS executed after the request, receives `step.response`
+	Request    string `yaml:"request,omitempty"`     // collection path, e.g. "Auth/Login"
+	Folder     string `yaml:"folder,omitempty"`      // collection path, e.g. "Auth/Admin"
+	PreScript  string `yaml:"pre_script,omitempty"`  // JS executed before the request or sub-workflow
+	PostScript string `yaml:"post_script,omitempty"` // JS executed after the request (receives `step.response`) or sub-workflow
 }
 
-// RunOptions controls optional wf.run() behavior.
+// IsFolder reports whether the step runs a folder's workflow rather than a request.
+func (s Step) IsFolder() bool { return s.Folder != "" }
+
+// Target is the collection path the step runs: its folder or its request.
+func (s Step) Target() string {
+	if s.IsFolder() {
+		return s.Folder
+	}
+	return s.Request
+}
+
+// SubStepSeparator joins a folder step's ID and the IDs of its sub-workflow's
+// steps into the qualified IDs run states use, e.g. "admin/login". Step IDs
+// are slugs, which never contain it.
+const SubStepSeparator = "/"
+
+// QualifiedStepID is the run state ID of stepID inside the sub-workflow of the
+// folder step with run state ID groupID; groupID is empty at the top level.
+func QualifiedStepID(groupID, stepID string) string {
+	if groupID == "" {
+		return stepID
+	}
+	return groupID + SubStepSeparator + stepID
+}
+
+// LocalStepID is the step's own ID within its workflow, without the IDs of
+// the folder steps enclosing it.
+func LocalStepID(qualifiedID string) string {
+	return qualifiedID[strings.LastIndex(qualifiedID, SubStepSeparator)+1:]
+}
+
+// RunOptions controls optional wf.run() behavior. Repeat and Until apply to
+// request steps; Entry to folder steps, whose sub-workflow then starts at the
+// step running that request (the target of a setNextRequest jump).
 type RunOptions struct {
 	Repeat int
 	Until  func(*StepResponse) bool
+	Entry  string
 }
 
 // StepResponse is the response object exposed to workflow scripts.
@@ -92,16 +129,32 @@ func StatusIcon(status string) string {
 
 // StepState tracks the runtime state of a single step.
 type StepState struct {
-	ID           string
-	Request      string
-	Status       string
-	Progress     int                    // current repeat iteration (1-based)
-	Total        int                    // planned repeat count
-	Iteration    int                    // run iteration this step belongs to (1-based)
+	ID        string
+	Request   string
+	Status    string
+	Progress  int // current repeat iteration (1-based)
+	Total     int // planned repeat count
+	Iteration int // run iteration this step belongs to (1-based)
+	// Folder is set on a folder step: the folder whose workflow it runs.
+	Folder string
+	// Groups are the qualified IDs of the folder steps enclosing this step,
+	// outermost first; empty for the run's top-level steps.
+	Groups       []string
 	LastResponse *internalhttp.Response `json:"-"`
 	// LastResult holds the last attempt's tests, script errors and console
 	// output; nil until the step's request has run.
 	LastResult *script.TestResult `json:"-"`
+}
+
+// IsFolder reports whether the step ran a folder's workflow rather than a request.
+func (s StepState) IsFolder() bool { return s.Folder != "" }
+
+// Target is the collection path the step runs: its folder or its request.
+func (s StepState) Target() string {
+	if s.IsFolder() {
+		return s.Folder
+	}
+	return s.Request
 }
 
 // RunSummary counts a run's outcomes, like the totals at the end of a

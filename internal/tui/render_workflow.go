@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"postOffice/internal/workflow"
+	"slices"
 	"strings"
 	"time"
 
@@ -55,7 +56,7 @@ func (m Model) renderWorkflowDetail() string {
 
 		num := workflowMetaStyle.Render(fmt.Sprintf("[%d]", i+1))
 		stepIDStr := fmt.Sprintf("%-20s", step.ID)
-		requestStr := step.Request
+		requestStr := stepTargetLabel(step)
 		if len(requestStr) > 40 {
 			requestStr = requestStr[:37] + "..."
 		}
@@ -80,7 +81,7 @@ func (m Model) renderWorkflowDetail() string {
 
 		// HTTP execution info (from requestExecutions, shown when no active run state)
 		executionInfo := ""
-		if runStateStr == "" && m.collection != nil {
+		if runStateStr == "" && m.collection != nil && !step.IsFolder() {
 			if exec, exists := m.requestExecutions[m.workflowStepItemID(step.Request)]; exists {
 				statusColor := "8"
 				if strings.HasPrefix(exec.Status, "2") {
@@ -153,6 +154,9 @@ type runStyler struct {
 	status  func(status, text string) string
 	subtle  func(string) string
 	failure func(string) string
+	// groupBar marks one level of sub-workflow nesting; colorIndex tells the
+	// folder steps apart.
+	groupBar func(colorIndex int) string
 }
 
 func render(style lipgloss.Style) func(string) string {
@@ -168,14 +172,31 @@ var (
 		status:  func(status, text string) string { return workflowStatusStyle(status).Render(text) },
 		subtle:  func(text string) string { return subtleStyle.Render(text) },
 		failure: render(lipgloss.NewStyle().Foreground(lipgloss.Color("9"))),
+		groupBar: func(colorIndex int) string {
+			color := subWorkflowColors[colorIndex%len(subWorkflowColors)]
+			return lipgloss.NewStyle().Foreground(color).Render(subWorkflowBar)
+		},
 	}
+	// The editor export folds on indent, so it marks nesting with indent only.
 	plainRunStyler = runStyler{
-		title:   identity,
-		heading: identity,
-		status:  func(_, text string) string { return text },
-		subtle:  identity,
-		failure: identity,
+		title:    identity,
+		heading:  identity,
+		status:   func(_, text string) string { return text },
+		subtle:   identity,
+		failure:  identity,
+		groupBar: func(int) string { return subWorkflowIndent },
 	}
+)
+
+// subWorkflowColors color the bars marking each sub-workflow's steps in the
+// run view, one colour per folder step in turn.
+var subWorkflowColors = []lipgloss.Color{"39", "170", "214", "42", "75", "204"}
+
+const (
+	subWorkflowBar    = "▌ "
+	subWorkflowIndent = "  "
+	// folderStepLabel prefixes the folder a folder step runs.
+	folderStepLabel = "folder "
 )
 
 func (m Model) buildWorkflowRunLines() []string {
@@ -186,12 +207,14 @@ func (m Model) buildWorkflowRunLines() []string {
 // step's log lines fold under the step that produced them.
 const (
 	runReportStepIndent = "  "
-	runReportLogIndent  = "      "
+	runReportLogOffset  = "    "
+	runReportLogIndent  = runReportStepIndent + runReportLogOffset
 )
 
 // runReportLines lays out a workflow run: header, one line per step (with the
 // request and HTTP result once it has run) followed by that step's logs, then
-// the workflow script's own logs and the run error.
+// the workflow script's own logs and the run error. A folder step's line heads
+// its sub-workflow's steps, which share its bar down the left edge.
 func runReportLines(state workflow.ExecutionState, style runStyler) []string {
 	var lines []string
 
@@ -207,14 +230,16 @@ func runReportLines(state workflow.ExecutionState, style runStyler) []string {
 		lines = append(lines, style.subtle("(no steps defined)"))
 	} else {
 		lines = append(lines, style.heading("Steps:"))
+		colors := subWorkflowColorIndexes(state)
 		for _, ss := range state.Steps {
-			lines = append(lines, runReportStepLine(ss, state.IsMultiIteration(), style))
+			bars := groupBars(ss, colors, style)
+			lines = append(lines, runReportStepLine(ss, bars, state.IsMultiIteration(), style))
 			logs := stepLogs[stepRunKeyOf(ss)]
 			for _, msg := range logs {
-				lines = append(lines, runReportLogIndent+styleLogMessage(msg, style))
+				lines = append(lines, runReportStepIndent+bars+runReportLogOffset+styleLogMessage(msg, style))
 			}
 			if len(logs) > 0 {
-				lines = append(lines, "")
+				lines = append(lines, strings.TrimRight(runReportStepIndent+bars, " "))
 			}
 		}
 	}
@@ -235,10 +260,45 @@ func runReportLines(state workflow.ExecutionState, style runStyler) []string {
 	return lines
 }
 
-// runReportStepLine is one step's report line. In a multi-iteration run the
-// step is prefixed with its iteration, since each iteration lists every step.
-func runReportStepLine(ss *workflow.StepState, showIteration bool, style runStyler) string {
-	stepID := ss.ID
+// stepTargetLabel is what a step runs: its request, or its folder labelled as one.
+func stepTargetLabel(step workflow.Step) string {
+	if step.IsFolder() {
+		return folderStepLabel + step.Folder
+	}
+	return step.Request
+}
+
+// subWorkflowColorIndexes numbers the run's folder steps in the order they
+// are listed, so each sub-workflow's bar gets its own colour.
+func subWorkflowColorIndexes(state workflow.ExecutionState) map[string]int {
+	indexes := make(map[string]int)
+	for _, ss := range state.Steps {
+		if _, numbered := indexes[ss.ID]; ss.IsFolder() && !numbered {
+			indexes[ss.ID] = len(indexes)
+		}
+	}
+	return indexes
+}
+
+// groupBars marks the sub-workflows a step is in with a bar each, outermost
+// first; a folder step's own line also carries the bar of the sub-workflow it heads.
+func groupBars(ss *workflow.StepState, colors map[string]int, style runStyler) string {
+	groups := ss.Groups
+	if ss.IsFolder() {
+		groups = append(slices.Clone(groups), ss.ID)
+	}
+	var bars strings.Builder
+	for _, group := range groups {
+		bars.WriteString(style.groupBar(colors[group]))
+	}
+	return bars.String()
+}
+
+// runReportStepLine is one step's report line, after the bars of the
+// sub-workflows it is in. In a multi-iteration run the step is prefixed with
+// its iteration, since each iteration lists every step.
+func runReportStepLine(ss *workflow.StepState, bars string, showIteration bool, style runStyler) string {
+	stepID := workflow.LocalStepID(ss.ID)
 	if showIteration {
 		stepID = fmt.Sprintf(iterationStepPrefixFormat, ss.Iteration) + stepID
 	}
@@ -246,11 +306,15 @@ func runReportStepLine(ss *workflow.StepState, showIteration bool, style runStyl
 	if ss.Total > 1 {
 		detail = fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total)
 	}
-	if ss.LastResponse != nil {
+	switch {
+	case ss.IsFolder():
+		detail += "  " + folderStepLabel + ss.Folder
+	case ss.LastResponse != nil:
 		detail += fmt.Sprintf("  %s  %s  %v", ss.Request, ss.LastResponse.Status, ss.LastResponse.Duration.Round(time.Millisecond))
 	}
-	return fmt.Sprintf("%s%s %-20s %s%s",
+	return fmt.Sprintf("%s%s%s %-20s %s%s",
 		runReportStepIndent,
+		bars,
 		workflow.StatusIcon(ss.Status),
 		stepID,
 		style.status(ss.Status, ss.Status),

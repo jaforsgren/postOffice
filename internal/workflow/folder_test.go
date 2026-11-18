@@ -38,25 +38,39 @@ func buildNestedFolder() postman.Item {
 	}
 }
 
-func TestNewFolderWorkflow_stepsAreDepthFirstInCollectionOrder(t *testing.T) {
+func TestNewFolderWorkflow_subfoldersBecomeFolderStepsInCollectionOrder(t *testing.T) {
 	wf, err := NewFolderWorkflow(buildNestedFolder(), []string{"policies", "TEST"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	want := []string{
-		"policies/TEST/setup",
-		"policies/TEST/invite/create invite",
-		"policies/TEST/invite/deep/redeem",
-		"policies/TEST/cleanup",
+	want := []Step{
+		{ID: "setup", Request: "policies/TEST/setup"},
+		{ID: "invite", Folder: "policies/TEST/invite"},
+		{ID: "cleanup", Request: "policies/TEST/cleanup"},
 	}
 	if len(wf.Steps) != len(want) {
-		t.Fatalf("Steps length = %d, want %d", len(wf.Steps), len(want))
+		t.Fatalf("Steps = %+v, want %+v", wf.Steps, want)
 	}
-	for i, path := range want {
-		if wf.Steps[i].Request != path {
-			t.Errorf("Steps[%d].Request = %q, want %q", i, wf.Steps[i].Request, path)
+	for i := range want {
+		if wf.Steps[i] != want[i] {
+			t.Errorf("Steps[%d] = %+v, want %+v", i, wf.Steps[i], want[i])
 		}
+	}
+}
+
+func TestNewFolderWorkflow_leavesOutSubfoldersWithoutRequests(t *testing.T) {
+	folder := postman.Item{Name: "Users", Items: []postman.Item{
+		{Name: "Empty", Items: []postman.Item{{Name: "Nested"}}},
+		folderRequest("list"),
+	}}
+
+	wf, err := NewFolderWorkflow(folder, []string{"Users"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(wf.Steps) != 1 || wf.Steps[0].Request != "Users/list" {
+		t.Errorf("Steps = %+v, want only the list request", wf.Steps)
 	}
 }
 
@@ -78,7 +92,7 @@ func TestNewFolderWorkflow_scriptListsEveryStepInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := `const steps = ["setup", "create-invite", "redeem", "cleanup"];`
+	want := `const steps = ["setup", "invite", "cleanup"];`
 	if !strings.Contains(wf.Script, want) {
 		t.Errorf("Script =\n%s\nwant it to contain %s", wf.Script, want)
 	}
@@ -95,12 +109,40 @@ func TestResolveFolderWorkflow_upgradesUnmodifiedLegacyScript(t *testing.T) {
 	}
 }
 
-func TestNewFolderWorkflow_duplicateRequestNamesGetUniqueStepIDs(t *testing.T) {
+func TestResolveFolderWorkflow_regeneratesUnmodifiedFlatWorkflow(t *testing.T) {
+	generated := generateFolderWorkflow(t, buildNestedFolder())
+	saved := &Workflow{ID: generated.ID, Name: generated.Name, Steps: []Step{
+		{ID: "setup", Request: "policies/TEST/setup"},
+		{ID: "create-invite", Request: "policies/TEST/invite/create invite"},
+		{ID: "redeem", Request: "policies/TEST/invite/deep/redeem"},
+		{ID: "cleanup", Request: "policies/TEST/cleanup"},
+	}}
+	saved.Script = flatFolderRunScript(saved.Steps)
+
+	wf, resolution := ResolveFolderWorkflow(saved, generated)
+	if wf != generated || resolution != FolderWorkflowRegenerated {
+		t.Errorf("got (%p, %v), want generated workflow and FolderWorkflowRegenerated", wf, resolution)
+	}
+}
+
+func TestResolveFolderWorkflow_upgradesFlatScriptWithSameSteps(t *testing.T) {
+	folder := postman.Item{Name: "Users", Items: []postman.Item{folderRequest("list")}}
+	saved := generateFolderWorkflowFor(t, folder, []string{"Users"})
+	saved.Script = flatFolderRunScript(saved.Steps)
+	generated := generateFolderWorkflowFor(t, folder, []string{"Users"})
+
+	wf, resolution := ResolveFolderWorkflow(saved, generated)
+	if wf != generated || resolution != FolderWorkflowRegenerated {
+		t.Errorf("got (%p, %v), want generated workflow and FolderWorkflowRegenerated", wf, resolution)
+	}
+}
+
+func TestNewFolderWorkflow_duplicateItemNamesGetUniqueStepIDs(t *testing.T) {
 	folder := postman.Item{
 		Name: "Users",
 		Items: []postman.Item{
 			folderRequest("get"),
-			{Name: "Admins", Items: []postman.Item{folderRequest("get")}},
+			{Name: "Get", Items: []postman.Item{folderRequest("get")}},
 			folderRequest("Get!"),
 		},
 	}
@@ -165,7 +207,12 @@ func TestFolderWorkflowName_nested(t *testing.T) {
 
 func generateFolderWorkflow(t *testing.T, folder postman.Item) *Workflow {
 	t.Helper()
-	wf, err := NewFolderWorkflow(folder, []string{"policies", folder.Name})
+	return generateFolderWorkflowFor(t, folder, []string{"policies", folder.Name})
+}
+
+func generateFolderWorkflowFor(t *testing.T, folder postman.Item, folderPath []string) *Workflow {
+	t.Helper()
+	wf, err := NewFolderWorkflow(folder, folderPath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

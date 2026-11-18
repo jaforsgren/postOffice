@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 
+	"postOffice/internal/workflow"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -35,7 +37,7 @@ func handleRefreshWorkflowsKey(m Model) (Model, tea.Cmd) {
 	m = m.cacheSavedWorkflowIDs(m.workflowCollectionName(), wfs)
 	m.workflowCursor = min(m.workflowCursor, max(len(wfs)-1, 0))
 	if m.activeWorkflow != nil {
-		if reloaded := findWorkflowByID(wfs, m.activeWorkflow.ID); reloaded != nil {
+		if reloaded := workflow.FindWorkflow(wfs, m.activeWorkflow.ID); reloaded != nil {
 			m.activeWorkflow = reloaded
 			m.workflowStepCursor = min(m.workflowStepCursor, max(len(reloaded.Steps)-1, 0))
 		}

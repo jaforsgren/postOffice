@@ -3,6 +3,7 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -61,8 +62,9 @@ func FolderWorkflowID(folderPath []string) string {
 	return slugify(FolderWorkflowName(folderPath), fallbackFolderSlug)
 }
 
-// NewFolderWorkflow generates a workflow that runs every request under folder in collection order,
-// depth-first through subfolders. folderPath is the folder's full path, including its own name.
+// NewFolderWorkflow generates a workflow that runs every request under folder in collection order:
+// a step per request, and a folder step per subfolder that runs the subfolder's own workflow.
+// folderPath is the folder's full path, including its own name.
 func NewFolderWorkflow(folder postman.Item, folderPath []string) (*Workflow, error) {
 	name := FolderWorkflowName(folderPath)
 	return newRunWorkflow(folder.Items, folderPath, FolderWorkflowID(folderPath), name,
@@ -127,19 +129,23 @@ func findItem(items []postman.Item, name string) *postman.Item {
 	return nil
 }
 
+// newRunWorkflow makes a step per request in items and a folder step per subfolder holding any
+// request; subfolders without requests are left out.
 func newRunWorkflow(items []postman.Item, folderPath []string, id, name, description string) (*Workflow, error) {
-	refs := RequestRefs(items, folderPath)
-	if len(refs) == 0 {
-		return nil, fmt.Errorf("%w: %s", ErrFolderHasNoRequests, name)
+	steps := make([]Step, 0, len(items))
+	usedIDs := make(map[string]bool, len(items))
+	for i := range items {
+		item := &items[i]
+		itemPath := postman.JoinItemPath(append(slices.Clone(folderPath), item.Name)...)
+		switch {
+		case item.IsRequest():
+			steps = append(steps, Step{ID: uniqueStepID(item.Name, usedIDs), Request: itemPath})
+		case len(RequestRefs(item.Items, nil)) > 0:
+			steps = append(steps, Step{ID: uniqueStepID(item.Name, usedIDs), Folder: itemPath})
+		}
 	}
-
-	steps := make([]Step, 0, len(refs))
-	usedIDs := make(map[string]bool, len(refs))
-	for _, ref := range refs {
-		steps = append(steps, Step{
-			ID:      uniqueStepID(ref.Item.Name, usedIDs),
-			Request: ref.Path,
-		})
+	if len(steps) == 0 {
+		return nil, fmt.Errorf("%w: %s", ErrFolderHasNoRequests, name)
 	}
 
 	return &Workflow{
@@ -201,13 +207,36 @@ func uniqueStepID(requestName string, usedIDs map[string]bool) string {
 }
 
 // folderRunScript runs steps in order like Postman's Collection Runner: a step whose request calls
-// pm.execution.setNextRequest jumps to that step, null ends the run, and a target outside the run
-// fails it.
+// pm.execution.setNextRequest jumps to the step running that request, entering a folder step's
+// sub-workflow at it. A target outside this workflow, or null, goes to wf.jump: up to the enclosing
+// workflow, and at the top a target outside the run fails it while null ends it.
 func folderRunScript(steps []Step) string {
-	ids := make([]string, len(steps))
-	for i, step := range steps {
-		ids[i] = strconv.Quote(step.ID)
-	}
+	return fmt.Sprintf(`export default async function(wf, pm) {
+  const steps = [%s];
+  let next = wf.entryStep === undefined ? 0 : steps.indexOf(wf.entryStep);
+  let entry = wf.entry;
+  for (let runs = 0; next < steps.length; runs++) {
+    if (runs >= %d) {
+      wf.fail("stopped after %d requests: likely a pm.execution.setNextRequest loop");
+    }
+    const result = await wf.run(steps[next], { entry });
+    entry = undefined;
+    if (result.nextRequest === undefined) {
+      next++;
+    } else if (result.nextStep === undefined) {
+      wf.jump(result.nextRequest);
+    } else {
+      next = steps.indexOf(result.nextStep);
+      entry = result.nextRequest;
+    }
+  }
+}`, quotedStepIDs(steps), MaxFolderRunRequests, MaxFolderRunRequests)
+}
+
+// flatFolderRunScript is the script folder workflows were generated with while they still listed
+// every request of their subfolders as their own steps. Saved workflows still using it are
+// regenerated, not kept.
+func flatFolderRunScript(steps []Step) string {
 	return fmt.Sprintf(`export default async function(wf, pm) {
   const steps = [%s];
   let next = 0;
@@ -226,7 +255,15 @@ func folderRunScript(steps []Step) string {
       next = steps.indexOf(result.nextStep);
     }
   }
-}`, strings.Join(ids, ", "), MaxFolderRunRequests, MaxFolderRunRequests)
+}`, quotedStepIDs(steps), MaxFolderRunRequests, MaxFolderRunRequests)
+}
+
+func quotedStepIDs(steps []Step) string {
+	ids := make([]string, len(steps))
+	for i, step := range steps {
+		ids[i] = strconv.Quote(step.ID)
+	}
+	return strings.Join(ids, ", ")
 }
 
 // legacyFolderRunScript is the plain sequential script folder workflows were generated with before
@@ -240,22 +277,32 @@ func sameStepRequests(a, b []Step) bool {
 		return false
 	}
 	for i := range a {
-		if a[i].Request != b[i].Request {
+		if a[i].Request != b[i].Request || a[i].Folder != b[i].Folder {
 			return false
 		}
 	}
 	return true
 }
 
+// previousFolderRunScripts are the scripts earlier versions generated folder workflows with.
+var previousFolderRunScripts = []func([]Step) string{legacyFolderRunScript, flatFolderRunScript}
+
 // isUnmodifiedFolderWorkflow reports whether wf is still exactly what NewFolderWorkflow produces, or
-// produced before folder runs followed setNextRequest, for its own steps: a generated script and no
-// per-step scripts.
+// produced in an earlier version, for its own steps: a generated script and no per-step scripts.
 func isUnmodifiedFolderWorkflow(wf *Workflow) bool {
-	return hasNoStepScripts(wf) && (hasScript(wf, folderRunScript(wf.Steps)) || hasScript(wf, legacyFolderRunScript(wf.Steps)))
+	return hasNoStepScripts(wf) && (hasScript(wf, folderRunScript(wf.Steps)) || isLegacyFolderWorkflow(wf))
 }
 
 func isLegacyFolderWorkflow(wf *Workflow) bool {
-	return hasNoStepScripts(wf) && hasScript(wf, legacyFolderRunScript(wf.Steps))
+	if !hasNoStepScripts(wf) {
+		return false
+	}
+	for _, previousScript := range previousFolderRunScripts {
+		if hasScript(wf, previousScript(wf.Steps)) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasNoStepScripts(wf *Workflow) bool {

@@ -114,7 +114,7 @@ func (m Model) workflowPreviewStepLine(wf *workflow.Workflow, index int, step wo
 
 	line := workflowMetaStyle.Render(fmt.Sprintf("[%d]", index+1)) + " " +
 		workflowStatusStyle(status).Render(workflow.StatusIcon(status)) + " " +
-		step.ID + "  " + subtleStyle.Render(step.Request)
+		step.ID + "  " + subtleStyle.Render(stepTargetLabel(step))
 	if annotations := stepScriptAnnotations(step); annotations != "" {
 		line += " " + workflowMetaStyle.Render(annotations)
 	}

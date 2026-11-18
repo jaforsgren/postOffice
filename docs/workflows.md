@@ -121,8 +121,15 @@ Each step has:
 |-------|-------------|
 | `id` | Stable step identifier used in `wf.run("id")` |
 | `request` | Path to a request within the collection, e.g. `Auth/Login` or `Users/List Users` |
+| `folder` | Path to a folder within the collection, e.g. `Auth/Admin`; the step runs that folder's workflow as a sub-workflow (set `request` or `folder`, not both) |
 
-Request paths are resolved by traversing the collection item tree using `/` as a folder separator. They are never absolute URLs.
+Request and folder paths are resolved by traversing the collection item tree using `/` as a folder separator. They are never absolute URLs.
+
+#### Folder steps (sub-workflows)
+
+A folder step runs the workflow the folder would run on its own: in the TUI its saved workflow from `workflows/` (your edits included), or a generated one when none is saved; `postOffice run` always generates it. The sub-workflow's script runs in its own script VM with its own 30-second timeout and its own `wf.context`, while variables, the iteration, `:runopts` and the run status are shared: `wf.fail`/`wf.stop` inside it end the whole run, and with `stop on` a failed request anywhere stops it.
+
+The folder step succeeds when no step inside it failed. Its `pre_script` runs before the sub-workflow and its `post_script` after it (without `step.response`); `repeat` and `until` do not apply. In run states and logs, a sub-workflow's steps are named after the folder step, e.g. `invite/redeem`. A folder step whose sub-workflow would run itself again fails.
 
 ### script
 
@@ -152,8 +159,11 @@ wf.run(stepId: string, options?: RunOptions): Promise<StepResult>
 wf.fail(reason?: string): void
 wf.skip(reason?: string): void
 wf.stop(reason?: string): void
+wf.jump(nextRequest: string | null): void
 wf.context: object
 wf.status: string
+wf.entry?: string
+wf.entryStep?: string
 ```
 
 #### wf.run(stepId, options?)
@@ -170,10 +180,11 @@ const result = await wf.run("login");
 {
   repeat?: number;
   until?: (response: Response) => boolean;
+  entry?: string;
 }
 ```
 
-`repeat` runs the step N times. `until` runs the step repeatedly until the predicate returns `true` or the repeat limit is reached.
+`repeat` runs the step N times. `until` runs the step repeatedly until the predicate returns `true` or the repeat limit is reached. Both apply to request steps. `entry` applies to folder steps: the sub-workflow gets it as `wf.entry` and starts at the step running that request (see `wf.jump`).
 
 ```js
 // Run exactly three times
@@ -209,6 +220,14 @@ Stops workflow execution without marking it as failed.
 ```js
 wf.stop("User chose not to continue");
 ```
+
+#### wf.jump(nextRequest)
+
+Ends the workflow script and hands a `pm.execution.setNextRequest` target it cannot reach to the workflow that ran it as a folder step: that folder step's `wf.run` result gets it as `nextRequest`, with `nextStep` set when one of the enclosing workflow's steps runs it. `null` passes on `setNextRequest(null)`, which ends the run. In the run's own workflow there is nothing to hand to: a target fails the run (`setNextRequest target "x" is not in this run`) and `null` ends the script.
+
+#### wf.entry / wf.entryStep
+
+In a sub-workflow started with `wf.run(folderStep, { entry })`, `wf.entry` is the request to start at and `wf.entryStep` the ID of this workflow's step that runs it, directly or in a nested folder step. Both are `undefined` otherwise.
 
 #### wf.context
 
@@ -254,11 +273,14 @@ Variable mutations made in the workflow script are immediately visible to subseq
   responses: Response[]; // all results when repeat > 1
   nextRequest?: string | null; // the request's pm.execution.setNextRequest target, null for setNextRequest(null);
                                // absent when it made no such call
-  nextStep?: string;   // ID of the step nextRequest names (by request name, id or path), when it is in this workflow
+  nextStep?: string;   // ID of the step nextRequest names (by request name, id or path), when it is in this workflow;
+                       // a folder step when the request is in its sub-workflow, at any depth
 }
 ```
 
-Folder runs (`ctrl+e` on a folder, `postOffice run --folder`) use these to behave like Postman's Collection Runner: their generated script jumps to `nextStep`, stops on `null`, fails when the target is not in the run, and stops after 1000 requests. Hand-written workflows can use them the same way or ignore them. A saved folder workflow still using the older plain sequential script is regenerated the next time the folder runs, unless it was edited.
+A folder step's result has no responses; its `nextRequest` is what its sub-workflow handed up with `wf.jump`.
+
+Folder runs (`ctrl+e` on a folder, `postOffice run --folder`) use these to behave like Postman's Collection Runner: their generated script jumps to `nextStep` (entering a folder step's sub-workflow at the target), hands targets outside the workflow and `null` up with `wf.jump`, and stops after 1000 steps per workflow. So a request can `setNextRequest` to a request in another subfolder, and `setNextRequest(null)` anywhere ends the run. Hand-written workflows can use them the same way or ignore them. A saved folder workflow still using an older generated script (the plain sequential one, or the one listing every request of its subfolders) is regenerated the next time the folder runs, unless it was edited.
 
 ### Step status
 
@@ -380,7 +402,7 @@ ctrl+e   (on a folder, in the requests view)
 
 Asks `Run folder 'policies/TEST' as workflow? (y/n)` in the command bar. `y` confirms. Any other key cancels. On a request, `ctrl+e` still executes the request.
 
-On confirm, every request in the folder runs one after another in collection order, depth-first through subfolders, and the workflow run view shows progress. Each step goes through the normal executor, so request pre-request and test scripts run and variables carry over between steps, the same as in any other workflow.
+On confirm, every request in the folder runs one after another in collection order, each subfolder through its own workflow (a folder of workflows is a workflow), and the workflow run view shows progress. Each step goes through the normal executor, so request pre-request and test scripts run and variables carry over between steps, the same as in any other workflow.
 
 The first run saves the folder as a workflow in `workflows/` next to the collection:
 
@@ -388,8 +410,10 @@ The first run saves the folder as a workflow in `workflows/` next to the collect
 |-------|-------|
 | `name` | Full folder path, e.g. `policies/TEST` or `a/b/c` |
 | `id` / file name | Slug of that path, e.g. `policies-test` → `workflows/policies-test.yaml` |
-| `steps` | One per request, `request` set to the request's full collection path; step ids are slugs of the request names (`-2`, `-3`, … on clashes) |
-| `script` | `await wf.run("<step>")` for every step, in order |
+| `steps` | One per item directly in the folder, in collection order: a request step (`request` set to the request's full collection path) per request, a folder step (`folder` set to the subfolder's full path) per subfolder holding any request; step ids are slugs of the item names (`-2`, `-3`, … on clashes) |
+| `script` | Runs the steps in order, following `pm.execution.setNextRequest` (see [Run Result](#run-result)) |
+
+Subfolders are not saved as workflows of their own until you run them. Until then their folder steps run a generated workflow; to customize a subfolder, run it once and edit its file.
 
 It shows up in the `:wf` list like any other workflow. In the requests list, a folder with a saved workflow gets a `⚡` marker after its name. The marker shows up as soon as the workflow is saved, and on startup for workflows already on disk.
 
@@ -402,8 +426,7 @@ Pressing `ctrl+e` on that folder again runs the saved workflow instead of creati
 Limitations:
 
 - Step paths are split on `/`. A `/` inside a folder or request name is written `\/` (and a `\` as `\\`), e.g. `request: NEGATIVE/unknown policy → 403\/404`; generated folder workflows escape names automatically.
-- Collection-level and folder-level scripts do not run. Only each request's own scripts do. Postman runner flow control (`pm.execution.setNextRequest`, `pm.execution.skipRequest`) is not supported, so requests always run strictly in order. Steps that need flow control should be scripted in the workflow `script` with `wf.run`, `wf.skip` and `wf.stop`.
-- The whole workflow script shares the runtime's 30-second timeout, so long folders may time out.
+- Each workflow script, and each sub-workflow's, has the runtime's 30-second timeout, not counting time spent in requests and `wf.sleep`.
 
 ### Workflow keys
 
@@ -446,6 +469,7 @@ While a workflow runs, the TUI shows:
 
 - Workflow name and overall status
 - Each step with its status icon and label
+- Each folder step followed by its sub-workflow's steps, all marked with a coloured bar down the left edge, one colour per folder step and one bar per level of nesting (the `o` report export indents them instead, so Vim folds them under the folder step)
 - Repeat progress for steps using `repeat`
 - Execution logs from `console.log()` calls
 - Error message if the workflow fails

@@ -124,7 +124,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.forgetWorkflowRun()
 			if m.collection != nil {
 				for _, ss := range msg.State.Steps {
-					if ss.LastResponse != nil {
+					if !ss.IsFolder() && ss.LastResponse != nil {
 						m.requestExecutions[m.workflowStepItemID(ss.Request)] = &RequestExecution{
 							Status:    ss.LastResponse.Status,
 							Timestamp: time.Now(),
@@ -2504,13 +2504,13 @@ func (m Model) editWorkflowStepRequest() (Model, tea.Cmd) {
 	}
 
 	step := m.activeWorkflow.Steps[m.workflowStepCursor]
-	item, folderPath, err := m.resolveStepItem(step.Request)
+	item, folderPath, err := m.resolveStepItem(step.Target())
 	if err != nil {
-		m.statusMessage = fmt.Sprintf("Cannot find request %q: %v", step.Request, err)
+		m.statusMessage = fmt.Sprintf("Cannot find request %q: %v", step.Target(), err)
 		return m, nil
 	}
 	if !item.IsRequest() {
-		m.statusMessage = fmt.Sprintf("%q is a folder, not a request", step.Request)
+		m.statusMessage = fmt.Sprintf("%q is a folder, not a request", step.Target())
 		return m, nil
 	}
 
@@ -2533,9 +2533,9 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 	}
 
 	step := m.activeWorkflow.Steps[m.workflowStepCursor]
-	item, folderPath, err := m.resolveStepItem(step.Request)
+	item, folderPath, err := m.resolveStepItem(step.Target())
 	if err != nil {
-		m.statusMessage = fmt.Sprintf("Cannot find request %q: %v", step.Request, err)
+		m.statusMessage = fmt.Sprintf("Cannot find %q: %v", step.Target(), err)
 		return m, nil
 	}
 
@@ -2554,7 +2554,7 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 		lines = append(lines, m.stepLogLines(ss)...)
 	}
 	m.configureViewport(&m.infoViewport, strings.Join(lines, "\n"))
-	m.statusMessage = fmt.Sprintf("Inspecting: %s  (esc to return to workflow)", step.Request)
+	m.statusMessage = fmt.Sprintf("Inspecting: %s  (esc to return to workflow)", step.Target())
 	return m, nil
 }
 
@@ -2687,7 +2687,7 @@ func (m Model) launchRun(environment *postman.Environment, run workflowRun) (Mod
 	progressChan := make(chan workflow.ExecutionState, workflowProgressBuffer)
 	m.workflowChan = progressChan
 
-	runner := workflow.NewRunner(m.workflowCollection(), environment, m.engine)
+	runner := workflow.NewRunner(m.workflowCollection(), environment, m.engine).WithFolderWorkflows(m.folderWorkflowSource())
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelWorkflowRun = cancel
 

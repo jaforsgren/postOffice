@@ -63,8 +63,11 @@ func newStepStream(out io.Writer, styles textStyles) *stepStream {
 }
 
 func (s *stepStream) onChange(state workflow.ExecutionState) {
-	_, stepLogs := splitLogs(state.Logs)
+	_, stepLogs := splitLogs(state)
 	for _, step := range state.Steps {
+		if step.IsFolder() {
+			continue
+		}
 		key := stepRun{step.ID, step.Iteration}
 		previous := s.statuses[key]
 		s.statuses[key] = step.Status

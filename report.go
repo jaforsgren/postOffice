@@ -85,15 +85,23 @@ type stepRun struct {
 	iteration int
 }
 
-// splitLogs separates the workflow script's own log lines from each step
-// run's engine log lines.
-func splitLogs(logs []workflow.LogEntry) ([]string, map[stepRun][]string) {
+// folderLogSeparator follows the folder step a workflow log line came from.
+const folderLogSeparator = ": "
+
+// splitLogs separates the workflow scripts' own log lines from each request
+// step run's engine log lines. A sub-workflow's script logs to its folder
+// step, which reports no request, so those lines are labelled with it.
+func splitLogs(state workflow.ExecutionState) ([]string, map[stepRun][]string) {
 	var workflowLogs []string
 	stepLogs := map[stepRun][]string{}
-	for _, entry := range logs {
-		if entry.StepID == "" {
+	for _, entry := range state.Logs {
+		folderStep, inFolderStep := state.StepIndex[entry.StepID]
+		switch {
+		case entry.StepID == "":
 			workflowLogs = append(workflowLogs, entry.Message)
-		} else {
+		case inFolderStep && folderStep.IsFolder():
+			workflowLogs = append(workflowLogs, entry.StepID+folderLogSeparator+entry.Message)
+		default:
 			key := stepRun{entry.StepID, entry.Iteration}
 			stepLogs[key] = append(stepLogs[key], entry.Message)
 		}
@@ -120,8 +128,11 @@ func newRunReport(state workflow.ExecutionState, collectionName, environmentName
 	}
 
 	var stepLogs map[stepRun][]string
-	report.Logs, stepLogs = splitLogs(state.Logs)
+	report.Logs, stepLogs = splitLogs(state)
 	for _, step := range state.Steps {
+		if step.IsFolder() {
+			continue
+		}
 		request := newRequestReport(step, multiIteration, stepLogs)
 		report.Requests = append(report.Requests, request)
 		report.Summary.add(request)

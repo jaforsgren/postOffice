@@ -89,7 +89,7 @@ func (m Model) runFolderAsWorkflow(run pendingFolderRun) (Model, tea.Cmd) {
 		return m.folderRunError(err), nil
 	}
 
-	wf, resolution := workflow.ResolveFolderWorkflow(findWorkflowByID(saved, generated.ID), generated)
+	wf, resolution := workflow.ResolveFolderWorkflow(workflow.FindWorkflow(saved, generated.ID), generated)
 	if resolution.NeedsSave() {
 		if err := workflow.SaveWorkflow(wf, workflow.WorkflowPath(collectionPath, wf.ID)); err != nil {
 			return m.folderRunError(fmt.Errorf("failed to save workflow: %w", err)), nil
@@ -136,6 +136,18 @@ func (m Model) generateFolderWorkflow(collection *postman.Collection, folder pos
 	return workflow.NewFolderWorkflow(folder, folderPath)
 }
 
+// folderWorkflowSource gives folder steps the workflow running their folder on
+// its own would, from those saved next to the workflow collection; a collection
+// without a file on disk has none saved, so its folders run generated ones.
+func (m Model) folderWorkflowSource() workflow.FolderWorkflowSource {
+	collection := m.workflowCollection()
+	_, saved, err := m.discoverWorkflows(m.workflowCollectionName())
+	if err != nil && !errors.Is(err, errCollectionPathNotFound) {
+		logger.LogError("folderWorkflowSource", m.workflowCollectionName(), err)
+	}
+	return workflow.SavedFolderWorkflows(collection, saved)
+}
+
 // discoverWorkflows loads every workflow saved next to the named collection's file.
 func (m Model) discoverWorkflows(collectionName string) (string, []*workflow.Workflow, error) {
 	collectionPath, exists := m.parser.GetCollectionPath(collectionName)
@@ -144,15 +156,6 @@ func (m Model) discoverWorkflows(collectionName string) (string, []*workflow.Wor
 	}
 	wfs, err := workflow.DiscoverWorkflows(workflow.WorkflowsDir(collectionPath))
 	return collectionPath, wfs, err
-}
-
-func findWorkflowByID(wfs []*workflow.Workflow, id string) *workflow.Workflow {
-	for _, wf := range wfs {
-		if wf.ID == id {
-			return wf
-		}
-	}
-	return nil
 }
 
 func (m Model) cacheSavedWorkflowIDs(collectionName string, wfs []*workflow.Workflow) Model {
