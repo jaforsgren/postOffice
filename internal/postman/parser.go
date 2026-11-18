@@ -243,7 +243,7 @@ func (p *Parser) MergedCollection() *Collection {
 			continue
 		}
 		names = append(names, name)
-		items = append(items, Item{Name: name, Items: coll.Items})
+		items = append(items, collectionGroupFolder(coll, name))
 
 		for _, v := range coll.Variables {
 			if !seenVars[v.Key] {

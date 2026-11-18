@@ -360,3 +360,19 @@ func TestSyncMergedEnvironment_UnchangedCopyChangesNothing(t *testing.T) {
 		t.Errorf("changed = %v, want none", changed)
 	}
 }
+
+func TestMergedCollection_GroupFolderCarriesCollectionDocumentation(t *testing.T) {
+	p := NewParser()
+	path := createTempCollection(t, &Collection{
+		Info:  Info{Name: "Documented", Description: "How to use this collection"},
+		Items: []Item{{Name: "Get Users", Request: &Request{Method: "GET"}}},
+	})
+	p.LoadCollection(path)
+	p.ToggleActiveCollection("Documented")
+
+	merged := p.MergedCollection()
+
+	if merged == nil || merged.Items[0].Description != "How to use this collection" {
+		t.Errorf("expected the group folder documented like its collection, got %+v", merged)
+	}
+}

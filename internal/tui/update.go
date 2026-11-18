@@ -501,10 +501,15 @@ func traverseToDepthPtr(items *[]postman.Item, path []string) *[]postman.Item {
 	return current
 }
 
+// viewportWidth is the width full-screen viewports get.
+func (m Model) viewportWidth() int {
+	return m.width - viewportPadding
+}
+
 // configureViewport sizes a viewport to the model's terminal dimensions minus viewportPadding
 // and sets its content. vp must be a pointer to a field on the caller's model copy.
 func (m Model) configureViewport(vp *viewport.Model, content string) {
-	vp.Width = m.width - viewportPadding
+	vp.Width = m.viewportWidth()
 	vp.Height = m.height - viewportPadding
 	vp.SetContent(content)
 }

@@ -32,8 +32,8 @@ func MergeCollections(dst, src *Collection, strategy MergeStrategy) *Collection 
 // duplicate folders. Variables and Events are still merged flat, per
 // strategy, since they have no folder to live under.
 func MergeCollectionsGrouped(dst, src *Collection, dstGroupName, srcGroupName string, strategy MergeStrategy) *Collection {
-	dstItems := groupedItems(dst.Items, dstGroupName)
-	srcItems := groupedItems(src.Items, srcGroupName)
+	dstItems := groupedItems(dst, dstGroupName)
+	srcItems := groupedItems(src, srcGroupName)
 
 	return &Collection{
 		Info:      dst.Info,
@@ -43,15 +43,23 @@ func MergeCollectionsGrouped(dst, src *Collection, dstGroupName, srcGroupName st
 	}
 }
 
-// groupedItems returns items unchanged if it already has a top-level folder
-// named groupName, otherwise wraps items in a single new folder named groupName.
-func groupedItems(items []Item, groupName string) []Item {
-	for _, item := range items {
+// groupedItems returns collection's items unchanged if they already have a
+// top-level folder named groupName, otherwise wraps them in a single new
+// folder named groupName (see collectionGroupFolder).
+func groupedItems(collection *Collection, groupName string) []Item {
+	for _, item := range collection.Items {
 		if item.IsFolder() && item.Name == groupName {
-			return items
+			return collection.Items
 		}
 	}
-	return []Item{{Name: groupName, Items: items}}
+	return []Item{collectionGroupFolder(collection, groupName)}
+}
+
+// collectionGroupFolder is the folder named groupName that stands for
+// collection where collections are grouped together, documented with the
+// collection's own documentation.
+func collectionGroupFolder(collection *Collection, groupName string) Item {
+	return Item{Name: groupName, Description: collection.Info.Description, Items: collection.Items}
 }
 
 // MergeEnvironments merges src into dst by variable key. dst's ID/Name are preserved.

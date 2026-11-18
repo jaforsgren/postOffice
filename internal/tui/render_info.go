@@ -8,6 +8,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const (
+	documentationHeading = "Documentation:"
+	infoIndent           = "  "
+)
+
 const noItemSelectedMessage = "No item selected"
 
 func (m Model) renderInfoPopup(availableHeight int) string {
@@ -131,12 +136,14 @@ func (m Model) buildItemInfoLines() []string {
 
 	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Item Info (q: close)"))
 	lines = append(lines, "")
-	lines = append(lines, m.buildItemDetailLines()...)
+	lines = append(lines, m.buildItemDetailLines(m.viewportWidth())...)
 
 	return lines
 }
 
-func (m Model) buildItemDetailLines() []string {
+// buildItemDetailLines describes the info item; its documentation wraps to
+// width, the width of the view showing it.
+func (m Model) buildItemDetailLines(width int) []string {
 	var lines []string
 
 	lines = append(lines, requestStyle.Render("Name:"))
@@ -144,16 +151,21 @@ func (m Model) buildItemDetailLines() []string {
 	lines = append(lines, "")
 
 	if m.currentInfoItem.IsFolder() {
-		lines = append(lines, m.buildFolderInfoLines()...)
+		lines = append(lines, m.buildFolderInfoLines(width)...)
 	} else if m.currentInfoItem.IsRequest() {
-		lines = append(lines, m.buildRequestInfoLines()...)
+		lines = append(lines, m.buildRequestInfoLines(width)...)
 	}
 
 	return lines
 }
 
-func (m Model) buildFolderInfoLines() []string {
-	var lines []string
+// buildFolderInfoLines leads with the folder's documentation, which is what
+// the info pane is mostly opened for, before its type and contents.
+func (m Model) buildFolderInfoLines(width int) []string {
+	lines := m.buildDocumentationSection(width)
+	if len(lines) > 0 {
+		lines = append(lines, "")
+	}
 
 	lines = append(lines, requestStyle.Render("Type:"))
 	lines = append(lines, "  Folder")
@@ -172,20 +184,11 @@ func (m Model) buildFolderInfoLines() []string {
 	lines = append(lines, fmt.Sprintf("  Folders: %d", folderCount))
 	lines = append(lines, fmt.Sprintf("  Requests: %d", requestCount))
 	lines = append(lines, fmt.Sprintf("  Total: %d", len(m.currentInfoItem.Items)))
-	lines = append(lines, "")
-
-	if m.currentInfoItem.Description != "" {
-		lines = append(lines, requestStyle.Render("Description:"))
-		descLines := strings.Split(m.currentInfoItem.Description, "\n")
-		for _, line := range descLines {
-			lines = append(lines, "  "+line)
-		}
-	}
 
 	return lines
 }
 
-func (m Model) buildRequestInfoLines() []string {
+func (m Model) buildRequestInfoLines(width int) []string {
 	var lines []string
 
 	req := m.currentInfoItem.Request
@@ -197,7 +200,7 @@ func (m Model) buildRequestInfoLines() []string {
 		lines = append(lines, m.buildGRPCInfoSection(req)...)
 		lines = append(lines, m.buildDependenciesSection()...)
 		lines = append(lines, m.buildScriptsSection()...)
-		lines = append(lines, m.buildDescriptionSection()...)
+		lines = append(lines, m.buildDocumentationSection(width)...)
 		return lines
 	}
 
@@ -213,7 +216,7 @@ func (m Model) buildRequestInfoLines() []string {
 	lines = append(lines, m.buildBodySection(req, variables)...)
 	lines = append(lines, m.buildDependenciesSection()...)
 	lines = append(lines, m.buildScriptsSection()...)
-	lines = append(lines, m.buildDescriptionSection()...)
+	lines = append(lines, m.buildDocumentationSection(width)...)
 
 	return lines
 }
@@ -492,17 +495,18 @@ func (m Model) buildScriptsSection() []string {
 	return lines
 }
 
-func (m Model) buildDescriptionSection() []string {
-	var lines []string
-
-	if m.currentInfoItem.Description != "" {
-		lines = append(lines, requestStyle.Render("Description:"))
-		descLines := strings.Split(m.currentInfoItem.Description, "\n")
-		for _, line := range descLines {
-			lines = append(lines, "  "+line)
-		}
+// buildDocumentationSection is the info item's Postman documentation (its
+// description) wrapped to width, or nothing when it has none.
+func (m Model) buildDocumentationSection(width int) []string {
+	if strings.TrimSpace(m.currentInfoItem.Description) == "" {
+		return nil
 	}
 
+	lines := []string{requestStyle.Render(documentationHeading)}
+	wrapped := wrapLines(splitLines(m.currentInfoItem.Description), max(width-len(infoIndent), minPaneSize))
+	for _, line := range wrapped {
+		lines = append(lines, infoIndent+line)
+	}
 	return lines
 }
 

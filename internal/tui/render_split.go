@@ -70,7 +70,7 @@ func (m Model) splitInfoLines() []string {
 	if !ok {
 		return []string{noItemSelectedMessage}
 	}
-	lines := m.withInfoItemAtCursor(item).buildItemDetailLines()
+	lines := m.withInfoItemAtCursor(item).buildItemDetailLines(paneInnerWidth(m.calculateRequestSplitLayout().rightWidth))
 	return append(lines, m.scopeVariableLines(item)...)
 }
 

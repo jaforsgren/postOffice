@@ -323,3 +323,14 @@ func TestMergeCollectionsGrouped_ReusedFoldersOnBothSidesMergeTogether(t *testin
 		t.Errorf("expected [Get Users, Get Orders], got %v", names)
 	}
 }
+
+func TestMergeCollectionsGrouped_GroupFoldersCarryCollectionDocumentation(t *testing.T) {
+	dst := &Collection{Info: Info{Name: "Dst", Description: "dst docs"}, Items: []Item{{Name: "a", Request: &Request{Method: "GET"}}}}
+	src := &Collection{Info: Info{Name: "Src", Description: "src docs"}, Items: []Item{{Name: "b", Request: &Request{Method: "GET"}}}}
+
+	merged := MergeCollectionsGrouped(dst, src, "Dst", "Src", MergeKeepOriginal)
+
+	if merged.Items[0].Description != "dst docs" || merged.Items[1].Description != "src docs" {
+		t.Errorf("expected each group folder documented like its collection, got %+v", merged.Items)
+	}
+}

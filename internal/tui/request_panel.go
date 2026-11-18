@@ -51,5 +51,5 @@ func (m Model) responseViewLines() []string {
 	infoModel.breadcrumb = m.requestsViewFolderPath()
 	lines = append(lines, "")
 	lines = append(lines, infoModel.unresolvedVariablesLines(m.responsePanelItem.Request, infoModel.breadcrumb)...)
-	return append(lines, infoModel.buildItemDetailLines()...)
+	return append(lines, infoModel.buildItemDetailLines(m.viewportWidth())...)
 }
