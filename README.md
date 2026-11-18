@@ -21,6 +21,12 @@ Edit the URL, headers and body in place. `{{` suggests variables with their reso
 ## Install
 
 ```bash
+brew install --cask jaforsgren/tap/postoffice
+```
+
+See [RELEASING.md](RELEASING.md) for standalone executables. To build from source:
+
+```bash
 make build      # build ./postOffice
 make install    # install to $GOPATH/bin
 ```

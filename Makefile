@@ -1,4 +1,4 @@
-.PHONY: build clean test lint fmt install help merge-collections-force merge-collections-keep merge-env-force merge-env-keep
+.PHONY: build clean test lint fmt install release-check snapshot help merge-collections-force merge-collections-keep merge-env-force merge-env-keep
 
 BINARY_NAME=postOffice
 VERSION?=dev
@@ -29,6 +29,12 @@ fmt: ## Format code
 
 install: ## Install the binary
 	go install $(LDFLAGS)
+
+release-check: ## Validate .goreleaser.yaml (needs goreleaser)
+	goreleaser check
+
+snapshot: ## Build every release archive locally into dist/ without publishing (needs goreleaser)
+	goreleaser release --snapshot --clean
 
 merge-collections-force: build ## Merge example collections (api-testing-workflow.json + servicebus-events.json), src wins conflicts, grouped by collection name
 	mkdir -p $(MERGE_OUT_DIR)
