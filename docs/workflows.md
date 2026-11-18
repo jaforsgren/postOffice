@@ -14,14 +14,19 @@ Workflows are intended for:
 
 ## File Structure
 
-Each workflow is a single `.yaml` file stored in a `workflows/` directory alongside the collection file.
+Each workflow is a single `.yaml` file in the collection's own folder under `workflows/`, beside the collection file. The folder is named after the collection file, without `.postman_collection.json` or `.json`.
 
 ```
-my-collection.json
+SAPI.postman_collection.json
+stories.postman_collection.json
 workflows/
-  login-flow.yaml
-  user-provisioning.yaml
+  SAPI/
+    login-flow.yaml
+  stories/
+    release.yaml
 ```
+
+Collections in one directory each see only their own workflows. Files directly in `workflows/` are older shared workflows: every collection beside them still sees them, and edits save them in place.
 
 ### Minimal example
 
@@ -384,7 +389,7 @@ Runs the workflow with the given ID immediately.
 :wf new <id>
 ```
 
-Creates a new workflow file at `workflows/<id>.yaml` with a skeleton script.
+Creates a new workflow file at `workflows/<collection>/<id>.yaml` with a skeleton script.
 
 ### Run selected workflow
 
@@ -404,12 +409,12 @@ Asks `Run folder 'policies/TEST' as workflow? (y/n)` in the command bar. `y` con
 
 On confirm, every request in the folder runs one after another in collection order, each subfolder through its own workflow (a folder of workflows is a workflow), and the workflow run view shows progress. Each step goes through the normal executor, so request pre-request and test scripts run and variables carry over between steps, the same as in any other workflow.
 
-The first run saves the folder as a workflow in `workflows/` next to the collection:
+The first run saves the folder as a workflow in the collection's folder under `workflows/`:
 
 | Field | Value |
 |-------|-------|
 | `name` | Full folder path, e.g. `policies/TEST` or `a/b/c` |
-| `id` / file name | Slug of that path, e.g. `policies-test` → `workflows/policies-test.yaml` |
+| `id` / file name | Slug of that path, e.g. `policies-test` → `workflows/SAPI/policies-test.yaml` |
 | `steps` | One per item directly in the folder, in collection order: a request step (`request` set to the request's full collection path) per request, a folder step (`folder` set to the subfolder's full path) per subfolder holding any request; step ids are slugs of the item names (`-2`, `-3`, … on clashes) |
 | `script` | Runs the steps in order, following `pm.execution.setNextRequest` (see [Run Result](#run-result)) |
 
@@ -461,7 +466,7 @@ Run summaries show passed, failed, and skipped steps and tests.
 
 ## Workflow Discovery
 
-Workflows are loaded from the `workflows/` directory relative to the collection file currently active in the TUI. Switch collections to switch the available workflow set.
+Workflows are loaded from the active collection's folder under `workflows/` (see [File Structure](#file-structure)), plus older shared files directly in `workflows/`. Switch collections to switch the available workflow set.
 
 ---
 

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"postOffice/internal/logger"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -35,18 +36,8 @@ type WorkflowFile struct {
 	Workflow *Workflow
 }
 
-// DiscoverWorkflows scans dir for *.yaml and *.yml files and loads each as a Workflow.
-// Returns nil slice (no error) if the directory does not exist.
-func DiscoverWorkflows(dir string) ([]*Workflow, error) {
-	files, err := DiscoverWorkflowFiles(dir)
-	var workflows []*Workflow
-	for _, file := range files {
-		workflows = append(workflows, file.Workflow)
-	}
-	return workflows, err
-}
-
-// DiscoverWorkflowFiles is DiscoverWorkflows keeping each workflow's file path.
+// DiscoverWorkflowFiles scans dir (not its subfolders) for *.yaml and *.yml files and loads each
+// as a Workflow, keeping its file path. Returns a nil slice (no error) if dir does not exist.
 func DiscoverWorkflowFiles(dir string) ([]WorkflowFile, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -62,7 +53,7 @@ func DiscoverWorkflowFiles(dir string) ([]WorkflowFile, error) {
 			continue
 		}
 		name := entry.Name()
-		if !strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml") {
+		if !strings.HasSuffix(name, workflowFileExtension) && !strings.HasSuffix(name, ".yml") {
 			continue
 		}
 		path := filepath.Join(dir, name)
@@ -77,15 +68,77 @@ func DiscoverWorkflowFiles(dir string) ([]WorkflowFile, error) {
 	return files, nil
 }
 
-// WorkflowsDir returns the workflows directory for a given collection file path.
+// workflowFileExtension is the extension workflows are saved with; .yml files are read too.
+const workflowFileExtension = ".yaml"
+
+// collectionFileSuffixes are dropped from a collection's file name to name its workflows folder.
+var collectionFileSuffixes = []string{".postman_collection.json", ".json"}
+
+// WorkflowsDir returns the workflows directory beside a collection file, shared by every collection
+// in that directory: it holds one folder per collection (see CollectionWorkflowsDir).
 // E.g. "/path/to/MyCollection.json" → "/path/to/workflows".
 func WorkflowsDir(collectionPath string) string {
 	return filepath.Join(filepath.Dir(collectionPath), "workflows")
 }
 
-// WorkflowPath returns the file path for a workflow given the collection path and workflow ID.
+// CollectionWorkflowsDir returns the collection's own workflows folder, so collections in one
+// directory never see or overwrite each other's workflows.
+// E.g. "/path/to/SAPI.postman_collection.json" → "/path/to/workflows/SAPI".
+func CollectionWorkflowsDir(collectionPath string) string {
+	name := filepath.Base(collectionPath)
+	for _, suffix := range collectionFileSuffixes {
+		if trimmed, found := strings.CutSuffix(name, suffix); found {
+			name = trimmed
+			break
+		}
+	}
+	return filepath.Join(WorkflowsDir(collectionPath), name)
+}
+
+// WorkflowPath returns the file the collection's workflow id is saved in: its own folder's, unless
+// only a legacy shared file has that id, so editing a workflow saves it where it lives.
 func WorkflowPath(collectionPath, id string) string {
-	return filepath.Join(WorkflowsDir(collectionPath), id+".yaml")
+	own := filepath.Join(CollectionWorkflowsDir(collectionPath), id+workflowFileExtension)
+	legacy := filepath.Join(WorkflowsDir(collectionPath), id+workflowFileExtension)
+	if !fileExists(own) && fileExists(legacy) {
+		return legacy
+	}
+	return own
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// DiscoverCollectionWorkflowFiles loads the collection's workflows: those in its own folder, then
+// the legacy ones directly in the shared workflows directory, which every collection beside it
+// sees, unless its own folder has one with the same id.
+func DiscoverCollectionWorkflowFiles(collectionPath string) ([]WorkflowFile, error) {
+	own, err := DiscoverWorkflowFiles(CollectionWorkflowsDir(collectionPath))
+	if err != nil {
+		return nil, err
+	}
+	shared, err := DiscoverWorkflowFiles(WorkflowsDir(collectionPath))
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range shared {
+		if !slices.ContainsFunc(own, func(o WorkflowFile) bool { return o.Workflow.ID == file.Workflow.ID }) {
+			own = append(own, file)
+		}
+	}
+	return own, nil
+}
+
+// DiscoverCollectionWorkflows is DiscoverCollectionWorkflowFiles without the file paths.
+func DiscoverCollectionWorkflows(collectionPath string) ([]*Workflow, error) {
+	files, err := DiscoverCollectionWorkflowFiles(collectionPath)
+	var workflows []*Workflow
+	for _, file := range files {
+		workflows = append(workflows, file.Workflow)
+	}
+	return workflows, err
 }
 
 // NewWorkflow returns a skeleton workflow template for the given ID.

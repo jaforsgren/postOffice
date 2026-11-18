@@ -15,7 +15,7 @@ postOffice run collection.json --folder smoke -e staging.json
 postOffice run collection.json -e staging.json
 
 # Workflow
-postOffice workflow run workflows/check.yaml -e staging.json
+postOffice workflow run workflows/api/check.yaml -e staging.json
 ```
 
 Collections, environments and workflows can also be given by name instead of file path. Names are matched against loaded files (see `ls`), ignoring case: a collection or environment by its own name or file name (`SAPI` for `SAPI.postman_collection.json`), and a workflow by its ID, name or file name.

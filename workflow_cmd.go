@@ -139,7 +139,7 @@ func findWorkflowCollection(workflowPath string) (string, error) {
 	}
 	var loaded []string
 	for _, path := range loadedCollectionPaths(parser) {
-		if workflow.WorkflowsDir(path) == workflowsDir {
+		if ownsWorkflowsDir(path, workflowsDir) {
 			loaded = append(loaded, path)
 		}
 	}
@@ -150,11 +150,26 @@ func findWorkflowCollection(workflowPath string) (string, error) {
 		return singleCollection(loaded, workflowPath)
 	}
 
-	siblings, err := postmanCollectionsIn(filepath.Dir(workflowsDir))
-	if err != nil {
-		return "", err
+	// A legacy shared workflows directory sits beside its collections, a collection's own folder one level deeper.
+	var owners []string
+	for _, dir := range []string{filepath.Dir(workflowsDir), filepath.Dir(filepath.Dir(workflowsDir))} {
+		siblings, err := postmanCollectionsIn(dir)
+		if err != nil {
+			return "", err
+		}
+		for _, path := range siblings {
+			if ownsWorkflowsDir(path, workflowsDir) && !slices.Contains(owners, path) {
+				owners = append(owners, path)
+			}
+		}
 	}
-	return singleCollection(siblings, workflowPath)
+	return singleCollection(owners, workflowPath)
+}
+
+// ownsWorkflowsDir reports whether workflows in dir belong to the collection:
+// its own workflows folder, or the shared directory holding legacy files.
+func ownsWorkflowsDir(collectionPath, dir string) bool {
+	return workflow.CollectionWorkflowsDir(collectionPath) == dir || workflow.WorkflowsDir(collectionPath) == dir
 }
 
 func singleCollection(candidates []string, workflowPath string) (string, error) {

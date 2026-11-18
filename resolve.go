@@ -96,13 +96,14 @@ type savedWorkflow struct {
 	collectionPaths []string
 }
 
-// workflowsSavedNextTo lists the workflows saved next to collectionPaths, once
-// per file: collections in the same directory share its workflows directory.
+// workflowsSavedNextTo lists the workflows of collectionPaths, once per file:
+// legacy files directly in a shared workflows directory belong to every
+// collection beside it.
 func workflowsSavedNextTo(collectionPaths []string) ([]savedWorkflow, error) {
 	var saved []savedWorkflow
 	indexByPath := make(map[string]int)
 	for _, collectionPath := range collectionPaths {
-		files, err := workflow.DiscoverWorkflowFiles(workflow.WorkflowsDir(collectionPath))
+		files, err := workflow.DiscoverCollectionWorkflowFiles(collectionPath)
 		if err != nil {
 			return nil, err
 		}

@@ -22,9 +22,21 @@ func writeLoadedConfig(t *testing.T, collectionPaths, envPaths []string) {
 	writeJSONFile(t, home, configFileName, postman.PersistenceConfig{CollectionPaths: collectionPaths, EnvironmentPaths: envPaths})
 }
 
+// saveWorkflowFor saves wf in the collection's own workflows folder.
 func saveWorkflowFor(t *testing.T, collectionPath string, wf *workflow.Workflow) string {
 	t.Helper()
-	path := workflow.WorkflowPath(collectionPath, wf.ID)
+	return saveWorkflowAt(t, workflow.WorkflowPath(collectionPath, wf.ID), wf)
+}
+
+// saveSharedWorkflow saves wf as a legacy file directly in the workflows directory, which every
+// collection beside it shares.
+func saveSharedWorkflow(t *testing.T, collectionPath string, wf *workflow.Workflow) string {
+	t.Helper()
+	return saveWorkflowAt(t, filepath.Join(workflow.WorkflowsDir(collectionPath), wf.ID+".yaml"), wf)
+}
+
+func saveWorkflowAt(t *testing.T, path string, wf *workflow.Workflow) string {
+	t.Helper()
 	if err := workflow.SaveWorkflow(wf, path); err != nil {
 		t.Fatal(err)
 	}
@@ -60,14 +72,25 @@ func TestFindWorkflowCollection(t *testing.T) {
 		}
 	})
 
-	t.Run("several sibling collections are ambiguous", func(t *testing.T) {
+	t.Run("several sibling collections sharing a legacy workflow are ambiguous", func(t *testing.T) {
 		writeLoadedConfig(t, nil, nil)
 		f := newFixture(t, apiServer(t))
 		writeJSONFile(t, f.dir, "other.postman_collection.json", apiCollection())
 
-		_, err := findWorkflowCollection(saveWorkflowFor(t, f.collectionPath, healthWorkflow()))
+		_, err := findWorkflowCollection(saveSharedWorkflow(t, f.collectionPath, healthWorkflow()))
 		if !errors.Is(err, errAmbiguousCollection) || !errors.Is(err, errUsage) {
 			t.Errorf("err = %v, want errAmbiguousCollection", err)
+		}
+	})
+
+	t.Run("a workflow in a collection's own folder belongs to that sibling only", func(t *testing.T) {
+		writeLoadedConfig(t, nil, nil)
+		f := newFixture(t, apiServer(t))
+		writeJSONFile(t, f.dir, "other.postman_collection.json", apiCollection())
+
+		got, err := findWorkflowCollection(saveWorkflowFor(t, f.collectionPath, healthWorkflow()))
+		if err != nil || got != f.collectionPath {
+			t.Errorf("got %q, %v, want %q", got, err, f.collectionPath)
 		}
 	})
 

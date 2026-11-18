@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -90,8 +91,8 @@ func TestLsRequest_ResolvesCollectionByName(t *testing.T) {
 	}
 }
 
-// sharedWorkflowsFixture loads two collections from one directory, so they
-// share its workflows directory, with one workflow saved there.
+// sharedWorkflowsFixture loads two collections from one directory with one
+// legacy workflow saved directly in their shared workflows directory.
 func sharedWorkflowsFixture(t *testing.T) (f fixture, other string) {
 	t.Helper()
 	f = newFixture(t, apiServer(t))
@@ -99,7 +100,7 @@ func sharedWorkflowsFixture(t *testing.T) (f fixture, other string) {
 	otherCollection.Info.Name = "Other"
 	other = writeJSONFile(t, f.dir, "other.postman_collection.json", otherCollection)
 	writeLoadedConfig(t, []string{f.collectionPath, other}, []string{f.envPath})
-	saveWorkflowFor(t, f.collectionPath, healthWorkflow())
+	saveSharedWorkflow(t, f.collectionPath, healthWorkflow())
 	return f, other
 }
 
@@ -131,6 +132,18 @@ func TestWorkflowRun_SharedWorkflowWithoutASelectedOwnerIsAmbiguous(t *testing.T
 
 	if code != exitUsage || !strings.Contains(errOut, errAmbiguousCollection.Error()) {
 		t.Errorf("code %d, stderr %q, want errAmbiguousCollection", code, errOut)
+	}
+}
+
+func TestWorkflowsSavedNextTo_OwnWorkflowsBelongToOneCollection(t *testing.T) {
+	f := newFixture(t, apiServer(t))
+	other := writeJSONFile(t, f.dir, "other.postman_collection.json", apiCollection())
+	saveWorkflowFor(t, f.collectionPath, healthWorkflow())
+
+	saved, err := workflowsSavedNextTo([]string{f.collectionPath, other})
+
+	if err != nil || len(saved) != 1 || !slices.Equal(saved[0].collectionPaths, []string{f.collectionPath}) {
+		t.Errorf("got %+v, %v, want the workflow owned by its own collection only", saved, err)
 	}
 }
 

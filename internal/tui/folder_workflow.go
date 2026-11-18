@@ -139,7 +139,7 @@ func (m Model) discoverWorkflows(collectionName string) (string, []*workflow.Wor
 	if !exists {
 		return "", nil, errCollectionPathNotFound
 	}
-	wfs, err := workflow.DiscoverWorkflows(workflow.WorkflowsDir(collectionPath))
+	wfs, err := workflow.DiscoverCollectionWorkflows(collectionPath)
 	return collectionPath, wfs, err
 }
 

@@ -16,7 +16,7 @@ Next to each collection:
 | File | Contents |
 |---|---|
 | `<collection>.dependencies.yaml` | [Request dependencies](dependencies.md) |
-| `workflows/*.yaml` | [Workflows](workflows.md) |
+| `workflows/<collection>/*.yaml` | [Workflows](workflows.md) |
 
 ## Environment variables
 

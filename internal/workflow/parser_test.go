@@ -3,6 +3,7 @@ package workflow
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -67,9 +68,9 @@ func TestLoadWorkflow_fileNotFound(t *testing.T) {
 	}
 }
 
-func TestDiscoverWorkflows_emptyDir(t *testing.T) {
+func TestDiscoverWorkflowFiles_emptyDir(t *testing.T) {
 	dir := t.TempDir()
-	workflows, err := DiscoverWorkflows(dir)
+	workflows, err := DiscoverWorkflowFiles(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -78,8 +79,8 @@ func TestDiscoverWorkflows_emptyDir(t *testing.T) {
 	}
 }
 
-func TestDiscoverWorkflows_nonexistentDir(t *testing.T) {
-	workflows, err := DiscoverWorkflows("/nonexistent/workflows")
+func TestDiscoverWorkflowFiles_nonexistentDir(t *testing.T) {
+	workflows, err := DiscoverWorkflowFiles("/nonexistent/workflows")
 	if err != nil {
 		t.Fatalf("expected nil error for missing dir, got: %v", err)
 	}
@@ -88,7 +89,7 @@ func TestDiscoverWorkflows_nonexistentDir(t *testing.T) {
 	}
 }
 
-func TestDiscoverWorkflows_multipleFiles(t *testing.T) {
+func TestDiscoverWorkflowFiles_multipleFiles(t *testing.T) {
 	dir := t.TempDir()
 
 	files := map[string]string{
@@ -104,7 +105,7 @@ func TestDiscoverWorkflows_multipleFiles(t *testing.T) {
 		}
 	}
 
-	workflows, err := DiscoverWorkflows(dir)
+	workflows, err := DiscoverWorkflowFiles(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,9 +123,21 @@ func TestWorkflowsDir(t *testing.T) {
 	}
 }
 
+func TestCollectionWorkflowsDir(t *testing.T) {
+	for collectionPath, want := range map[string]string{
+		"/c/SAPI.postman_collection.json": "/c/workflows/SAPI",
+		"/c/my.json":                      "/c/workflows/my",
+		"/c/export":                       "/c/workflows/export",
+	} {
+		if got := CollectionWorkflowsDir(collectionPath); got != want {
+			t.Errorf("CollectionWorkflowsDir(%q) = %q, want %q", collectionPath, got, want)
+		}
+	}
+}
+
 func TestWorkflowPath(t *testing.T) {
 	got := WorkflowPath("/home/user/collections/my.json", "login-flow")
-	want := "/home/user/collections/workflows/login-flow.yaml"
+	want := "/home/user/collections/workflows/my/login-flow.yaml"
 	if got != want {
 		t.Errorf("WorkflowPath = %q, want %q", got, want)
 	}
@@ -242,5 +255,69 @@ func TestSaveWorkflow_roundtrip(t *testing.T) {
 	}
 	if len(loaded.Steps) != 1 || loaded.Steps[0].Request != "Folder/Request" {
 		t.Errorf("Steps not preserved correctly: %+v", loaded.Steps)
+	}
+}
+
+func writeWorkflowFile(t *testing.T, path, id string) {
+	t.Helper()
+	if err := SaveWorkflow(&Workflow{ID: id, Name: id, Steps: []Step{}}, path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func discoveredIDs(t *testing.T, collectionPath string) []string {
+	t.Helper()
+	files, err := DiscoverCollectionWorkflowFiles(collectionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, file := range files {
+		ids = append(ids, file.Workflow.ID)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+func TestDiscoverCollectionWorkflowFiles_collectionsBesideEachOtherKeepTheirOwn(t *testing.T) {
+	dir := t.TempDir()
+	sapi := filepath.Join(dir, "SAPI.postman_collection.json")
+	stories := filepath.Join(dir, "stories.postman_collection.json")
+	writeWorkflowFile(t, WorkflowPath(sapi, "auth-test"), "auth-test")
+	writeWorkflowFile(t, WorkflowPath(stories, "stories"), "stories")
+	writeWorkflowFile(t, filepath.Join(WorkflowsDir(sapi), "legacy.yaml"), "legacy")
+
+	if got := discoveredIDs(t, sapi); !slices.Equal(got, []string{"auth-test", "legacy"}) {
+		t.Errorf("SAPI sees %v, want its own and the legacy shared one", got)
+	}
+	if got := discoveredIDs(t, stories); !slices.Equal(got, []string{"legacy", "stories"}) {
+		t.Errorf("stories sees %v, want its own and the legacy shared one", got)
+	}
+}
+
+func TestDiscoverCollectionWorkflowFiles_ownWorkflowHidesLegacyWithTheSameID(t *testing.T) {
+	collection := filepath.Join(t.TempDir(), "my.json")
+	writeWorkflowFile(t, filepath.Join(CollectionWorkflowsDir(collection), "flow.yaml"), "flow")
+	writeWorkflowFile(t, filepath.Join(WorkflowsDir(collection), "flow.yaml"), "flow")
+
+	files, err := DiscoverCollectionWorkflowFiles(collection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || filepath.Dir(files[0].Path) != CollectionWorkflowsDir(collection) {
+		t.Errorf("files = %+v, want only the collection's own flow", files)
+	}
+}
+
+func TestWorkflowPath_legacyWorkflowIsSavedWhereItLives(t *testing.T) {
+	collection := filepath.Join(t.TempDir(), "my.json")
+	legacy := filepath.Join(WorkflowsDir(collection), "flow.yaml")
+	writeWorkflowFile(t, legacy, "flow")
+
+	if got := WorkflowPath(collection, "flow"); got != legacy {
+		t.Errorf("WorkflowPath = %q, want the legacy file %q", got, legacy)
+	}
+	if got := WorkflowPath(collection, "new"); filepath.Dir(got) != CollectionWorkflowsDir(collection) {
+		t.Errorf("WorkflowPath for a new workflow = %q, want the collection's own folder", got)
 	}
 }
