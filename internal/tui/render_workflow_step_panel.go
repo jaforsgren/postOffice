@@ -106,17 +106,21 @@ func (m Model) buildStepPanelLines(width int) []string {
 	lines = append(lines, "")
 	lines = append(lines, m.stepLogLines(ss)...)
 	lines = append(lines, "")
-	if ss.LastResponse == nil {
-		lines = append(lines, subtleStyle.Render(stepPanelNoResponseMessage))
-	} else {
-		responseModel := m
-		responseModel.lastResponse = ss.LastResponse
-		lines = append(lines, responseModel.buildRequestSection()...)
-		lines = append(lines, "")
-		lines = append(lines, responseModel.buildResponseSection()...)
-	}
+	lines = append(lines, stepExchangeLines(m, ss)...)
 
 	return wrapLines(lines, width)
+}
+
+// stepExchangeLines is the request a step run sent and the response it got,
+// or a placeholder when it got none.
+func stepExchangeLines(m Model, ss *workflow.StepState) []string {
+	if ss.LastResponse == nil {
+		return []string{subtleStyle.Render(stepPanelNoResponseMessage)}
+	}
+	m.lastResponse = ss.LastResponse
+	lines := m.buildRequestSection()
+	lines = append(lines, "")
+	return append(lines, m.buildResponseSection()...)
 }
 
 func (m Model) stepPanelBorderColor() lipgloss.Color {

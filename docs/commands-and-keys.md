@@ -166,7 +166,7 @@ The gRPC editor adds `enter` to toggle TLS and `ctrl+f` to browse server reflect
 | `tab` | Step panel (`[` / `]` scroll it) |
 | `z` / `Z` | Expand/collapse the folder step / all folder steps |
 | `X` | Abort the running step: the selected one, else the innermost. The run carries on |
-| `i` | Step info |
+| `i` | Step info: request, logs, last request sent and response |
 | `ctrl+d` | Delete step |
 | `o` | Open the run report |
 

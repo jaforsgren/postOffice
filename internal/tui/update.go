@@ -2556,6 +2556,8 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 	if ss := m.selectedRunStepState(); ss != nil {
 		lines = append(lines, "")
 		lines = append(lines, m.stepLogLines(ss)...)
+		lines = append(lines, "")
+		lines = append(lines, stepExchangeLines(m, ss)...)
 	}
 	m.configureViewport(&m.infoViewport, strings.Join(lines, "\n"))
 	m.statusMessage = fmt.Sprintf("Inspecting: %s  (esc to return to workflow)", step.Target())

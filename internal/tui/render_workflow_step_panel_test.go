@@ -266,6 +266,23 @@ func TestShowWorkflowStepInfo_ListsTheStepRunLogs(t *testing.T) {
 	}
 }
 
+func TestShowWorkflowStepInfo_ShowsTheStepRunResponse(t *testing.T) {
+	m := panelTestModel()
+	m.activeWorkflow.Steps[0].Request = formRequestName
+	m.workflowStepCursor = 0
+	m.workflowState.StepIndex[loginStepID].LastResponse.Headers = map[string][]string{"X-Trace": {"t-1"}}
+
+	m, _ = m.showWorkflowStepInfo()
+
+	m.infoViewport.Height = manyLogLines
+	info := ansi.Strip(m.infoViewport.View())
+	for _, want := range []string{"RESPONSE", "Status: 200 OK", "X-Trace: t-1", "\"token\": \"abc\""} {
+		if !strings.Contains(info, want) {
+			t.Errorf("info view lacks %q:\n%s", want, info)
+		}
+	}
+}
+
 func TestShowWorkflowStepInfo_NotRunStepHasNoLogsSection(t *testing.T) {
 	m := panelTestModel()
 	m.activeWorkflow.Steps[0].Request = formRequestName
