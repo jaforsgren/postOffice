@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"context"
 	"encoding/json"
 	"postOffice/internal/engine"
 	"postOffice/internal/http"
@@ -20,7 +21,7 @@ func TestExecuteItem_FailedSendLogsProtocolAndReportsErrorBody(t *testing.T) {
 	item := &postman.Item{Name: "Order placed", Request: &postman.Request{Method: "POST", URL: postman.URL{Raw: "asb://orders"}}}
 	runner := runnerFor(&postman.Collection{Items: []postman.Item{*item}})
 
-	outcome, err := runner.executeItem(item, item.Name)
+	outcome, err := runner.executeItem(context.Background(), item, item.Name)
 	if err != nil {
 		t.Fatalf("executeItem() error = %v", err)
 	}
@@ -41,7 +42,7 @@ func TestExecuteItem_RejectsFolders(t *testing.T) {
 	folder := &postman.Item{Name: "Users", Items: []postman.Item{{Name: "List", Request: &postman.Request{Method: "GET"}}}}
 	runner := runnerFor(&postman.Collection{Items: []postman.Item{*folder}})
 
-	if _, err := runner.executeItem(folder, folder.Name); err == nil || !strings.Contains(err.Error(), "is not a request") {
+	if _, err := runner.executeItem(context.Background(), folder, folder.Name); err == nil || !strings.Contains(err.Error(), "is not a request") {
 		t.Errorf("executeItem(folder) error = %v, want a not-a-request error", err)
 	}
 }

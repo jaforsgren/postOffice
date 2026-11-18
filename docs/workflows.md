@@ -434,6 +434,8 @@ The workflow detail view has keys to add steps and run part of a workflow (`<` u
 
 Run reports (`o`) open in `$VISUAL`, `$EDITOR`, or `nvim`, with Vim folding.
 
+`X` in the workflow detail and run views aborts one running step: the selected step if it is running, else the innermost running one. On a folder step it ends that sub-workflow. The step shows `stopped` with an `[ABORT]` log line, the workflow carries on with the next step, and the run ends `failed`.
+
 `ctrl+x` in the workflow views cancels a running workflow, as `ctrl+c` does for `postOffice run` and `postOffice workflow run`. The request being sent is abandoned, `wf.sleep` and the script are interrupted, and the run ends as `stopped` ("run cancelled"); steps not yet run show as skipped.
 
 ### Run options

@@ -40,13 +40,16 @@ func (m Model) renderWorkflowDetail() string {
 			Render(content)
 	}
 
+	rows := m.workflowStepRows()
+	colors := m.workflowRowColors(rows)
 	visibleLines := h - len(headerLines) - 1
-	startIdx, endIdx := calculateVisibleWindow(m.workflowStepCursor, len(wf.Steps), visibleLines)
+	startIdx, endIdx := calculateVisibleWindow(m.workflowStepCursor, len(rows), visibleLines)
 
 	lines := append([]string{}, headerLines...)
 
 	for i := startIdx; i < endIdx; i++ {
-		step := wf.Steps[i]
+		row := rows[i]
+		step := row.step
 		selected := i == m.workflowStepCursor
 
 		cursor := "  "
@@ -54,7 +57,12 @@ func (m Model) renderWorkflowDetail() string {
 			cursor = "> "
 		}
 
-		num := workflowMetaStyle.Render(fmt.Sprintf("[%d]", i+1))
+		// Sub-workflow steps are numbered by their folder step, so only the workflow's own steps get a number.
+		num := workflowMetaStyle.Render(fmt.Sprintf("%-4s", ""))
+		if row.isTopLevel() {
+			num = workflowMetaStyle.Render(fmt.Sprintf("%-4s", fmt.Sprintf("[%d]", row.index+1)))
+		}
+		prefix := workflowRowBars(row, colors, styledRunStyler) + m.folderStepMarker(row)
 		stepIDStr := fmt.Sprintf("%-20s", step.ID)
 		requestStr := stepTargetLabel(step)
 		if len(requestStr) > 40 {
@@ -69,13 +77,11 @@ func (m Model) renderWorkflowDetail() string {
 
 		// Step run state icon (from current/last workflow execution)
 		runStateStr := ""
-		if m.workflowState.StepIndex != nil {
-			if ss, ok := m.workflowState.StepIndex[step.ID]; ok && ss.Status != workflow.StatusPending {
-				icon := workflow.StatusIcon(ss.Status)
-				runStateStr = "  " + workflowStatusStyle(ss.Status).Render(icon+" "+ss.Status)
-				if ss.Total > 1 {
-					runStateStr += workflowMetaStyle.Render(fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total))
-				}
+		if ss := m.runStepState(row.runID); ss != nil && ss.Status != workflow.StatusPending {
+			icon := workflow.StatusIcon(ss.Status)
+			runStateStr = "  " + workflowStatusStyle(ss.Status).Render(icon+" "+ss.Status)
+			if ss.Total > 1 {
+				runStateStr += workflowMetaStyle.Render(fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total))
 			}
 		}
 
@@ -100,13 +106,13 @@ func (m Model) renderWorkflowDetail() string {
 		}
 
 		if selected {
-			fullLine := cursor + num + " " +
+			fullLine := cursor + num + " " + prefix +
 				lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).Render(stepIDStr) +
 				"  " + subtleStyle.Render(requestStr) +
 				annotationStr + runStateStr + executionInfo
 			lines = append(lines, selectedItemStyle.Render(fullLine))
 		} else {
-			fullLine := cursor + num + " " + normalItemStyle.Render(stepIDStr) +
+			fullLine := cursor + num + " " + prefix + normalItemStyle.Render(stepIDStr) +
 				"  " + subtleStyle.Render(requestStr) +
 				annotationStr + runStateStr + executionInfo
 			lines = append(lines, normalItemStyle.Render(fullLine))
@@ -196,7 +202,10 @@ const (
 	subWorkflowBar    = "▌ "
 	subWorkflowIndent = "  "
 	// folderStepLabel prefixes the folder a folder step runs.
-	folderStepLabel = "folder "
+	folderStepLabel           = "folder "
+	folderStepCollapsedMarker = "▸ "
+	folderStepExpandedMarker  = "▾ "
+	folderStepMarkerBlank     = "  "
 )
 
 func (m Model) buildWorkflowRunLines() []string {
@@ -273,25 +282,67 @@ func stepTargetLabel(step workflow.Step) string {
 func subWorkflowColorIndexes(state workflow.ExecutionState) map[string]int {
 	indexes := make(map[string]int)
 	for _, ss := range state.Steps {
-		if _, numbered := indexes[ss.ID]; ss.IsFolder() && !numbered {
-			indexes[ss.ID] = len(indexes)
+		if ss.IsFolder() {
+			numberColor(indexes, ss.ID)
 		}
 	}
 	return indexes
 }
 
+func numberColor(indexes map[string]int, folderStepID string) {
+	if _, numbered := indexes[folderStepID]; !numbered {
+		indexes[folderStepID] = len(indexes)
+	}
+}
+
 // groupBars marks the sub-workflows a step is in with a bar each, outermost
 // first; a folder step's own line also carries the bar of the sub-workflow it heads.
 func groupBars(ss *workflow.StepState, colors map[string]int, style runStyler) string {
-	groups := ss.Groups
-	if ss.IsFolder() {
-		groups = append(slices.Clone(groups), ss.ID)
+	return barsFor(ss.Groups, ss.ID, ss.IsFolder(), colors, style)
+}
+
+func barsFor(groups []string, stepID string, isFolder bool, colors map[string]int, style runStyler) string {
+	if isFolder {
+		groups = append(slices.Clone(groups), stepID)
 	}
 	var bars strings.Builder
 	for _, group := range groups {
 		bars.WriteString(style.groupBar(colors[group]))
 	}
 	return bars.String()
+}
+
+// workflowRowBars is groupBars for a row of the workflow detail step list.
+func workflowRowBars(row workflowStepRow, colors map[string]int, style runStyler) string {
+	return barsFor(row.groups, row.runID, row.step.IsFolder(), colors, style)
+}
+
+// workflowRowColors numbers folder steps like the run report does, so a
+// sub-workflow has the same colour in both, then any not run yet in row order.
+func (m Model) workflowRowColors(rows []workflowStepRow) map[string]int {
+	colors := map[string]int{}
+	if m.activeWorkflow != nil && m.workflowState.WorkflowID == m.activeWorkflow.ID {
+		colors = subWorkflowColorIndexes(m.workflowState)
+	}
+	for _, row := range rows {
+		if row.step.IsFolder() {
+			numberColor(colors, row.runID)
+		}
+	}
+	return colors
+}
+
+// folderStepMarker shows whether a folder step is expanded; other steps get
+// the same width of space so their labels line up.
+func (m Model) folderStepMarker(row workflowStepRow) string {
+	switch {
+	case !row.step.IsFolder():
+		return folderStepMarkerBlank
+	case m.isWorkflowStepExpanded(row.runID):
+		return folderStepExpandedMarker
+	default:
+		return folderStepCollapsedMarker
+	}
 }
 
 // runReportStepLine is one step's report line, after the bars of the

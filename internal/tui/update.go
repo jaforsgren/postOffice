@@ -2499,16 +2499,11 @@ func resolveItemPath(collection *postman.Collection, requestPath string) (*postm
 
 // editWorkflowStepRequest navigates to the step's underlying request and enters edit mode.
 func (m Model) editWorkflowStepRequest() (Model, tea.Cmd) {
-	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
+	step, ok := m.selectedWorkflowStep()
+	if !ok {
 		m.statusMessage = "No step selected"
 		return m, nil
 	}
-	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
-		m.statusMessage = "No step selected"
-		return m, nil
-	}
-
-	step := m.activeWorkflow.Steps[m.workflowStepCursor]
 	item, folderPath, err := m.resolveStepItem(step.Target())
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Cannot find request %q: %v", step.Target(), err)
@@ -2528,16 +2523,11 @@ func (m Model) editWorkflowStepRequest() (Model, tea.Cmd) {
 
 // showWorkflowStepInfo opens the Info view for the step's underlying request.
 func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
-	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
+	step, ok := m.selectedWorkflowStep()
+	if !ok {
 		m.statusMessage = "No step selected"
 		return m, nil
 	}
-	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
-		m.statusMessage = "No step selected"
-		return m, nil
-	}
-
-	step := m.activeWorkflow.Steps[m.workflowStepCursor]
 	item, folderPath, err := m.resolveStepItem(step.Target())
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Cannot find %q: %v", step.Target(), err)
@@ -2554,7 +2544,7 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 	stepInfoModel := m
 	stepInfoModel.breadcrumb = m.workflowViewPath(folderPath)
 	lines := stepInfoModel.buildItemInfoLines()
-	if ss := m.runStepState(step.ID); ss != nil {
+	if ss := m.selectedRunStepState(); ss != nil {
 		lines = append(lines, "")
 		lines = append(lines, m.stepLogLines(ss)...)
 	}
@@ -2600,10 +2590,11 @@ func (m Model) showWorkflowStepResponse() (Model, tea.Cmd) {
 // handleDeleteWorkflowStepKey asks before deleting the selected step; without one,
 // deleteWorkflowStep reports why nothing can be deleted.
 func handleDeleteWorkflowStepKey(m Model) (Model, tea.Cmd) {
-	if m.activeWorkflow == nil || m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
+	index, err := m.selectedTopLevelStepIndex()
+	if err != nil {
 		return m.deleteWorkflowStep()
 	}
-	step := m.activeWorkflow.Steps[m.workflowStepCursor]
+	step := m.activeWorkflow.Steps[index]
 	return m.confirmDeletion(fmt.Sprintf("step %q", step.ID), Model.deleteWorkflowStep), nil
 }
 
@@ -2613,8 +2604,9 @@ func (m Model) deleteWorkflowStep() (Model, tea.Cmd) {
 		m.statusMessage = "No step to delete"
 		return m, nil
 	}
-	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
-		m.statusMessage = "No step selected"
+	index, err := m.selectedTopLevelStepIndex()
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Cannot delete step: %v", err)
 		return m, nil
 	}
 	if m.collection == nil {
@@ -2622,17 +2614,14 @@ func (m Model) deleteWorkflowStep() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	deletedID := m.activeWorkflow.Steps[m.workflowStepCursor].ID
+	deletedID := m.activeWorkflow.Steps[index].ID
 	m.activeWorkflow.Steps = append(
-		m.activeWorkflow.Steps[:m.workflowStepCursor],
-		m.activeWorkflow.Steps[m.workflowStepCursor+1:]...,
+		m.activeWorkflow.Steps[:index],
+		m.activeWorkflow.Steps[index+1:]...,
 	)
 
-	if m.workflowStepCursor >= len(m.activeWorkflow.Steps) && m.workflowStepCursor > 0 {
-		m.workflowStepCursor--
-	}
+	m.workflowStepCursor = min(m.workflowStepCursor, max(len(m.workflowStepRows())-1, 0))
 
-	var err error
 	if m, err = m.saveActiveWorkflow(); err != nil {
 		m.statusMessage = fmt.Sprintf("Deleted step %q but failed to save: %v", deletedID, err)
 		return m, nil
@@ -2705,6 +2694,7 @@ func (m Model) launchRun(environment *postman.Environment, run workflowRun) (Mod
 	runner := workflow.NewRunner(m.workflowCollection(), environment, m.engine).WithFolderWorkflows(m.folderWorkflowSource())
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelWorkflowRun = cancel
+	m.abortWorkflowStep = runner.Abort
 
 	return m, tea.Batch(
 		func() tea.Msg {

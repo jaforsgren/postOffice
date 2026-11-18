@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"slices"
 
+	"postOffice/internal/workflow"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 const (
-	cancelRequestKey = "ctrl+x"
-	statusCancelled  = "Cancelled"
+	cancelRequestKey     = "ctrl+x"
+	abortWorkflowStepKey = "X"
+	statusCancelled      = "Cancelled"
 )
 
 // workflowRunModes are the views ctrl+x cancels the workflow run from.
@@ -43,7 +46,46 @@ func (m Model) forgetWorkflowRun() Model {
 		m.cancelWorkflowRun()
 		m.cancelWorkflowRun = nil
 	}
+	m.abortWorkflowStep = nil
 	return m
+}
+
+// handleAbortWorkflowStepKey aborts one running step, a request or a whole
+// folder step, and lets the run carry on with the next step.
+func handleAbortWorkflowStepKey(m Model) (Model, tea.Cmd) {
+	if m.abortWorkflowStep == nil {
+		m.statusMessage = "No workflow is running"
+		return m, nil
+	}
+	runID, ok := m.abortableWorkflowStepID()
+	if !ok {
+		m.statusMessage = "No step is running"
+		return m, nil
+	}
+	if !m.abortWorkflowStep(runID) {
+		m.statusMessage = fmt.Sprintf("Step %q already finished", runID)
+		return m, nil
+	}
+	m.statusMessage = fmt.Sprintf("Aborting step %q, the run carries on...", runID)
+	return m, nil
+}
+
+// abortableWorkflowStepID is the selected step when it is running (workflow
+// detail), else the innermost running step: sub-steps are listed after their
+// folder step, so the last running one is the deepest.
+func (m Model) abortableWorkflowStepID() (string, bool) {
+	if m.mode == ModeWorkflowDetail {
+		if ss := m.selectedRunStepState(); ss != nil && ss.Status == workflow.StatusRunning {
+			return ss.ID, true
+		}
+	}
+	steps := m.workflowState.Steps
+	for i := len(steps) - 1; i >= 0; i-- {
+		if steps[i].Status == workflow.StatusRunning {
+			return steps[i].ID, true
+		}
+	}
+	return "", false
 }
 
 // handleCancelRequestKey cancels the selected request while it is being

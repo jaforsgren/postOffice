@@ -756,6 +756,27 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeRequests},
 		},
 		{
+			Keys:        []string{abortWorkflowStepKey},
+			Description: "Abort the running step (selected, else innermost); the run carries on",
+			ShortHelp:   abortWorkflowStepKey,
+			Handler:     handleAbortWorkflowStepKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail, ModeWorkflowRun},
+		},
+		{
+			Keys:        []string{expandFolderKey},
+			Description: "Expand/collapse folder step (its sub-workflow's steps)",
+			ShortHelp:   expandFolderKey,
+			Handler:     handleToggleWorkflowStepExpandKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
+		},
+		{
+			Keys:        []string{expandAllFoldersKey},
+			Description: "Expand/collapse all folder steps",
+			ShortHelp:   expandAllFoldersKey,
+			Handler:     handleToggleAllWorkflowStepsExpandKey,
+			AvailableIn: []ViewMode{ModeWorkflowDetail},
+		},
+		{
 			Keys:        []string{nextFolderKey},
 			Description: "Jump to next folder",
 			ShortHelp:   "shift+↑/↓",
@@ -1658,7 +1679,7 @@ func handleUpKey(m Model) (Model, tea.Cmd) {
 
 func handleDownKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeWorkflowDetail {
-		if m.activeWorkflow != nil && m.workflowStepCursor < len(m.activeWorkflow.Steps)-1 {
+		if m.workflowStepCursor < len(m.workflowStepRows())-1 {
 			m.workflowStepCursor++
 			m.workflowStepPanelScroll = 0
 		}
@@ -1987,27 +2008,38 @@ func handleRunFullWorkflowKey(m Model) (Model, tea.Cmd) {
 }
 
 func handleWorkflowRunUpToKey(m Model) (Model, tea.Cmd) {
-	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
-		m.statusMessage = "No steps to run"
-		return m, nil
-	}
-	return m.startWorkflowPartial(m.activeWorkflow, 0, m.workflowStepCursor)
+	return m.runSelectedStepRange(func(selected, last int) (int, int) { return 0, selected })
 }
 
 func handleWorkflowRunFromKey(m Model) (Model, tea.Cmd) {
-	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
-		m.statusMessage = "No steps to run"
-		return m, nil
-	}
-	return m.startWorkflowPartial(m.activeWorkflow, m.workflowStepCursor, len(m.activeWorkflow.Steps)-1)
+	return m.runSelectedStepRange(func(selected, last int) (int, int) { return selected, last })
 }
 
 func handleWorkflowRunStepKey(m Model) (Model, tea.Cmd) {
+	return m.runSelectedStepRange(func(selected, last int) (int, int) { return selected, selected })
+}
+
+// runSelectedStepRange runs the steps span picks from the selected step and the last one.
+func (m Model) runSelectedStepRange(span func(selected, last int) (from, to int)) (Model, tea.Cmd) {
 	if m.activeWorkflow == nil || len(m.activeWorkflow.Steps) == 0 {
 		m.statusMessage = "No steps to run"
 		return m, nil
 	}
-	return m.startWorkflowPartial(m.activeWorkflow, m.workflowStepCursor, m.workflowStepCursor)
+	selected, err := m.selectedTopLevelStepIndex()
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Cannot run part of the workflow: %v", err)
+		return m, nil
+	}
+	from, to := span(selected, len(m.activeWorkflow.Steps)-1)
+	return m.startWorkflowPartial(m.activeWorkflow, from, to)
+}
+
+func handleToggleWorkflowStepExpandKey(m Model) (Model, tea.Cmd) {
+	return m.toggleWorkflowStepExpand(), nil
+}
+
+func handleToggleAllWorkflowStepsExpandKey(m Model) (Model, tea.Cmd) {
+	return m.toggleAllWorkflowStepsExpand(), nil
 }
 
 func handleToggleExpandKey(m Model) (Model, tea.Cmd) {
@@ -2222,8 +2254,8 @@ func handleGoTopKey(m Model) (Model, tea.Cmd) {
 func handleGoBottomKey(m Model) (Model, tea.Cmd) {
 	switch m.mode {
 	case ModeWorkflowDetail:
-		if m.activeWorkflow != nil && len(m.activeWorkflow.Steps) > 0 {
-			m.workflowStepCursor = len(m.activeWorkflow.Steps) - 1
+		if rows := m.workflowStepRows(); len(rows) > 0 {
+			m.workflowStepCursor = len(rows) - 1
 		}
 	case ModeWorkflows:
 		if len(m.workflows) > 0 {

@@ -39,7 +39,7 @@ func handleRefreshWorkflowsKey(m Model) (Model, tea.Cmd) {
 	if m.activeWorkflow != nil {
 		if reloaded := workflow.FindWorkflow(wfs, m.activeWorkflow.ID); reloaded != nil {
 			m.activeWorkflow = reloaded
-			m.workflowStepCursor = min(m.workflowStepCursor, max(len(reloaded.Steps)-1, 0))
+			m.workflowStepCursor = min(m.workflowStepCursor, max(len(m.workflowStepRows())-1, 0))
 		}
 	}
 	m.statusMessage = fmt.Sprintf("Reloaded %d workflow(s)", len(wfs))

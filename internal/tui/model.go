@@ -213,14 +213,22 @@ type Model struct {
 	grpcSelectedService int
 	grpcReflectPhase    GRPCReflectPhase
 
-	workflows          []*workflow.Workflow
-	workflowCursor     int
+	workflows      []*workflow.Workflow
+	workflowCursor int
+	// workflowStepCursor indexes workflowStepRows: steps and the sub-steps of expanded folder steps.
 	workflowStepCursor int
 	activeWorkflow     *workflow.Workflow
-	workflowState      workflow.ExecutionState
-	workflowChan       <-chan workflow.ExecutionState
+	// expandedWorkflowSteps are the run IDs of expandedWorkflowID's expanded folder steps;
+	// folderStepDefinitions caches the sub-workflow steps of those that have not run.
+	expandedWorkflowID    string
+	expandedWorkflowSteps map[string]bool
+	folderStepDefinitions map[string][]workflow.Step
+	workflowState         workflow.ExecutionState
+	workflowChan          <-chan workflow.ExecutionState
 	// cancelWorkflowRun stops the workflow run in progress; nil when none is.
 	cancelWorkflowRun context.CancelFunc
+	// abortWorkflowStep aborts one running step of the run in progress (Runner.Abort); nil when none is.
+	abortWorkflowStep func(runID string) bool
 	workflowViewport  viewport.Model
 	// workflowStepPanelOpen shows the selected step's logs, request and
 	// response beside the workflow's steps; workflowStepPanelScroll scrolls it.

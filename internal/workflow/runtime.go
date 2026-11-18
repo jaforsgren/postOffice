@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -55,13 +56,20 @@ type Runner struct {
 	folderSource FolderWorkflowSource
 	// folderWorkflows caches folderSource per folder path for the run.
 	folderWorkflows map[string]*Workflow
+
+	// abortMu guards abortable, which Abort reads from another goroutine.
+	abortMu sync.Mutex
+	// abortable cancels a running request step or folder step, by run state ID.
+	abortable map[string]context.CancelFunc
 }
 
 // frame is one workflow script being run: the run's workflow, or a folder
 // step's sub-workflow inside it. Each runs in its own VM with its own timeout.
 type frame struct {
 	parent *frame
-	steps  []Step
+	// ctx ends when the run is cancelled or this sub-workflow (or one enclosing it) is aborted.
+	ctx   context.Context
+	steps []Step
 	// group is the folder step this frame runs the sub-workflow of; nil at the top.
 	group *StepState
 	// folders are the folder paths of this and the enclosing frames, to refuse
@@ -134,8 +142,12 @@ var (
 	ErrScriptFailed = errors.New("script error")
 	// ErrRunCancelled is the run error when the run's context is cancelled.
 	ErrRunCancelled = errors.New("run cancelled")
+	// ErrStepAborted is logged on a step stopped with Abort.
+	ErrStepAborted = errors.New("aborted by the user, the run carries on")
 	// ErrFolderCycle is the step error when a folder step's sub-workflow would run itself.
 	ErrFolderCycle = errors.New("folder workflow runs itself")
+	// errStageAborted ends the steps and script of a sub-workflow whose folder step was aborted.
+	errStageAborted = errors.New("aborted")
 	// errJumped ends a workflow script that handed a setNextRequest target to
 	// its enclosing workflow; the script completed, it did not fail.
 	errJumped = errors.New("workflow.jump")
@@ -152,7 +164,8 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow, opts ExecutionOptions, o
 	r.status = StatusRunning
 	r.anyStepFailed = false
 	r.options = opts
-	r.frame = &frame{steps: wf.Steps}
+	r.frame = &frame{ctx: ctx, steps: wf.Steps}
+	r.abortable = make(map[string]context.CancelFunc)
 	r.folderWorkflows = make(map[string]*Workflow)
 	r.state = ExecutionState{
 		WorkflowID:   wf.ID,
@@ -234,7 +247,7 @@ func (r *Runner) addStepState(ss *StepState) {
 // (or wf.fail/wf.stop) are reported through r.status, not the returned error,
 // which is reserved for the script itself not running to completion.
 func (r *Runner) runIteration(wf *Workflow) error {
-	r.frame = &frame{steps: wf.Steps}
+	r.frame = &frame{ctx: r.runCtx, steps: wf.Steps}
 	return r.runScript(wf.Script)
 }
 
@@ -269,7 +282,7 @@ func (r *Runner) runScript(src string) error {
 		f.timedOut.Store(true)
 		f.vm.Interrupt("workflow timeout")
 	})
-	stopInterruptOnCancel := context.AfterFunc(r.runCtx, func() { f.vm.Interrupt(ErrRunCancelled) })
+	stopInterruptOnCancel := context.AfterFunc(f.ctx, func() { f.vm.Interrupt(errStageAborted) })
 
 	_, err := f.vm.RunString(transformed)
 	if f.jump.Set {
@@ -289,6 +302,9 @@ func (r *Runner) runScript(src string) error {
 	if r.runCtx.Err() != nil {
 		r.markCancelled()
 		return nil
+	}
+	if f.ctx.Err() != nil {
+		return errStageAborted
 	}
 
 	if err != nil && r.status != StatusFailed && r.status != StatusStopped {
@@ -483,7 +499,7 @@ func (r *Runner) setupWFAPI() error {
 		}
 
 		result, err := r.runStep(stepID, opts)
-		if errors.Is(err, ErrRunCancelled) {
+		if errors.Is(err, ErrRunCancelled) || errors.Is(err, errStageAborted) {
 			r.abortIfCancelled()
 		}
 		if err != nil {
@@ -657,16 +673,26 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 	status := StatusSuccess
 	var lastScripts *script.TestResult
 
+	stepCtx, abort := r.abortableContext(ss.ID, r.frame.ctx)
+	defer abort()
+
 	for i := 0; i < repeat; i++ {
 		ss.Progress = i + 1
 		r.notifyProgress()
 
 		var outcome itemOutcome
 		var execErr error
-		r.outsideScriptTimeout(func() { outcome, status, execErr = r.executeItemWithSelfRetries(item, requestPath) })
-		if r.runCtx.Err() != nil {
+		r.outsideScriptTimeout(func() { outcome, status, execErr = r.executeItemWithSelfRetries(stepCtx, item, requestPath) })
+		switch {
+		case r.runCtx.Err() != nil:
 			ss.Status = StatusStopped
 			return nil, ErrRunCancelled
+		case r.frame.ctx.Err() != nil:
+			ss.Status = StatusStopped
+			return nil, errStageAborted
+		case stepCtx.Err() != nil:
+			r.markAborted(ss)
+			return &StepRunResult{Status: StatusStopped}, nil
 		}
 		if execErr != nil {
 			r.failStep(ss)
@@ -740,8 +766,11 @@ func (r *Runner) runFolderStep(step Step, entry string) (*StepRunResult, error) 
 	}
 
 	parent := r.frame
+	childCtx, abort := r.abortableContext(ss.ID, parent.ctx)
+	defer abort()
 	child := &frame{
 		parent:  parent,
+		ctx:     childCtx,
 		steps:   sub.Steps,
 		group:   ss,
 		folders: append(slices.Clone(parent.folders), step.Folder),
@@ -758,6 +787,12 @@ func (r *Runner) runFolderStep(step Step, entry string) (*StepRunResult, error) 
 	case r.runCtx.Err() != nil:
 		ss.Status = StatusStopped
 		return nil, ErrRunCancelled
+	case parent.ctx.Err() != nil:
+		ss.Status = StatusStopped
+		return nil, errStageAborted
+	case childCtx.Err() != nil:
+		r.markAborted(ss)
+		return &StepRunResult{Status: StatusStopped}, nil
 	case scriptErr != nil:
 		r.markRunFailed(fmt.Sprintf("folder step %q: %v", ss.ID, scriptErr))
 		r.failStep(ss)
@@ -808,15 +843,60 @@ func (r *Runner) folderWorkflow(folder string) (*Workflow, error) {
 	return wf, nil
 }
 
-// abortIfCancelled stops the run and ends the workflow script once the run's
-// context is cancelled. Cancelling also interrupts the VM, but only at its
-// next instruction, which may already start another step.
+// abortIfCancelled ends the workflow script once the run is cancelled (and
+// stops the run) or its sub-workflow is aborted. Both also interrupt the VM,
+// but only at its next instruction, which may already start another step.
 func (r *Runner) abortIfCancelled() {
-	if r.runCtx.Err() == nil {
-		return
+	if r.runCtx.Err() != nil {
+		r.markCancelled()
+		panic(r.frame.vm.NewGoError(ErrRunCancelled))
 	}
-	r.markCancelled()
-	panic(r.frame.vm.NewGoError(ErrRunCancelled))
+	if r.frame.ctx.Err() != nil {
+		panic(r.frame.vm.NewGoError(errStageAborted))
+	}
+}
+
+// Abort stops the running request step or folder step with run state ID
+// runID; the workflow around it carries on with its next step. It reports
+// false when nothing with that ID is running. Safe to call while Run runs.
+func (r *Runner) Abort(runID string) bool {
+	r.abortMu.Lock()
+	defer r.abortMu.Unlock()
+	cancel, running := r.abortable[runID]
+	if running {
+		cancel()
+	}
+	return running
+}
+
+// abortableContext derives the context of the step runID from parent and lets
+// Abort cancel it until the returned release is called.
+func (r *Runner) abortableContext(runID string, parent context.Context) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(parent)
+	r.abortMu.Lock()
+	if r.abortable == nil {
+		r.abortable = make(map[string]context.CancelFunc)
+	}
+	r.abortable[runID] = cancel
+	r.abortMu.Unlock()
+	return ctx, func() {
+		r.abortMu.Lock()
+		delete(r.abortable, runID)
+		r.abortMu.Unlock()
+		cancel()
+	}
+}
+
+// markAborted stops an aborted step. The run carries on but fails at the end,
+// so an abort never passes for a success.
+func (r *Runner) markAborted(ss *StepState) {
+	ss.Status = StatusStopped
+	r.anyStepFailed = true
+	for f := r.frame; f != nil; f = f.parent {
+		f.failed = true
+	}
+	r.addStepLog(ss.ID, "[ABORT] "+ErrStepAborted.Error())
+	r.notifyProgress()
 }
 
 // markCancelled stops the run as cancelled unless it already stopped.
@@ -826,13 +906,13 @@ func (r *Runner) markCancelled() {
 	}
 }
 
-// sleep waits for duration or until the run is cancelled.
+// sleep waits for duration or until the run is cancelled or its sub-workflow aborted.
 func (r *Runner) sleep(duration time.Duration) {
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
 	select {
 	case <-timer.C:
-	case <-r.runCtx.Done():
+	case <-r.frame.ctx.Done():
 	}
 }
 
@@ -850,9 +930,12 @@ func (r *Runner) outsideScriptTimeout(wait func()) {
 // pm.execution.setNextRequest on itself, as a Postman Runner does for polling
 // reads. Jumps to other requests are left to the workflow script, which gets
 // them as the step result's nextRequest (generated folder runs follow them).
-func (r *Runner) executeItemWithSelfRetries(item *postman.Item, requestPath string) (itemOutcome, string, error) {
+func (r *Runner) executeItemWithSelfRetries(ctx context.Context, item *postman.Item, requestPath string) (itemOutcome, string, error) {
 	for attempt := 0; ; attempt++ {
-		outcome, err := r.executeItem(item, requestPath)
+		if ctx.Err() != nil {
+			return itemOutcome{}, StatusStopped, nil
+		}
+		outcome, err := r.executeItem(ctx, item, requestPath)
 		if err != nil {
 			return outcome, StatusFailed, err
 		}
@@ -1036,7 +1119,7 @@ type itemOutcome struct {
 	retrySelf bool
 }
 
-func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcome, error) {
+func (r *Runner) executeItem(ctx context.Context, item *postman.Item, requestPath string) (itemOutcome, error) {
 	scope := script.RequestScope{
 		Collection:  r.collection,
 		Environment: r.environment,
@@ -1052,7 +1135,7 @@ func (r *Runner) executeItem(item *postman.Item, requestPath string) (itemOutcom
 	// Write workflow-script variable changes to the collection before running.
 	r.syncToCollection()
 
-	result := execution.Run(r.runCtx)
+	result := execution.Run(ctx)
 	resp, scriptResult := result.Response, result.TestResult
 
 	// Pick up variable changes from pre/post-request scripts.

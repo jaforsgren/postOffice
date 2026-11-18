@@ -116,11 +116,12 @@ func (m Model) openRequestScripts(item postman.Item, folderPath []string) (Model
 }
 
 func (m Model) openWorkflowStepScripts() (Model, tea.Cmd) {
-	if m.activeWorkflow == nil || m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
-		m.statusMessage = "No step selected"
+	index, err := m.selectedTopLevelStepIndex()
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Cannot edit step scripts: %v", err)
 		return m, nil
 	}
-	step := m.activeWorkflow.Steps[m.workflowStepCursor]
+	step := m.activeWorkflow.Steps[index]
 	msg := VimScriptsEditCompleteMsg{
 		Buffers: []scriptBuffer{
 			{Label: preStepScriptLabel, Content: step.PreScript},
@@ -128,7 +129,7 @@ func (m Model) openWorkflowStepScripts() (Model, tea.Cmd) {
 		},
 		Target:    scriptTargetWorkflowStep,
 		ItemName:  step.ID,
-		StepIndex: m.workflowStepCursor,
+		StepIndex: index,
 	}
 	return m.openScriptBuffers(msg)
 }

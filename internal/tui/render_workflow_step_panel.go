@@ -51,19 +51,22 @@ func (m Model) buildWorkflowStepListLines(height int) []string {
 		return append(lines, subtleStyle.Render("No steps defined."))
 	}
 
-	startIdx, endIdx := calculateVisibleWindow(m.workflowStepCursor, len(wf.Steps), height-len(lines))
+	rows := m.workflowStepRows()
+	colors := m.workflowRowColors(rows)
+	startIdx, endIdx := calculateVisibleWindow(m.workflowStepCursor, len(rows), height-len(lines))
 	for i := startIdx; i < endIdx; i++ {
-		step := wf.Steps[i]
+		row := rows[i]
 		status := workflow.StatusPending
-		if ss := m.runStepState(step.ID); ss != nil {
+		if ss := m.runStepState(row.runID); ss != nil {
 			status = ss.Status
 		}
 
 		icon := workflowStatusStyle(status).Render(workflow.StatusIcon(status))
+		label := workflowRowBars(row, colors, styledRunStyler) + m.folderStepMarker(row) + icon + " " + row.step.ID
 		if i == m.workflowStepCursor {
-			lines = append(lines, selectedItemStyle.Render("> "+icon+" "+step.ID))
+			lines = append(lines, selectedItemStyle.Render("> "+label))
 		} else {
-			lines = append(lines, normalItemStyle.Render("  "+icon+" "+step.ID))
+			lines = append(lines, normalItemStyle.Render("  "+label))
 		}
 	}
 	return lines
@@ -78,7 +81,7 @@ func (m Model) buildStepPanelLines(width int) []string {
 		return []string{noItemSelectedMessage}
 	}
 
-	ss := m.runStepState(step.ID)
+	ss := m.selectedRunStepState()
 	if ss == nil {
 		return wrapLines([]string{
 			styledRunStyler.title(step.ID),
@@ -117,11 +120,7 @@ func (m Model) buildStepPanelLines(width int) []string {
 }
 
 func (m Model) stepPanelBorderColor() lipgloss.Color {
-	step, ok := m.selectedWorkflowStep()
-	if !ok {
-		return popupBorderColor
-	}
-	if ss := m.runStepState(step.ID); ss != nil && ss.LastResponse != nil {
+	if ss := m.selectedRunStepState(); ss != nil && ss.LastResponse != nil {
 		return responseBorderColor(ss.LastResponse)
 	}
 	return popupBorderColor
@@ -148,10 +147,8 @@ func (m Model) stepRunLogs(ss *workflow.StepState) []string {
 }
 
 func (m Model) selectedWorkflowStep() (workflow.Step, bool) {
-	if m.activeWorkflow == nil || m.workflowStepCursor < 0 || m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
-		return workflow.Step{}, false
-	}
-	return m.activeWorkflow.Steps[m.workflowStepCursor], true
+	row, ok := m.selectedWorkflowRow()
+	return row.step, ok
 }
 
 // selectedStepResponse is the selected step's latest response, preferring the
@@ -164,7 +161,7 @@ func (m Model) selectedStepResponse() (*http.Response, *RequestExecution) {
 	}
 	execution, executed := m.requestExecutions[m.workflowStepItemID(step.Request)]
 
-	if ss := m.runStepState(step.ID); ss != nil {
+	if ss := m.selectedRunStepState(); ss != nil {
 		if executed && execution.Response == ss.LastResponse {
 			return ss.LastResponse, execution
 		}

@@ -164,6 +164,10 @@ The gRPC editor adds `enter` to toggle TLS and `ctrl+f` to browse server reflect
 | `r` | Reload workflows from disk |
 | `enter` | Step response |
 | `tab` | Step panel (`[` / `]` scroll it) |
+| `z` / `Z` | Expand/collapse the folder step / all folder steps |
+| `X` | Abort the running step: the selected one, else the innermost. The run carries on |
 | `i` | Step info |
 | `ctrl+d` | Delete step |
 | `o` | Open the run report |
+
+An expanded folder step lists its sub-workflow's steps under it, with the run's results. Sub-steps can be inspected (`enter`, `i`, `tab`, `e`) but not deleted, edited or run on their own: open the folder's workflow for that.

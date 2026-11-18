@@ -110,7 +110,7 @@ func (m Model) workflowStepYankTarget(item postman.Item) yankTarget {
 		if _, folderPath, err := m.resolveStepItem(step.Request); err == nil {
 			target.vars = m.variablesAt(m.workflowViewPath(folderPath))
 		}
-		if ss := m.runStepState(step.ID); ss != nil {
+		if ss := m.selectedRunStepState(); ss != nil {
 			target.stepLogs = m.stepRunLogs(ss)
 		}
 	}
