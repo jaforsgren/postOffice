@@ -33,21 +33,23 @@ func (m Model) openRequestPanel(item postman.Item) Model {
 	return m
 }
 
-// responseViewLines is the Response view's content: the exchange, preceded
-// by the request's definition when the view was opened on a request.
+// responseViewLines is the Response view's content: the exchange (response
+// first), followed by the request's definition when the view was opened on
+// a request.
 func (m Model) responseViewLines() []string {
 	if m.responsePanelItem == nil {
 		return m.buildResponseLines()
 	}
 
+	lines := []string{subtleStyle.Render(requestPanelNotSentMessage)}
+	if m.lastResponse != nil {
+		lines = m.buildResponseLines()
+	}
+
 	infoModel := m
 	infoModel.currentInfoItem = m.responsePanelItem
 	infoModel.breadcrumb = m.requestsViewFolderPath()
-	lines := infoModel.unresolvedVariablesLines(m.responsePanelItem.Request, infoModel.breadcrumb)
-	lines = append(lines, infoModel.buildItemDetailLines()...)
 	lines = append(lines, "")
-	if m.lastResponse == nil {
-		return append(lines, subtleStyle.Render(requestPanelNotSentMessage))
-	}
-	return append(lines, m.buildResponseLines()...)
+	lines = append(lines, infoModel.unresolvedVariablesLines(m.responsePanelItem.Request, infoModel.breadcrumb)...)
+	return append(lines, infoModel.buildItemDetailLines()...)
 }

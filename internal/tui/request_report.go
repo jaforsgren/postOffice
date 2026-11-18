@@ -29,14 +29,15 @@ const (
 	testPassedMarker = "- [x] "
 	testFailedMarker = "- [ ] "
 	blankLine        = ""
-	// sectionBreak sets the response apart from what was sent.
+	// sectionBreak sets what came back apart from what was sent.
 	sectionBreak = "---"
 )
 
 // markdownReport is the request report as Markdown: one section per part,
-// with headers, bodies and scripts as fenced snippets. It reads top down as
-// the exchange happened: what was asked, what was sent, what came back and
-// how it tested, then the curl to repeat it, with the scripts last.
+// with headers, bodies and scripts as fenced snippets. Like the response
+// view, it puts what came back first (the response and how it tested), then
+// what was sent and how the request is defined, the curl to repeat it and
+// the scripts last.
 func (t yankTarget) markdownReport() (string, error) {
 	if t.definition == nil && t.response == nil {
 		return "", errNothingToOpen
@@ -44,20 +45,22 @@ func (t yankTarget) markdownReport() (string, error) {
 
 	var lines []string
 	lines = append(lines, "# "+t.reportTitle(), blankLine)
-	if t.definition != nil {
-		lines = append(lines, t.definitionSection()...)
-	}
 	if t.response != nil {
-		lines = append(lines, sentRequestSection(t.response)...)
-		lines = append(lines, sectionBreak, blankLine)
 		lines = append(lines, responseSection(t.response)...)
-	}
-	if t.model.lastTestResult != nil && t.response != nil {
-		lines = append(lines, testResultSection(t.model.lastTestResult)...)
+		if t.model.lastTestResult != nil {
+			lines = append(lines, testResultSection(t.model.lastTestResult)...)
+		}
 	}
 	if len(t.stepLogs) > 0 {
 		lines = append(lines, "## Logs", blankLine)
 		lines = append(lines, fencedBlock(langText, strings.Join(t.stepLogs, "\n"))...)
+	}
+	if t.response != nil {
+		lines = append(lines, sectionBreak, blankLine)
+		lines = append(lines, sentRequestSection(t.response)...)
+	}
+	if t.definition != nil {
+		lines = append(lines, t.definitionSection()...)
 	}
 	curl, kind := t.curl()
 	lines = append(lines, "## "+kind, blankLine)

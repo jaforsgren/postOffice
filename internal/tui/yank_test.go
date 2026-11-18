@@ -124,7 +124,7 @@ func TestMarkdownReport_HasHeadingsAndFencedSnippets(t *testing.T) {
 		"# " + formRequestName,
 		"## Definition",
 		"## Sent request\n\n```http\nPOST https://sent.example.com/api/create\nX-A: 1\nX-B: 2\n```",
-		"---\n\n## Response\n\n**Status:** `",
+		"# " + formRequestName + "\n\n## Response\n\n**Status:** `",
 		"```json\n{\n  \"ok\": true\n}\n```",
 		"## curl\n\n```bash\ncurl",
 	} {
@@ -171,7 +171,7 @@ func TestMarkdownReport_SectionOrder(t *testing.T) {
 
 	report, _ := target.markdownReport()
 
-	order := []string{"## Definition", "## Sent request", sectionBreak, "## Response", "## Tests", "## curl", "### Test script"}
+	order := []string{"## Response", "## Tests", sectionBreak, "## Sent request", "## Definition", "## curl", "### Test script"}
 	last := -1
 	for _, heading := range order {
 		index := strings.Index(report, heading)
@@ -180,7 +180,7 @@ func TestMarkdownReport_SectionOrder(t *testing.T) {
 		}
 		last = index
 	}
-	definition := report[strings.Index(report, "## Definition"):strings.Index(report, "## Sent request")]
+	definition := report[strings.Index(report, "## Definition"):strings.Index(report, "## curl")]
 	if strings.Contains(definition, "### Headers") || strings.Contains(definition, "### Body") {
 		t.Errorf("expected the sent request alone to show headers and body, got:\n%s", definition)
 	}

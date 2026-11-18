@@ -89,3 +89,15 @@ func TestRequestPanel_YankWorksBeforeSending(t *testing.T) {
 		t.Errorf("expected the request URL, got %q", url)
 	}
 }
+
+func TestInfoKey_ResponseComesBeforeTheRequest(t *testing.T) {
+	m := withExecutedResponse(modelWithCursorOn(t, formRequestName), formRequestName)
+
+	m = pressKeys(t, m, runes("i"))
+
+	content := panelContent(m)
+	response, body, sent, definition := strings.Index(content, "RESPONSE"), strings.Index(content, `"ok": true`), strings.Index(content, "REQUEST"), strings.Index(content, "Method:")
+	if response != 0 || body > sent || sent > definition {
+		t.Errorf("expected response, body, sent request, then the definition, got:\n%s", content)
+	}
+}

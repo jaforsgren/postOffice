@@ -3,7 +3,9 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"postOffice/internal/http"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -45,12 +47,10 @@ func (m Model) renderResponseView() string {
 		Render(m.responseViewport.View())
 }
 
+// buildResponseLines is the exchange with what came back first: the
+// response, its test results, then the request as it was sent.
 func (m Model) buildResponseLines() []string {
-	var lines []string
-
-	lines = append(lines, m.buildRequestSection()...)
-	lines = append(lines, "")
-	lines = append(lines, m.buildResponseSection()...)
+	lines := m.buildResponseSection()
 
 	if m.lastTestResult != nil &&
 		(len(m.lastTestResult.Tests) > 0 || len(m.lastTestResult.Errors) > 0 || len(m.lastTestResult.ConsoleLogs) > 0) {
@@ -58,6 +58,8 @@ func (m Model) buildResponseLines() []string {
 		lines = append(lines, m.buildTestResultsSection()...)
 	}
 
+	lines = append(lines, "")
+	lines = append(lines, m.buildRequestSection()...)
 	return append(lines, m.relatedMessagesSection()...)
 }
 
@@ -70,8 +72,8 @@ func (m Model) buildRequestSection() []string {
 	if len(m.lastResponse.RequestHeaders) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, folderStyle.Render("Request Headers:"))
-		for key, value := range m.lastResponse.RequestHeaders {
-			lines = append(lines, fmt.Sprintf("  %s: %s", key, value))
+		for _, key := range slices.Sorted(maps.Keys(m.lastResponse.RequestHeaders)) {
+			lines = append(lines, fmt.Sprintf("  %s: %s", key, m.lastResponse.RequestHeaders[key]))
 		}
 	}
 
@@ -105,8 +107,8 @@ func (m Model) buildResponseSection() []string {
 
 		if len(m.lastResponse.Headers) > 0 {
 			lines = append(lines, requestStyle.Render("Response Headers:"))
-			for key, values := range m.lastResponse.Headers {
-				for _, value := range values {
+			for _, key := range slices.Sorted(maps.Keys(m.lastResponse.Headers)) {
+				for _, value := range m.lastResponse.Headers[key] {
 					lines = append(lines, fmt.Sprintf("  %s: %s", key, value))
 				}
 			}
