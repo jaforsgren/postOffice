@@ -18,9 +18,9 @@ import (
 const folderRunTestCollectionName = "Folder Run Collection"
 
 var (
-	ctrlEKey   = tea.KeyMsg{Type: tea.KeyCtrlE}
-	confirmKey = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(confirmFolderRunKey)}
-	cancelKey  = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(cancelFolderRunKey)}
+	ctrlEKey      = tea.KeyMsg{Type: tea.KeyCtrlE}
+	confirmKeyMsg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(confirmKey)}
+	cancelKeyMsg  = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(cancelKey)}
 )
 
 func folderRunTestRequest(name string) postman.Item {
@@ -99,7 +99,7 @@ func TestCtrlE_OnFolderAsksForConfirmation(t *testing.T) {
 	if cmd != nil {
 		t.Error("ctrl+e on a folder must not start anything before confirmation")
 	}
-	if m.pendingFolderRun == nil {
+	if m.pendingConfirmation == nil {
 		t.Fatal("expected a pending folder run after ctrl+e on a folder")
 	}
 	wantPrompt := "Run folder 'policies/TEST' as workflow? (y/n)"
@@ -121,7 +121,7 @@ func TestCtrlE_OnRequestStillExecutesIt(t *testing.T) {
 
 	m, cmd := pressKey(m, ctrlEKey)
 
-	if m.pendingFolderRun != nil {
+	if m.pendingConfirmation != nil {
 		t.Error("ctrl+e on a request must not ask to run a folder")
 	}
 	if cmd == nil {
@@ -131,7 +131,7 @@ func TestCtrlE_OnRequestStillExecutesIt(t *testing.T) {
 
 func TestFolderRunConfirm_CancelKeysAbort(t *testing.T) {
 	for name, key := range map[string]tea.KeyMsg{
-		"n":     cancelKey,
+		"n":     cancelKeyMsg,
 		"esc":   {Type: tea.KeyEsc},
 		"other": {Type: tea.KeyRunes, Runes: []rune("j")},
 	} {
@@ -141,7 +141,7 @@ func TestFolderRunConfirm_CancelKeysAbort(t *testing.T) {
 
 		m, cmd := pressKey(m, key)
 
-		if m.pendingFolderRun != nil {
+		if m.pendingConfirmation != nil {
 			t.Errorf("%s: prompt should be cleared", name)
 		}
 		if cmd != nil {
@@ -161,7 +161,7 @@ func TestFolderRunConfirm_SavesAndRunsGeneratedWorkflow(t *testing.T) {
 	m := folderRunTestModel(t, path)
 	m, _ = pressKey(m, ctrlEKey)
 
-	m, cmd := pressKey(m, confirmKey)
+	m, cmd := pressKey(m, confirmKeyMsg)
 
 	if cmd == nil {
 		t.Fatal("confirming should start the workflow run")
@@ -221,7 +221,7 @@ func TestFolderRunConfirm_ReusesExistingSavedWorkflow(t *testing.T) {
 	}
 
 	m, _ = pressKey(m, ctrlEKey)
-	m, _ = pressKey(m, confirmKey)
+	m, _ = pressKey(m, confirmKeyMsg)
 
 	after, err := os.ReadFile(wfPath)
 	if err != nil {
@@ -248,7 +248,7 @@ func TestFolderRunConfirm_RejectsWhileWorkflowRunning(t *testing.T) {
 
 	m, _ = pressKey(m, ctrlEKey)
 
-	if m.pendingFolderRun != nil {
+	if m.pendingConfirmation != nil {
 		t.Error("no prompt should be shown while a workflow is already running")
 	}
 	if m.statusMessage != "Workflow already running" {
@@ -274,7 +274,7 @@ func TestFolderWorkflowIndicator_ShownOnceSaved(t *testing.T) {
 	}
 
 	m, _ = pressKey(m, ctrlEKey)
-	m, _ = pressKey(m, confirmKey)
+	m, _ = pressKey(m, confirmKeyMsg)
 	escKey := tea.KeyMsg{Type: tea.KeyEsc}
 	m, _ = pressKey(m, escKey) // workflow progress view → workflow list
 	if workflow.FindWorkflow(m.workflows, "policies-test") == nil {

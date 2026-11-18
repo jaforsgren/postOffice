@@ -414,8 +414,8 @@ func (m Model) renderCommandBar() string {
 	if m.searchMode {
 		return commandBarStyle.Width(m.width).Render("/" + m.searchInput.View())
 	}
-	if m.pendingFolderRun != nil {
-		return commandBarStyle.Width(m.width).Render(folderRunPrompt(m.pendingFolderRun.folderPath, m.runSettings))
+	if m.pendingConfirmation != nil {
+		return commandBarStyle.Width(m.width).Render(m.pendingConfirmation.prompt)
 	}
 	return commandBarStyle.Width(m.width).Render("")
 }

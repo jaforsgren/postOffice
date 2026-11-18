@@ -99,7 +99,7 @@ func TestRequestVariables_EscFromANewChoiceReturnsToTheChoices(t *testing.T) {
 func TestRequestVariables_DeleteChoice(t *testing.T) {
 	m, _ := choiceVariablesModel(t)
 
-	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEnter}, runes("j"), runes(deleteChoiceKey))
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEnter}, runes("j"), runes(deleteChoiceKey), runes(confirmKey))
 
 	if got := savedPersona(t, m); got.Value != "p1" || !slices.Equal(got.Choices, []string{"p1", "p3"}) {
 		t.Errorf("expected p2 removed, got %+v", got)
@@ -113,7 +113,7 @@ func TestRequestVariables_DeletingDownToOneChoiceMakesItPlain(t *testing.T) {
 	m, _ := choiceVariablesModel(t)
 	m.environment.Values[0].Choices = []string{"p1", "p2"}
 
-	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEnter}, runes(deleteChoiceKey))
+	m = pressKeys(t, m, tea.KeyMsg{Type: tea.KeyEnter}, runes(deleteChoiceKey), runes(confirmKey))
 
 	if got := savedPersona(t, m); got.Value != "p2" || len(got.Choices) != 0 {
 		t.Errorf("expected plain p2, got %+v", got)

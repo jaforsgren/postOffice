@@ -232,9 +232,9 @@ type Model struct {
 	workflowPreviewScroll int
 	addingWorkflowStep    bool
 
-	// pendingFolderRun holds the folder awaiting a y/n answer to "run as workflow?";
+	// pendingConfirmation holds an action awaiting a y/n answer (folder runs, deletions);
 	// while set, the next key press answers the prompt instead of reaching normal mode.
-	pendingFolderRun *pendingFolderRun
+	pendingConfirmation *pendingConfirmation
 	// runSettings are the :runopts options applied to every workflow/folder run.
 	runSettings runSettings
 	// savedWorkflowIDs maps each collection shown by savedWorkflowIDsCollection (one, or

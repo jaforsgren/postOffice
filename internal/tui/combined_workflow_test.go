@@ -23,7 +23,7 @@ func TestCombinedView_FolderRunUsesTheOwningCollection(t *testing.T) {
 	m = cursorOn(t, openFolder(t, m, combinedB), ordersFolder)
 	m = m.requestFolderRun(m.currentItems[m.cursor], m.folderPathForCursor())
 
-	updated, cmd := m.handleFolderRunConfirmKeys(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(confirmFolderRunKey)})
+	updated, cmd := m.handleConfirmationKeys(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(confirmKey)})
 	m = updated.(Model)
 
 	if cmd == nil {
@@ -49,7 +49,7 @@ func TestCombinedView_FolderRunOnAGroupFolderRunsTheCollection(t *testing.T) {
 	m = cursorOn(t, m, combinedB)
 	m = m.requestFolderRun(m.currentItems[m.cursor], m.folderPathForCursor())
 
-	_, cmd := m.handleFolderRunConfirmKeys(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(confirmFolderRunKey)})
+	_, cmd := m.handleConfirmationKeys(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(confirmKey)})
 
 	if cmd == nil {
 		t.Fatal("expected the collection to run")

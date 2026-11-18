@@ -54,7 +54,7 @@ func TestCollectionVariables_DeleteVariable(t *testing.T) {
 	m, collectionPath, _ := requestVariablesModel(t)
 	m, _ = handleCollectionVariablesCommand(m, nil)
 
-	m = pressKeys(t, m, runes(deleteVariableKey))
+	m = pressKeys(t, m, runes(deleteVariableKey), runes(confirmKey))
 
 	if len(m.collection.Variables) != 0 || fileContains(t, collectionPath, `"claim_id"`) {
 		t.Errorf("expected claim_id deleted, got %+v", m.collection.Variables)

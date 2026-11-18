@@ -573,7 +573,7 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			Keys:        []string{"ctrl+d"},
 			Description: "Delete step",
 			ShortHelp:   "ctrl+d",
-			Handler:     Model.deleteWorkflowStep,
+			Handler:     handleDeleteWorkflowStepKey,
 			AvailableIn: []ViewMode{ModeWorkflowDetail},
 		},
 		{
@@ -2029,7 +2029,10 @@ func handleDeleteRequestKey(m Model) (Model, tea.Cmd) {
 		m.statusMessage = "Can only delete requests, not folders"
 		return m, nil
 	}
-	return m.deleteRequest(item, m.folderPathForCursor()), nil
+	folderPath := m.folderPathForCursor()
+	return m.confirmDeletion(fmt.Sprintf("request '%s'", item.Name), func(m Model) (Model, tea.Cmd) {
+		return m.deleteRequest(item, folderPath), nil
+	}), nil
 }
 
 func handleSavedResponsesKey(m Model) (Model, tea.Cmd) {
@@ -2098,6 +2101,12 @@ func handleDeleteSavedResponseKey(m Model) (Model, tea.Cmd) {
 	if m.mode != ModeSavedResponses || m.savedResponseCursor >= len(m.savedResponses) {
 		return m, nil
 	}
+	saved := m.savedResponses[m.savedResponseCursor]
+	return m.confirmDeletion(fmt.Sprintf("saved response from %s (%s)", saved.SavedAt.Format(timestampLayout), saved.Status), Model.deleteSavedResponse), nil
+}
+
+// deleteSavedResponse removes the saved response under the cursor.
+func (m Model) deleteSavedResponse() (Model, tea.Cmd) {
 	if err := m.parser.DeleteSavedResponse(m.savedResponseItemID, m.savedResponseCursor); err != nil {
 		m.statusMessage = fmt.Sprintf("Delete failed: %v", err)
 		return m, nil

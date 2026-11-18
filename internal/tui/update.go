@@ -205,8 +205,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == quitKey {
 		return handleQuitKey(m)
 	}
-	if m.pendingFolderRun != nil {
-		return m.handleFolderRunConfirmKeys(msg)
+	if m.pendingConfirmation != nil {
+		return m.handleConfirmationKeys(msg)
 	}
 	if m.commandMode {
 		return m.handleCommandMode(msg)
@@ -2595,6 +2595,16 @@ func (m Model) showWorkflowStepResponse() (Model, tea.Cmd) {
 	m.configureViewport(&m.responseViewport, strings.Join(m.responseViewLines(), "\n"))
 	m.statusMessage = fmt.Sprintf("Response for %s (esc to return, %s to resend the step)", step.ID, runKey)
 	return m, nil
+}
+
+// handleDeleteWorkflowStepKey asks before deleting the selected step; without one,
+// deleteWorkflowStep reports why nothing can be deleted.
+func handleDeleteWorkflowStepKey(m Model) (Model, tea.Cmd) {
+	if m.activeWorkflow == nil || m.workflowStepCursor >= len(m.activeWorkflow.Steps) {
+		return m.deleteWorkflowStep()
+	}
+	step := m.activeWorkflow.Steps[m.workflowStepCursor]
+	return m.confirmDeletion(fmt.Sprintf("step %q", step.ID), Model.deleteWorkflowStep), nil
 }
 
 // deleteWorkflowStep removes the currently selected step and saves the workflow.

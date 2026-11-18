@@ -157,7 +157,9 @@ func (m Model) handleRequestVariablesKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case deleteVariableKey:
 		if m.requestVarsScope && hasRow {
-			return m.deleteScopeVariable(row), nil
+			return m.confirmDeletion(fmt.Sprintf("variable {{%s}}", row.Key), func(m Model) (Model, tea.Cmd) {
+				return m.deleteScopeVariable(row), nil
+			}), nil
 		}
 	}
 	return m, nil
@@ -228,14 +230,23 @@ func (m Model) handleRequestVariableChoiceKeys(msg tea.KeyMsg, row requestVariab
 	case choiceNoteKey:
 		return m.startChoiceNote(row)
 	case deleteChoiceKey:
-		remaining := value.WithoutChoice(m.requestVarChoiceCursor)
-		m = m.saveRequestVariable(row.Key, remaining)
-		if !remaining.IsChoice() {
-			m.requestVarEdit = requestVarEditNone
-		}
-		m.requestVarChoiceCursor = min(m.requestVarChoiceCursor, max(len(remaining.Choices)-1, 0))
+		choice := m.requestVarChoiceCursor
+		subject := fmt.Sprintf("choice '%s' of {{%s}}", value.Choices[choice], row.Key)
+		return m.confirmDeletion(subject, func(m Model) (Model, tea.Cmd) {
+			return m.deleteChoice(row.Key, value, choice), nil
+		}), nil
 	}
 	return m, nil
+}
+
+func (m Model) deleteChoice(key string, value postman.VariableValue, choice int) Model {
+	remaining := value.WithoutChoice(choice)
+	m = m.saveRequestVariable(key, remaining)
+	if !remaining.IsChoice() {
+		m.requestVarEdit = requestVarEditNone
+	}
+	m.requestVarChoiceCursor = min(choice, max(len(remaining.Choices)-1, 0))
+	return m
 }
 
 func (m Model) startChoiceNote(row requestVariableRow) (Model, tea.Cmd) {

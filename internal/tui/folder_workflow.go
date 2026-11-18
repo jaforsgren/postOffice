@@ -16,15 +16,10 @@ import (
 // It renders two cells wide; formatItemLine pads by display width to keep columns aligned.
 const folderWorkflowIndicator = "⚡"
 
-const (
-	confirmFolderRunKey = "y"
-	cancelFolderRunKey  = "n"
-)
-
 var errCollectionPathNotFound = errors.New("collection path not found")
 
-// pendingFolderRun is a folder the user asked to run as a workflow, awaiting confirmation.
-type pendingFolderRun struct {
+// folderRun is a folder to run as a workflow.
+type folderRun struct {
 	folder     postman.Item
 	folderPath []string // full path including the folder's own name
 }
@@ -32,8 +27,7 @@ type pendingFolderRun struct {
 // folderRunPrompt asks to run the folder, naming any non-default :runopts
 // so they are confirmed too.
 func folderRunPrompt(folderPath []string, settings runSettings) string {
-	prompt := fmt.Sprintf("Run folder '%s' as workflow? (%s/%s)",
-		workflow.FolderWorkflowName(folderPath), confirmFolderRunKey, cancelFolderRunKey)
+	prompt := confirmationPrompt(fmt.Sprintf("Run folder '%s' as workflow?", workflow.FolderWorkflowName(folderPath)))
 	if !settings.isDefault() {
 		prompt += "  [" + settings.describe() + "]"
 	}
@@ -46,29 +40,20 @@ func (m Model) requestFolderRun(folder postman.Item, parentPath []string) Model 
 		m.statusMessage = "Workflow already running"
 		return m
 	}
-	m.pendingFolderRun = &pendingFolderRun{
+	run := folderRun{
 		folder:     folder,
 		folderPath: append(slices.Clone(parentPath), folder.Name),
 	}
-	m.statusMessage = folderRunPrompt(m.pendingFolderRun.folderPath, m.runSettings)
-	return m
-}
-
-// handleFolderRunConfirmKeys answers the pending folder-run prompt: the confirm key runs the
-// folder, any other key cancels, so the prompt can never trap the user.
-func (m Model) handleFolderRunConfirmKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	run := *m.pendingFolderRun
-	m.pendingFolderRun = nil
-	if msg.String() != confirmFolderRunKey {
-		m.statusMessage = fmt.Sprintf("Cancelled running folder '%s'", workflow.FolderWorkflowName(run.folderPath))
-		return m, nil
-	}
-	return m.runFolderAsWorkflow(run)
+	return m.askConfirmation(
+		folderRunPrompt(run.folderPath, m.runSettings),
+		fmt.Sprintf("Cancelled running folder '%s'", workflow.FolderWorkflowName(run.folderPath)),
+		func(m Model) (Model, tea.Cmd) { return m.runFolderAsWorkflow(run) },
+	)
 }
 
 // runFolderAsWorkflow runs the folder's saved workflow, generating and saving one first when the
 // folder has none yet (or its requests changed and the saved one was never hand-edited).
-func (m Model) runFolderAsWorkflow(run pendingFolderRun) (Model, tea.Cmd) {
+func (m Model) runFolderAsWorkflow(run folderRun) (Model, tea.Cmd) {
 	if m.collection == nil {
 		m.statusMessage = "Load a collection first"
 		return m, nil
