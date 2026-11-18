@@ -108,6 +108,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case WorkflowMsg:
 		m.workflowState = msg.State
+		if m.partialRunBase != nil {
+			m.workflowState = workflow.MergePartialRun(*m.partialRunBase, msg.State)
+		}
 		m = m.refreshWorkflowRunViewport()
 		if msg.Done {
 			runLabel := fmt.Sprintf("Workflow %q", msg.State.WorkflowName)
@@ -121,6 +124,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMessage = fmt.Sprintf("%s %s: %s — %s", runLabel, msg.State.Status, errMsg, msg.State.Summary)
 			}
 			m.workflowChan = nil
+			m.partialRunBase = nil
 			m = m.forgetWorkflowRun()
 			if m.collection != nil {
 				for _, ss := range msg.State.Steps {
@@ -2464,7 +2468,21 @@ func (m Model) startWorkflowPartial(wf *workflow.Workflow, fromIdx, toIdx int) (
 		rangeDesc = fmt.Sprintf("from: %s", wf.Steps[fromIdx].ID)
 	}
 	runLabel := fmt.Sprintf("%s (%s)", wf.Name, rangeDesc)
-	return m.runWorkflowScript(wf, workflow.PartialScript(wf.Steps, fromIdx, toIdx), runLabel)
+	return m.runWorkflowPart(wf, workflow.PartialScript(wf.Steps, fromIdx, toIdx), runLabel)
+}
+
+// runWorkflowPart runs part of wf with script. The steps it does not run keep
+// their results from wf's previous run (see workflow.MergePartialRun).
+func (m Model) runWorkflowPart(wf *workflow.Workflow, script, runLabel string) (Model, tea.Cmd) {
+	previous := m.workflowState
+	ranBefore := m.activeWorkflow == wf && previous.WorkflowID == wf.ID && len(previous.Steps) > 0
+	m, cmd := m.runWorkflowScript(wf, script, runLabel)
+	if cmd == nil || !ranBefore {
+		return m, cmd
+	}
+	m.workflowState = previous
+	m.partialRunBase = &previous
+	return m, cmd
 }
 
 // resolveStepItem finds the postman.Item for a workflow step by traversing the collection.
@@ -2663,6 +2681,7 @@ func (m Model) runWorkflowScript(wf *workflow.Workflow, script, runLabel string)
 	}
 
 	m = m.activateWorkflow(wf)
+	m.partialRunBase = nil
 	m.workflowState = workflow.ExecutionState{
 		WorkflowID:   wf.ID,
 		WorkflowName: wf.Name,

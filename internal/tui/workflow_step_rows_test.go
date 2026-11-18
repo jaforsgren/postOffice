@@ -214,3 +214,23 @@ func TestWorkflowStepRows_expansionResolvesInTheWorkflowsOwnCollectionAfterResco
 		t.Errorf("rows %v, status %q, want the folder expanded from collection B", rowRunIDs(m), m.statusMessage)
 	}
 }
+
+func TestWorkflowStepRows_runStepKeepsThePreviousRunOfTheOtherSteps(t *testing.T) {
+	m := cursorOnStep(t, folderWorkflowDetailModel(t), "cleanup")
+	setup := &workflow.StepState{ID: "setup", Status: workflow.StatusSuccess, Iteration: 1}
+	m.workflowState = workflow.ExecutionState{
+		WorkflowID: m.activeWorkflow.ID,
+		Iteration:  1,
+		Steps:      []*workflow.StepState{setup},
+		StepIndex:  map[string]*workflow.StepState{"setup": setup},
+	}
+
+	m, cmd := handleWorkflowRunStepKey(m)
+	if m.cancelWorkflowRun != nil {
+		defer m.cancelWorkflowRun()
+	}
+
+	if cmd == nil || m.partialRunBase == nil || m.runStepState("setup") != setup {
+		t.Errorf("status %q, setup %+v, want the run started over the previous run", m.statusMessage, m.runStepState("setup"))
+	}
+}

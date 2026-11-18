@@ -171,3 +171,5 @@ The gRPC editor adds `enter` to toggle TLS and `ctrl+f` to browse server reflect
 | `o` | Open the run report |
 
 An expanded folder step lists its sub-workflow's steps under it, with the run's results. Sub-steps can be inspected (`enter`, `i`, `tab`, `e`) and run alone with `x`. Deleting them, editing their scripts and `<`/`>` need the folder's own workflow.
+
+A partial run (`x`, `<`, `>`) keeps the previous run's results and logs for the steps it doesn't run.

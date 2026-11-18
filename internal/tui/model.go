@@ -228,7 +228,9 @@ type Model struct {
 	expandedWorkflowSteps map[string]bool
 	folderStepDefinitions map[string][]workflow.Step
 	workflowState         workflow.ExecutionState
-	workflowChan          <-chan workflow.ExecutionState
+	// partialRunBase is the previous run a partial run in progress merges into; nil otherwise.
+	partialRunBase *workflow.ExecutionState
+	workflowChan   <-chan workflow.ExecutionState
 	// cancelWorkflowRun stops the workflow run in progress; nil when none is.
 	cancelWorkflowRun context.CancelFunc
 	// abortWorkflowStep aborts one running step of the run in progress (Runner.Abort); nil when none is.
