@@ -50,7 +50,7 @@ func (m Model) renderDependencyGraphView() string {
 		cursorRow = selectable[m.dependencyGraph.cursor]
 	}
 
-	visibleLines := m.height - windowChromeHeight - dependencyGraphHeaderLines
+	visibleLines := m.mainWindowRows() - dependencyGraphHeaderLines
 	startIdx, endIdx := calculateVisibleWindow(cursorRow, len(rows), visibleLines)
 	for i := startIdx; i < endIdx; i++ {
 		marker := "  "
@@ -61,7 +61,7 @@ func (m Model) renderDependencyGraphView() string {
 	}
 
 	return mainWindowStyle.
-		Height(m.height - windowChromeHeight).
+		Height(m.calculateLayout().contentHeight).
 		Width(m.width - 4).
 		Render(strings.Join(lines, "\n"))
 }

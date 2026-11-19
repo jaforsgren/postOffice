@@ -59,7 +59,7 @@ func (m Model) renderListenersView() string {
 	if len(messages) == 0 {
 		lines = append(lines, subtleStyle.Render("No messages yet."))
 	} else {
-		visibleLines := m.height - windowChromeHeight - len(lines)
+		visibleLines := m.mainWindowRows() - len(lines)
 		startIdx, endIdx := calculateVisibleWindow(m.listenerCursor, len(messages), visibleLines)
 		for i := startIdx; i < endIdx; i++ {
 			marker := "  "
@@ -77,7 +77,7 @@ func (m Model) renderListenersView() string {
 		lines[i] = ansi.Truncate(lines[i], contentWidth, "…")
 	}
 	return mainWindowStyle.
-		Height(m.height - windowChromeHeight).
+		Height(m.calculateLayout().contentHeight).
 		Width(m.width - 4).
 		Render(strings.Join(lines, "\n"))
 }
@@ -174,7 +174,7 @@ func listenedMessageLines(listened listenedMessage) []string {
 
 func (m Model) renderListenerMessageView() string {
 	return mainWindowStyle.
-		Height(m.height - windowChromeHeight).
+		Height(m.calculateLayout().contentHeight).
 		Width(m.width - 4).
 		Render(m.listenerMessageViewport.View())
 }

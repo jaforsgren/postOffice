@@ -1283,7 +1283,7 @@ func handleLogsCommand(m Model, args []string) (Model, tea.Cmd) {
 	m.mode = ModeLog
 	m.scrollOffset = 0
 	m.logsViewport.Width = m.width - viewportPadding
-	m.logsViewport.Height = m.height - viewportPadding
+	m.logsViewport.Height = m.mainWindowRows() - logsHeaderLines
 	m.statusMessage = "Showing session logs (j/k to scroll, esc to close)"
 	return m, nil
 }
@@ -2089,7 +2089,7 @@ func handleSavedResponsesKey(m Model) (Model, tea.Cmd) {
 	m.savedResponseItemID = itemID
 	m.savedResponseCursor = 0
 	m.savedResponseViewport.Width = m.width - viewportPadding
-	m.savedResponseViewport.Height = m.height - viewportPadding
+	m.savedResponseViewport.Height = m.mainWindowRows()
 	m.previousMode = m.mode
 	m.mode = ModeSavedResponses
 	m.statusMessage = fmt.Sprintf("%d saved response(s)", len(responses))

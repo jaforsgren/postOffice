@@ -11,7 +11,7 @@ func handleToggleTopBarKey(m Model) (Model, tea.Cmd) {
 	} else {
 		m.statusMessage = "Top bar shown"
 	}
-	return m, nil
+	return m.resizeViewports(), nil
 }
 
 // renderedTopBarHeight is the height the top bar takes, none while it is hidden.

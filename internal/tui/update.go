@@ -31,7 +31,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.infoViewport.Width = msg.Width - viewportPadding
 		m.jsonViewport.Width = msg.Width - viewportPadding
 		m.workflowViewport.Width = msg.Width - viewportPadding
-		return m, nil
+		return m.resizeViewports(), nil
 
 	case RequestCompleteMsg:
 		if msg.Cancelled {
@@ -512,9 +512,19 @@ func (m Model) viewportWidth() int {
 
 // configureViewport sizes a viewport to the model's terminal dimensions minus viewportPadding
 // and sets its content. vp must be a pointer to a field on the caller's model copy.
+// resizeViewports fits the main-window viewports to the layout, which
+// changes with the terminal size and when the top bar is toggled.
+func (m Model) resizeViewports() Model {
+	for _, vp := range []*viewport.Model{&m.responseViewport, &m.infoViewport, &m.jsonViewport, &m.savedResponseViewport, &m.helpViewport, &m.historyDiffViewport, &m.listenerMessageViewport} {
+		vp.Height = m.mainWindowRows()
+	}
+	m.logsViewport.Height = m.mainWindowRows() - logsHeaderLines
+	return m
+}
+
 func (m Model) configureViewport(vp *viewport.Model, content string) {
 	vp.Width = m.viewportWidth()
-	vp.Height = m.height - viewportPadding
+	vp.Height = m.mainWindowRows()
 	vp.SetContent(content)
 }
 

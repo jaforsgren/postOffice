@@ -14,8 +14,6 @@ const (
 
 	// historyHeaderLines is the title line plus the blank line below it.
 	historyHeaderLines = 2
-	// windowChromeHeight is the vertical space taken by everything around the main window.
-	windowChromeHeight = 8
 )
 
 func (m Model) renderHistoryView() string {
@@ -31,7 +29,7 @@ func (m Model) renderHistoryView() string {
 	if len(entries) == 0 {
 		lines = append(lines, helpStyle.Render("No requests executed yet."))
 	} else {
-		visibleLines := m.height - windowChromeHeight - historyHeaderLines
+		visibleLines := m.mainWindowRows() - historyHeaderLines
 		startIdx, endIdx := calculateVisibleWindow(m.requestHistoryCursor, len(entries), visibleLines)
 		for i := startIdx; i < endIdx; i++ {
 			marker := "  "
@@ -43,7 +41,7 @@ func (m Model) renderHistoryView() string {
 	}
 
 	return mainWindowStyle.
-		Height(m.height - windowChromeHeight).
+		Height(m.calculateLayout().contentHeight).
 		Width(m.width - 4).
 		Render(strings.Join(lines, "\n"))
 }
@@ -91,7 +89,7 @@ func formatByteSize(size int) string {
 
 func (m Model) renderHistoryDiffView() string {
 	return mainWindowStyle.
-		Height(m.height - windowChromeHeight).
+		Height(m.calculateLayout().contentHeight).
 		Width(m.width - 4).
 		Render(m.historyDiffViewport.View())
 }

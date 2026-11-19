@@ -85,3 +85,9 @@ func paneInnerWidth(width int) int {
 func paneInnerHeight(height int) int {
 	return max(height-2*paneVerticalPadding, minPaneSize)
 }
+
+// mainWindowRows is how many content rows fit inside the bordered, padded
+// main window.
+func (m Model) mainWindowRows() int {
+	return max(m.calculateLayout().contentHeight-2*paneVerticalPadding, minPaneSize)
+}

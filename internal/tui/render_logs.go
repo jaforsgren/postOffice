@@ -7,6 +7,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// logsHeaderLines is the title line plus the blank line above the log viewport.
+const logsHeaderLines = 2
+
 func (m Model) renderLogsView() string {
 	logs := logger.GetLogs()
 
@@ -34,7 +37,7 @@ func (m Model) renderLogsView() string {
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("33")).
-		Height(m.height-10).
+		Height(m.calculateLayout().contentHeight).
 		Width(m.width-4).
 		Padding(1, 2).
 		Render(fullContent)

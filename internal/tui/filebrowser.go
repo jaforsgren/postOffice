@@ -214,8 +214,7 @@ func (m Model) renderFileBrowser() string {
 		lines = append(lines, "")
 	}
 
-	contentHeight := m.height - 10
-	visibleLines := contentHeight - len(lines)
+	visibleLines := m.mainWindowRows() - len(lines)
 
 	startIdx := 0
 	endIdx := len(m.items)
@@ -250,7 +249,7 @@ func (m Model) renderFileBrowser() string {
 
 	content := strings.Join(lines, "\n")
 	return mainWindowStyle.
-		Height(contentHeight).
+		Height(m.calculateLayout().contentHeight).
 		Width(m.width - 4).
 		Render(content)
 }

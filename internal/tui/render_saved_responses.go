@@ -44,7 +44,7 @@ func (m Model) renderSavedResponsesView() string {
 	m.savedResponseViewport.SetContent(content)
 
 	return mainWindowStyle.
-		Height(m.height - 8).
+		Height(m.calculateLayout().contentHeight).
 		Width(m.width - 4).
 		Render(m.savedResponseViewport.View())
 }
