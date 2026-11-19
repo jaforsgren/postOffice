@@ -137,7 +137,8 @@ The gRPC editor adds `enter` to toggle TLS and `ctrl+f` to browse server reflect
 
 | Key | Action |
 |---|---|
-| `j` / `k` | Navigate messages (newest enqueued first) |
+| `j` / `k` | Navigate messages (newest enqueued first); below the newest, the selection stays put and new arrivals are counted |
+| `g` / `G` | Newest message, following new arrivals again / oldest message |
 | `enter` | Show the message's properties and body |
 | `n` / `N` | Next / previous message (message view) |
 | `ctrl+e` | Send the message again to its queue or topic |

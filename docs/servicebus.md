@@ -88,11 +88,14 @@ for (let attempt = 0; attempt < 10; attempt++) {
 
 Press `w` on a `PEEK` request to watch it in the background; `w` again stops it. On a folder, `w` watches every `PEEK` request inside, and stops them all once they are all watched. The request row shows `◉ watching (n)` with the number of messages seen, and the TUI stays usable while listeners run. Messages that arrive while the listeners view is closed are counted in the status bar (`◉ 3 new message(s) (W)`). Watches are saved when you quit and resumed on the next start.
 
-Press `W` (or `:listeners`, `:lis`) for the listeners view: each running listener, then every message seen, newest enqueued first.
+Press `W` (or `:listeners`, `:lis`) for the listeners view: each running listener, then every message seen, newest enqueued first. `W` only opens the view; the listeners keep running when you close it.
+
+With the newest message selected, the list follows new arrivals. Move down (or open a message with `enter`) and the selection stays where it is: new messages are added above it and counted (`▲ 14 new above (g latest)`) until `g` jumps back to the newest.
 
 | Key | Action |
 |---|---|
 | `j` / `k` | Navigate messages |
+| `g` / `G` | Newest message (and follow new arrivals again) / oldest message |
 | `enter` | Show the message's properties, delivery count, expiry, dead-letter reason and pretty-printed body |
 | `n` / `N` | Next / previous message, from the message view |
 | `ctrl+e` | Send the message again to its queue or topic (with the collection's and folder's pre-request scripts) |

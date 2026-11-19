@@ -24,7 +24,7 @@ func (m Model) clearSearch() Model {
 		m.workflowCursor = 0
 	case ModeListeners:
 		m.listenerQuery = ""
-		m.listenerCursor = 0
+		m = m.followLatestListenedMessage()
 	}
 	m.cursor = 0
 	return m

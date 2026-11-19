@@ -280,8 +280,11 @@ type Model struct {
 	// listeners are the background watches of PEEK requests, by item ID.
 	listeners map[string]*listener
 	// listenedMessages are every listener's messages, oldest first.
-	listenedMessages        []listenedMessage
-	listenerCursor          int
+	listenedMessages []listenedMessage
+	listenerCursor   int
+	// listenedMessagesAbove counts the messages that arrived above the
+	// selection while it was held in place.
+	listenedMessagesAbove   int
 	listenerMessageViewport viewport.Model
 	// listenersReturnMode is where the listeners view was opened from.
 	listenersReturnMode ViewMode

@@ -215,6 +215,74 @@ func TestAddListenedMessages_CursorFollowsOrStays(t *testing.T) {
 	}
 }
 
+// heldSelectionModel lists messages a (oldest) to c in the listeners view
+// with the cursor held on a.
+func heldSelectionModel(t *testing.T) (Model, *listenerSource) {
+	source := testSource("events/watch", peekRequestName)
+	m := peekRequestModel(t, testConnection)
+	m.mode = ModeListeners
+	m = m.addListenedMessages(listenedFrom(source, peeked(1, "a", `{}`), peeked(2, "b", `{}`), peeked(3, "c", `{}`)))
+	return m.selectOldestListenedMessage(), source
+}
+
+func TestAddListenedMessages_CountsArrivalsAboveTheHeldSelection(t *testing.T) {
+	m, source := heldSelectionModel(t)
+
+	m = m.addListenedMessages(listenedFrom(source, peeked(4, "d", `{}`), peeked(5, "e", `{}`)))
+
+	if selected, _ := m.selectedListenedMessage(); selected.message.Subject != "a" {
+		t.Errorf("selected %q, want the selection held on a", selected.message.Subject)
+	}
+	if want := fmt.Sprintf(newAboveIndicator, 2, goTopKey); !strings.Contains(m.renderListenersView(), want) {
+		t.Errorf("listeners view doesn't show %q:\n%s", want, m.renderListenersView())
+	}
+}
+
+func TestAddListenedMessages_NoArrivalsCountedWhileFollowing(t *testing.T) {
+	m, source := heldSelectionModel(t)
+	m = m.followLatestListenedMessage()
+
+	m = m.addListenedMessages(listenedFrom(source, peeked(4, "d", `{}`)))
+
+	if m.listenerCursor != 0 || m.listenedMessagesAbove != 0 {
+		t.Errorf("cursor = %d, above = %d, want the newest message followed and nothing counted", m.listenerCursor, m.listenedMessagesAbove)
+	}
+}
+
+func TestAddListenedMessages_HoldsTheOpenMessage(t *testing.T) {
+	m, source := heldSelectionModel(t)
+	m = m.followLatestListenedMessage()
+	m, _ = m.showListenedMessage()
+
+	m = m.addListenedMessages(listenedFrom(source, peeked(4, "d", `{}`)))
+
+	if selected, _ := m.selectedListenedMessage(); selected.message.Subject != "c" || m.listenedMessagesAbove != 1 {
+		t.Errorf("selected %q with %d above, want c, the open message, held with 1 above", selected.message.Subject, m.listenedMessagesAbove)
+	}
+}
+
+func TestGoTopKey_JumpsToTheLatestMessageAndClearsTheCount(t *testing.T) {
+	m, source := heldSelectionModel(t)
+	m = m.addListenedMessages(listenedFrom(source, peeked(4, "d", `{}`)))
+
+	m = pressKeys(t, m, runes(goTopKey))
+
+	if selected, _ := m.selectedListenedMessage(); selected.message.Subject != "d" || m.listenedMessagesAbove != 0 {
+		t.Errorf("selected %q with %d above, want d, the newest, and the count cleared", selected.message.Subject, m.listenedMessagesAbove)
+	}
+}
+
+func TestMoveListenerCursor_ReachingTheTopClearsTheCount(t *testing.T) {
+	m, source := heldSelectionModel(t)
+	m = m.addListenedMessages(listenedFrom(source, peeked(4, "d", `{}`)))
+
+	m = m.moveListenerCursor(-m.listenerCursor)
+
+	if m.listenedMessagesAbove != 0 {
+		t.Errorf("above = %d, want the count cleared at the newest message", m.listenedMessagesAbove)
+	}
+}
+
 func TestAddListenedMessages_InterleavesByEnqueuedTime(t *testing.T) {
 	m := peekRequestModel(t, testConnection)
 	m = m.addListenedMessages(listenedFrom(testSource("events/payments", "payments"), peeked(1, "p1", `{}`), peeked(5, "p5", `{}`)))

@@ -24,6 +24,9 @@ const (
 	listenerOKIcon       = "●"
 	listenerErrorIcon    = "✗"
 	pausedIndicator      = "⏸ paused, %d held (%s resumes)"
+	// newAboveIndicator counts the messages that arrived above the held
+	// selection.
+	newAboveIndicator = "▲ %d new above (%s latest)"
 
 	// relatedMessageWindow is how long after a request completes the
 	// messages listeners receive count as published by it.
@@ -94,10 +97,14 @@ func listenerLine(active *listener) string {
 	return fmt.Sprintf(" %s %s  %s  %s", status, requestStyle.Render(active.target), subtleStyle.Render(active.name), detail)
 }
 
-// listenerFilterLine says what limits the listed messages: a pause, a
-// listener filter and a search. Empty when nothing does.
+// listenerFilterLine says what limits the listed messages: a pause, new
+// messages above the selection, a listener filter and a search. Empty when
+// nothing does.
 func (m Model) listenerFilterLine() string {
 	var parts []string
+	if m.listenedMessagesAbove > 0 {
+		parts = append(parts, watchingStyle.Render(fmt.Sprintf(newAboveIndicator, m.listenedMessagesAbove, goTopKey)))
+	}
 	if m.listenersPaused {
 		parts = append(parts, watchingStyle.Render(fmt.Sprintf(pausedIndicator, len(m.heldListenedMessages), pauseListenersKey)))
 	}

@@ -713,18 +713,18 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeResponse, ModeInfo, ModeJSON, ModeLog, ModeSavedResponses, ModeHistory, ModeHistoryDiff, ModeTiming, ModeDependencyGraph, ModeListeners, ModeListenerMessage},
 		},
 		{
-			Keys:        []string{"g"},
+			Keys:        []string{goTopKey},
 			Description: "Go to top",
 			ShortHelp:   "g/G",
 			Handler:     handleGoTopKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail, ModeListeners},
 		},
 		{
 			Keys:        []string{"G"},
 			Description: "Go to bottom",
 			ShortHelp:   "g/G",
 			Handler:     handleGoBottomKey,
-			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail},
+			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeWorkflows, ModeWorkflowDetail, ModeListeners},
 		},
 		{
 			Keys:        []string{"r"},
@@ -2242,12 +2242,17 @@ func handleHelpKey(m Model) (Model, tea.Cmd) {
 	return m.openHelp(false)
 }
 
+// goTopKey selects the first row; in the listeners view, the newest message.
+const goTopKey = "g"
+
 func handleGoTopKey(m Model) (Model, tea.Cmd) {
 	switch m.mode {
 	case ModeWorkflowDetail:
 		m.workflowStepCursor = 0
 	case ModeWorkflows:
 		m.workflowCursor = 0
+	case ModeListeners:
+		return m.followLatestListenedMessage(), nil
 	default:
 		m.cursor = 0
 	}
@@ -2264,6 +2269,8 @@ func handleGoBottomKey(m Model) (Model, tea.Cmd) {
 		if len(m.workflows) > 0 {
 			m.workflowCursor = len(m.workflows) - 1
 		}
+	case ModeListeners:
+		return m.selectOldestListenedMessage(), nil
 	default:
 		if len(m.items) > 0 {
 			m.cursor = len(m.items) - 1

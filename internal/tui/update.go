@@ -1183,8 +1183,7 @@ func (m Model) filterItems() Model {
 	searchQuery := m.searchInput.Value()
 	if m.mode == ModeListeners {
 		m.listenerQuery = strings.ToLower(searchQuery)
-		m.listenerCursor = 0
-		return m
+		return m.followLatestListenedMessage()
 	}
 	if searchQuery == "" {
 		m.items = m.allItems

@@ -346,23 +346,30 @@ func (m Model) handleListenerMsg(msg ListenerMsg) (Model, tea.Cmd) {
 }
 
 // addListenedMessages adds messages in enqueued order, so listeners' backlogs
-// interleave by time, and keeps the cursor on the message it pointed at. A
-// cursor on the newest message stays at the top and follows new arrivals.
+// interleave by time, and keeps the cursor on the message it pointed at,
+// counting the messages that arrive above it. A cursor on the newest message
+// stays at the top and follows new arrivals, except while that message is
+// open.
 func (m Model) addListenedMessages(messages []listenedMessage) Model {
 	if len(messages) == 0 {
 		return m
 	}
 	selected, hasSelection := m.selectedListenedMessage()
-	keepSelection := hasSelection && m.listenerCursor > 0
+	keepSelection := hasSelection && (m.listenerCursor > 0 || m.mode == ModeListenerMessage)
 	m.listenedMessages = append(m.listenedMessages, messages...)
 	slices.SortStableFunc(m.listenedMessages, func(a, b listenedMessage) int {
 		return a.message.EnqueuedTime.Compare(b.message.EnqueuedTime)
 	})
 	m.listenedMessages = keepNewest(m.listenedMessages)
-	visible := m.visibleListenedMessages()
-	m.listenerCursor = 0
+	selectedIndex := -1
 	if keepSelection {
-		m.listenerCursor = max(0, slices.IndexFunc(visible, selected.sameMessage))
+		selectedIndex = slices.IndexFunc(m.visibleListenedMessages(), selected.sameMessage)
+	}
+	if selectedIndex < 0 {
+		m = m.followLatestListenedMessage()
+	} else {
+		m.listenedMessagesAbove += selectedIndex - m.listenerCursor
+		m.listenerCursor = selectedIndex
 	}
 	if m.mode != ModeListeners && m.mode != ModeListenerMessage {
 		m.unseenListenedMessages += len(messages)
@@ -460,7 +467,7 @@ func handleListenersCommand(m Model, _ []string) (Model, tea.Cmd) {
 func handleClearListenedMessagesKey(m Model) (Model, tea.Cmd) {
 	m.listenedMessages = nil
 	m.heldListenedMessages = nil
-	m.listenerCursor = 0
+	m = m.followLatestListenedMessage()
 	m.statusMessage = "Cleared listened messages"
 	return m, nil
 }
@@ -492,7 +499,7 @@ func handleListenerFilterKey(m Model) (Model, tea.Cmd) {
 	if m.listenerFilter != "" {
 		next = slices.IndexFunc(sources, func(source *listenerSource) bool { return source.itemID == m.listenerFilter }) + 1
 	}
-	m.listenerCursor = 0
+	m = m.followLatestListenedMessage()
 	if next >= len(sources) {
 		m.listenerFilter = ""
 		m.statusMessage = "Showing every listener's messages"
@@ -548,7 +555,23 @@ func handlePreviousListenedMessageKey(m Model) (Model, tea.Cmd) {
 
 func (m Model) moveListenerCursor(delta int) Model {
 	m.listenerCursor = max(0, min(m.listenerCursor+delta, len(m.visibleListenedMessages())-1))
+	if m.listenerCursor == 0 {
+		return m.followLatestListenedMessage()
+	}
 	return m
+}
+
+// followLatestListenedMessage selects the newest message, so the list
+// follows new arrivals again, and forgets those counted above the selection.
+func (m Model) followLatestListenedMessage() Model {
+	m.listenerCursor = 0
+	m.listenedMessagesAbove = 0
+	return m
+}
+
+// selectOldestListenedMessage selects the oldest message listed.
+func (m Model) selectOldestListenedMessage() Model {
+	return m.moveListenerCursor(len(m.visibleListenedMessages()))
 }
 
 // handleCopyListenedMessageKey copies the selected message's body.
