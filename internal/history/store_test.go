@@ -134,6 +134,86 @@ func TestStore_AddKeepsEntryWhenWriteFails(t *testing.T) {
 	}
 }
 
+func entryAt(name string, offset time.Duration) Entry {
+	entry := newEntry(name)
+	entry.Snapshot.SavedAt = entry.Snapshot.SavedAt.Add(offset)
+	return entry
+}
+
+func TestStore_EntriesForItem(t *testing.T) {
+	store := NewStore("")
+	_ = store.Add(entryAt("orders", 0))
+	_ = store.Add(entryAt("users", time.Second))
+	_ = store.Add(entryAt("orders", 2*time.Second))
+
+	entries := store.EntriesForItem("Collection/orders")
+
+	if len(entries) != 2 {
+		t.Fatalf("len = %d, want 2", len(entries))
+	}
+	if !entries[0].Snapshot.SavedAt.After(entries[1].Snapshot.SavedAt) {
+		t.Errorf("entries not newest first: %v, %v", entries[0].Snapshot.SavedAt, entries[1].Snapshot.SavedAt)
+	}
+}
+
+func TestStore_RemovePersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.json")
+	store := NewStore(path)
+	kept, removed := entryAt("orders", 0), entryAt("orders", time.Second)
+	_ = store.Add(kept)
+	_ = store.Add(removed)
+
+	if ok, err := store.Remove(removed); !ok || err != nil {
+		t.Fatalf("Remove() = %v, %v", ok, err)
+	}
+
+	reloaded := NewStore(path)
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	entries := reloaded.Entries()
+	if len(entries) != 1 || !entries[0].Snapshot.SavedAt.Equal(kept.Snapshot.SavedAt) {
+		t.Errorf("entries after Remove = %+v", entries)
+	}
+}
+
+func TestStore_RemoveTakesOneOfIdenticalEntries(t *testing.T) {
+	store := NewStore("")
+	_ = store.Add(newEntry("orders"))
+	_ = store.Add(newEntry("orders"))
+
+	if ok, err := store.Remove(newEntry("orders")); !ok || err != nil {
+		t.Fatalf("Remove() = %v, %v", ok, err)
+	}
+	if store.Len() != 1 {
+		t.Errorf("Len() = %d, want 1", store.Len())
+	}
+}
+
+func TestStore_RemoveUnknownEntry(t *testing.T) {
+	store := NewStore("")
+	_ = store.Add(newEntry("orders"))
+
+	if ok, err := store.Remove(newEntry("users")); ok || err != nil {
+		t.Errorf("Remove() = %v, %v, want false, nil", ok, err)
+	}
+	if store.Len() != 1 {
+		t.Errorf("Len() = %d, want 1", store.Len())
+	}
+}
+
+func TestStore_RemoveKeepsEntryWhenWriteFails(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), "no-such-dir", "history.json"))
+	_ = store.Add(newEntry("orders"))
+
+	if ok, err := store.Remove(newEntry("orders")); ok || err == nil {
+		t.Errorf("Remove() = %v, %v, want false and a write error", ok, err)
+	}
+	if store.Len() != 1 {
+		t.Errorf("Len() = %d, want 1", store.Len())
+	}
+}
+
 func TestEntry_Request(t *testing.T) {
 	req := newEntry("orders").Request()
 

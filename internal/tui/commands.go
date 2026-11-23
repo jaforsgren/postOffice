@@ -228,7 +228,7 @@ func (cr *CommandRegistry) registerCommands() {
 		{
 			Name:        "history",
 			Aliases:     []string{"hist", "hi"},
-			Description: "Show request history (replay and diff)",
+			Description: "Show history of all requests (replay, diff, delete)",
 			ShortHelp:   ":hist",
 			Handler:     handleHistoryCommand,
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables, ModeResponse, ModeHistory},
@@ -404,10 +404,17 @@ func (cr *CommandRegistry) registerKeyBindings() {
 			AvailableIn: []ViewMode{ModeHistory},
 		},
 		{
+			Keys:        []string{deleteHistoryEntryKey},
+			Description: "Delete history entry",
+			ShortHelp:   deleteHistoryEntryKey,
+			Handler:     handleDeleteHistoryEntryKey,
+			AvailableIn: []ViewMode{ModeHistory},
+		},
+		{
 			Keys:        []string{requestHistoryKey},
-			Description: "Request history",
+			Description: "Request history (selected request)",
 			ShortHelp:   requestHistoryKey,
-			Handler:     Model.openRequestHistory,
+			Handler:     Model.openSelectedRequestHistory,
 			AvailableIn: []ViewMode{ModeCollections, ModeRequests, ModeEnvironments, ModeVariables},
 		},
 		{
@@ -1703,7 +1710,7 @@ func handleDownKey(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.mode == ModeHistory {
-		if m.requestHistoryCursor < m.requestHistory.Len()-1 {
+		if m.requestHistoryCursor < len(m.visibleHistoryEntries())-1 {
 			m.requestHistoryCursor++
 		}
 		return m, nil

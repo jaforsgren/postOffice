@@ -275,6 +275,7 @@ type Model struct {
 
 	requestHistory       *history.Store
 	requestHistoryCursor int
+	requestHistoryScope  requestHistoryScope
 	historyReturnMode    ViewMode
 	historyDiffViewport  viewport.Model
 	// listeners are the background watches of PEEK requests, by item ID.

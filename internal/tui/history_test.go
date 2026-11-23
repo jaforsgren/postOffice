@@ -379,6 +379,162 @@ func TestRenderHistoryView(t *testing.T) {
 	}
 }
 
+func historyEntryForItem(itemID string, savedAtOffset time.Duration) history.Entry {
+	entry := historyEntryFor("https://example.com")
+	entry.ItemID = itemID
+	entry.ItemName = itemID
+	entry.Snapshot.SavedAt = entry.Snapshot.SavedAt.Add(savedAtOffset)
+	return entry
+}
+
+func selectFirstRequest(t *testing.T, m Model) (Model, postman.Item) {
+	t.Helper()
+	for i, item := range m.currentItems {
+		if item.IsRequest() {
+			m.cursor = i
+			return m, item
+		}
+	}
+	t.Fatal("test collection has no top-level request")
+	return m, postman.Item{}
+}
+
+func TestCtrlY_ShowsOnlySelectedRequest(t *testing.T) {
+	m, item := selectFirstRequest(t, sizedTestModel())
+	selectedID := m.requestItemID(m.folderPathForCursor(), item.Name)
+	_ = m.requestHistory.Add(historyEntryForItem(selectedID, 0))
+	_ = m.requestHistory.Add(historyEntryForItem("other", time.Second))
+	_ = m.requestHistory.Add(historyEntryForItem(selectedID, 2*time.Second))
+
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyCtrlY})
+
+	entries := m.visibleHistoryEntries()
+	if len(entries) != 2 {
+		t.Fatalf("visible = %d, want 2", len(entries))
+	}
+	for _, entry := range entries {
+		if entry.ItemID != selectedID {
+			t.Errorf("visible entry for %q, want %q", entry.ItemID, selectedID)
+		}
+	}
+	if view := m.renderHistoryView(); !strings.Contains(view, "Request History: "+item.Name) {
+		t.Errorf("view missing scoped title:\n%s", view)
+	}
+
+	for range 3 {
+		m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	}
+	if m.requestHistoryCursor != 1 {
+		t.Errorf("cursor = %d, want 1 (clamped to the scoped list)", m.requestHistoryCursor)
+	}
+}
+
+func TestCtrlY_WithoutSelectedRequestShowsAll(t *testing.T) {
+	m := sizedTestModel()
+	m.mode = ModeCollections
+	_ = m.requestHistory.Add(historyEntryForItem("a", 0))
+	_ = m.requestHistory.Add(historyEntryForItem("b", time.Second))
+
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyCtrlY})
+
+	if got := len(m.visibleHistoryEntries()); got != 2 {
+		t.Errorf("visible = %d, want 2", got)
+	}
+}
+
+func TestHistoryCommand_WidensScopedHistoryToAll(t *testing.T) {
+	m, item := selectFirstRequest(t, sizedTestModel())
+	_ = m.requestHistory.Add(historyEntryForItem(m.requestItemID(m.folderPathForCursor(), item.Name), 0))
+	_ = m.requestHistory.Add(historyEntryForItem("other", time.Second))
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyCtrlY})
+
+	m, _ = m.commandRegistry.ExecuteCommand(m, "history", nil)
+
+	if got := len(m.visibleHistoryEntries()); got != 2 {
+		t.Errorf("visible = %d, want 2", got)
+	}
+	if m.historyReturnMode != ModeRequests {
+		t.Errorf("historyReturnMode = %v, want ModeRequests", m.historyReturnMode)
+	}
+}
+
+func TestRecordHistory_OtherRequestKeepsScopedCursor(t *testing.T) {
+	m := sizedTestModel()
+	_ = m.requestHistory.Add(historyEntryForItem("a", 0))
+	_ = m.requestHistory.Add(historyEntryForItem("a", time.Second))
+	m.requestHistoryScope = requestHistoryScope{itemID: "a", itemName: "a"}
+	m.requestHistoryCursor = 1
+
+	m = m.recordHistory(RequestCompleteMsg{ItemID: "b", ItemName: "b", Response: &internalhttp.Response{}})
+
+	if m.requestHistoryCursor != 1 {
+		t.Errorf("cursor = %d, want 1", m.requestHistoryCursor)
+	}
+}
+
+func TestDeleteHistoryEntry_ConfirmRemovesSelected(t *testing.T) {
+	m := sizedTestModel()
+	older, newer := historyEntryForItem("a", 0), historyEntryForItem("a", time.Second)
+	_ = m.requestHistory.Add(older)
+	_ = m.requestHistory.Add(newer)
+	m, _ = m.openRequestHistory()
+
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(deleteHistoryEntryKey)})
+	if m.requestHistory.Len() != 2 {
+		t.Fatal("entry deleted before confirmation")
+	}
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(confirmKey)})
+
+	entries := m.requestHistory.Entries()
+	if len(entries) != 1 || !entries[0].Snapshot.SavedAt.Equal(newer.Snapshot.SavedAt) {
+		t.Fatalf("entries = %+v, want only the newer entry", entries)
+	}
+	if m.requestHistoryCursor != 0 {
+		t.Errorf("cursor = %d, want 0", m.requestHistoryCursor)
+	}
+}
+
+func TestDeleteHistoryEntry_CancelKeepsEntry(t *testing.T) {
+	m := sizedTestModel()
+	_ = m.requestHistory.Add(historyEntryForItem("a", 0))
+	m, _ = m.openRequestHistory()
+
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(deleteHistoryEntryKey)})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(cancelKey)})
+
+	if m.requestHistory.Len() != 1 {
+		t.Errorf("history length = %d, want 1", m.requestHistory.Len())
+	}
+}
+
+func TestDeleteHistoryEntry_RequestFinishingDuringConfirmation(t *testing.T) {
+	m := sizedTestModel()
+	target := historyEntryForItem("a", 0)
+	_ = m.requestHistory.Add(target)
+	m, _ = m.openRequestHistory()
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(deleteHistoryEntryKey)})
+
+	m = m.recordHistory(RequestCompleteMsg{ItemID: "b", ItemName: "b", Response: &internalhttp.Response{}})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(confirmKey)})
+
+	entries := m.requestHistory.Entries()
+	if len(entries) != 1 || entries[0].ItemID != "b" {
+		t.Errorf("entries = %+v, want only the newly finished request", entries)
+	}
+}
+
+func TestDeleteHistoryEntry_EmptyHistory(t *testing.T) {
+	m := sizedTestModel()
+	m, _ = m.openRequestHistory()
+
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(deleteHistoryEntryKey)})
+
+	if m.pendingConfirmation != nil {
+		t.Error("asked to confirm deleting nothing")
+	}
+}
+
 func TestFormatByteSize(t *testing.T) {
 	tests := map[int]string{
 		0:                   "0B",

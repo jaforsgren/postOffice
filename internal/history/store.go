@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"postOffice/internal/logger"
+	"slices"
 )
 
 const (
@@ -80,6 +81,37 @@ func (s *Store) Entries() []Entry {
 		newestFirst[len(s.entries)-1-i] = entry
 	}
 	return newestFirst
+}
+
+// EntriesForItem returns the history of one request, newest first.
+func (s *Store) EntriesForItem(itemID string) []Entry {
+	matching := make([]Entry, 0, len(s.entries))
+	for _, entry := range s.Entries() {
+		if entry.ItemID == itemID {
+			matching = append(matching, entry)
+		}
+	}
+	return matching
+}
+
+// Remove deletes the newest entry recorded for the same request at the same time as
+// entry and persists the result. It reports false when no such entry exists. Unlike Add,
+// a failed write keeps the entry, so a deleted secret never silently returns on restart.
+func (s *Store) Remove(entry Entry) (bool, error) {
+	for i := len(s.entries) - 1; i >= 0; i-- {
+		candidate := s.entries[i]
+		if candidate.ItemID != entry.ItemID || !candidate.Snapshot.SavedAt.Equal(entry.Snapshot.SavedAt) {
+			continue
+		}
+		previous := s.entries
+		s.entries = slices.Delete(slices.Clone(previous), i, i+1)
+		if err := s.save(); err != nil {
+			s.entries = previous
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 func (s *Store) Len() int {

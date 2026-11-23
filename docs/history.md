@@ -4,9 +4,11 @@
 
 Every execution started from the TUI (HTTP, gRPC, Service Bus and AMQP, including replays) is recorded with its resolved URL/target, headers and body, environment name, status, duration, timestamp and response size. Workflow runs are not recorded.
 
-- Open it with `ctrl+y` or `:history` (`:hist`, `:hi`).
+- `ctrl+y` on a request shows that request's history. On a folder or in another view it shows every request.
+- `:history` (`:hist`, `:hi`) shows every request, also from a single request's history.
 - `enter` replays the entry with exactly the recorded resolved inputs. Variables are not re-resolved and pre-request/test scripts do not run.
 - `=` shows a line diff (`-` history entry, `+` current response) of status, sorted headers and pretty-printed body.
+- `d` deletes the selected entry after a `y`/`n` confirmation.
 
 History is persisted to `~/.postoffice_history.json` (capped at the 200 most recent entries). Because entries contain resolved secrets such as auth headers and connection strings, the file is written with owner-only permissions (`0600`).
 

@@ -20,9 +20,26 @@ const (
 	statusSending   = "Sending..."
 	timestampLayout = "2006-01-02 15:04:05"
 
-	requestHistoryKey = "ctrl+y"
-	historyDiffKey    = "="
+	requestHistoryKey     = "ctrl+y"
+	historyDiffKey        = "="
+	deleteHistoryEntryKey = "d"
+	allHistoryCommand     = ":hist"
 )
+
+// requestHistoryScope limits the history view to one request. The zero value shows
+// every request.
+type requestHistoryScope struct {
+	itemID   string
+	itemName string
+}
+
+func (s requestHistoryScope) isAll() bool {
+	return s.itemID == ""
+}
+
+func (s requestHistoryScope) includes(itemID string) bool {
+	return s.isAll() || s.itemID == itemID
+}
 
 func (m Model) environmentName() string {
 	if m.environment == nil {
@@ -75,19 +92,59 @@ func (m Model) recordHistory(msg RequestCompleteMsg) Model {
 	if err := m.requestHistory.Add(newHistoryEntry(msg, time.Now())); err != nil {
 		m.statusMessage = fmt.Sprintf("Warning: failed to save request history: %v", err)
 	}
-	if m.requestHistory.Len() > 1 {
-		m.requestHistoryCursor = min(m.requestHistoryCursor+1, m.requestHistory.Len()-1)
+	if m.requestHistoryScope.includes(msg.ItemID) {
+		m.requestHistoryCursor++
 	}
+	return m.clampHistoryCursor()
+}
+
+func (m Model) clampHistoryCursor() Model {
+	m.requestHistoryCursor = max(0, min(m.requestHistoryCursor, len(m.visibleHistoryEntries())-1))
 	return m
 }
 
+// visibleHistoryEntries are the entries the history view lists, newest first.
+func (m Model) visibleHistoryEntries() []history.Entry {
+	if m.requestHistoryScope.isAll() {
+		return m.requestHistory.Entries()
+	}
+	return m.requestHistory.EntriesForItem(m.requestHistoryScope.itemID)
+}
+
+func (m Model) historyCountStatus() string {
+	count := len(m.visibleHistoryEntries())
+	if m.requestHistoryScope.isAll() {
+		return fmt.Sprintf("%d request(s) in history", count)
+	}
+	return fmt.Sprintf("%d request(s) in history for %s", count, m.requestHistoryScope.itemName)
+}
+
+// openRequestHistory shows the history of every request.
 func (m Model) openRequestHistory() (Model, tea.Cmd) {
+	return m.openScopedRequestHistory(requestHistoryScope{})
+}
+
+// openSelectedRequestHistory shows the selected request's history. Views and rows
+// without a request, such as folders, fall back to the full history.
+func (m Model) openSelectedRequestHistory() (Model, tea.Cmd) {
+	if m.mode != ModeRequests || m.cursor >= len(m.currentItems) || !m.currentItems[m.cursor].IsRequest() {
+		return m.openRequestHistory()
+	}
+	item := m.currentItems[m.cursor]
+	return m.openScopedRequestHistory(requestHistoryScope{
+		itemID:   m.requestItemID(m.folderPathForCursor(), item.Name),
+		itemName: item.Name,
+	})
+}
+
+func (m Model) openScopedRequestHistory(scope requestHistoryScope) (Model, tea.Cmd) {
 	if m.mode != ModeHistory && m.mode != ModeHistoryDiff {
 		m.historyReturnMode = m.mode
 	}
 	m.mode = ModeHistory
+	m.requestHistoryScope = scope
 	m.requestHistoryCursor = 0
-	m.statusMessage = fmt.Sprintf("%d request(s) in history", m.requestHistory.Len())
+	m.statusMessage = m.historyCountStatus()
 	return m, nil
 }
 
@@ -101,11 +158,40 @@ func (m Model) closeRequestHistory() (Model, tea.Cmd) {
 }
 
 func (m Model) selectedHistoryEntry() (history.Entry, bool) {
-	entries := m.requestHistory.Entries()
+	entries := m.visibleHistoryEntries()
 	if m.requestHistoryCursor >= len(entries) {
 		return history.Entry{}, false
 	}
 	return entries[m.requestHistoryCursor], true
+}
+
+func handleDeleteHistoryEntryKey(m Model) (Model, tea.Cmd) {
+	entry, ok := m.selectedHistoryEntry()
+	if !ok {
+		m.statusMessage = "No history entry selected"
+		return m, nil
+	}
+	subject := fmt.Sprintf("history entry %q from %s", entry.ItemName, entry.Snapshot.SavedAt.Format(timestampLayout))
+	return m.confirmDeletion(subject, func(m Model) (Model, tea.Cmd) {
+		return m.deleteHistoryEntry(entry)
+	}), nil
+}
+
+// deleteHistoryEntry takes the entry rather than the cursor because a request finishing
+// while the confirmation is open shifts every position in the list.
+func (m Model) deleteHistoryEntry(entry history.Entry) (Model, tea.Cmd) {
+	removed, err := m.requestHistory.Remove(entry)
+	if err != nil {
+		m.statusMessage = fmt.Sprintf("Delete failed: %v", err)
+		return m, nil
+	}
+	if !removed {
+		m.statusMessage = "History entry no longer exists"
+		return m, nil
+	}
+	m = m.clampHistoryCursor()
+	m.statusMessage = m.historyCountStatus()
+	return m, nil
 }
 
 // replayHistoryEntry re-sends the recorded resolved request as-is: no variable

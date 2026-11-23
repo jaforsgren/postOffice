@@ -22,7 +22,7 @@ Press `:` to enter command mode. `esc` leaves it, `enter` runs the command.
 | `:ro` | [Run options](workflows.md#run-options) |
 | `:changes` | Unsaved changes |
 | `:session` | Restore the last session |
-| `:hist` | Request history |
+| `:hist` | History of all requests |
 | `:lis` | [Listeners](servicebus.md#watching): messages seen by watched PEEK requests |
 | `:deps` | Dependency graph of the selected request |
 | `:t` | Timing breakdown (response view) |
@@ -59,7 +59,7 @@ Paths support `~/` expansion, e.g. `:load ~/postman/api.json`. Loaded collection
 | `O` | Reveal the collection/environment file (Finder/Explorer) |
 | `r` | Refresh |
 | `ctrl+n` | Next environment |
-| `ctrl+y` | Request history |
+| `ctrl+y` | History of the selected request (all requests when none is selected) |
 
 ## Requests
 

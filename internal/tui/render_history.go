@@ -14,6 +14,8 @@ const (
 
 	// historyHeaderLines is the title line plus the blank line below it.
 	historyHeaderLines = 2
+
+	historyHelp = "enter: replay | " + historyDiffKey + ": diff vs current | " + deleteHistoryEntryKey + ": delete"
 )
 
 func (m Model) renderHistoryView() string {
@@ -21,13 +23,20 @@ func (m Model) renderHistoryView() string {
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
-	entries := m.requestHistory.Entries()
-	title := titleStyle.Render(fmt.Sprintf("Request History (%d/%d)", len(entries), history.MaxEntries))
-	help := helpStyle.Render("(enter: replay | " + historyDiffKey + ": diff vs current | esc: back)")
-	lines := []string{title + " " + help, ""}
+	entries := m.visibleHistoryEntries()
+	scope := m.requestHistoryScope
+	heading := fmt.Sprintf("Request History (%d/%d)", len(entries), history.MaxEntries)
+	emptyMessage := "No requests executed yet."
+	helpKeys := historyHelp
+	if !scope.isAll() {
+		heading = fmt.Sprintf("Request History: %s (%d)", scope.itemName, len(entries))
+		emptyMessage = fmt.Sprintf("No history for %s.", scope.itemName)
+		helpKeys += " | " + allHistoryCommand + ": all requests"
+	}
+	lines := []string{titleStyle.Render(heading) + " " + helpStyle.Render("("+helpKeys+" | esc: back)"), ""}
 
 	if len(entries) == 0 {
-		lines = append(lines, helpStyle.Render("No requests executed yet."))
+		lines = append(lines, helpStyle.Render(emptyMessage))
 	} else {
 		visibleLines := m.mainWindowRows() - historyHeaderLines
 		startIdx, endIdx := calculateVisibleWindow(m.requestHistoryCursor, len(entries), visibleLines)
