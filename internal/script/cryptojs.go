@@ -4,10 +4,22 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/dop251/goja"
 )
+
+const base64Padding = "="
+
+// decodeBase64 accepts input with or without trailing padding and ignores whitespace, like
+// CryptoJS.enc.Base64.parse and the browser atob do. Unpadded input matters for JWT segments,
+// which scripts decode after swapping the base64url alphabet back to standard base64.
+func decodeBase64(encoded string) ([]byte, error) {
+	compact := strings.Join(strings.Fields(encoded), "")
+	return base64.RawStdEncoding.DecodeString(strings.TrimRight(compact, base64Padding))
+}
 
 // SetupCryptoJS registers CryptoJS, atob, and btoa on the given VM.
 // It is exported so the workflow runtime can equip its own VM with the same globals.
@@ -17,6 +29,21 @@ func setupCryptoJS(vm *goja.Runtime) error {
 	newWordArray := func(data []byte) goja.Value {
 		obj := vm.NewObject()
 		if err := obj.Set("_data", vm.NewArrayBuffer(data)); err != nil {
+			return goja.Undefined()
+		}
+		// Like CryptoJS, toString(encoder) delegates to encoder.stringify and defaults to hex.
+		if err := obj.Set("toString", func(call goja.FunctionCall) goja.Value {
+			if encoder := call.Argument(0); !goja.IsUndefined(encoder) && !goja.IsNull(encoder) {
+				if stringify, ok := goja.AssertFunction(encoder.ToObject(vm).Get("stringify")); ok {
+					str, err := stringify(encoder, obj)
+					if err != nil {
+						panic(err)
+					}
+					return str
+				}
+			}
+			return vm.ToValue(hex.EncodeToString(data))
+		}); err != nil {
 			return goja.Undefined()
 		}
 		return obj
@@ -52,6 +79,35 @@ func setupCryptoJS(vm *goja.Runtime) error {
 	}); err != nil {
 		return fmt.Errorf("CryptoJS.enc.Utf8.parse: %w", err)
 	}
+	if err := utf8Obj.Set("stringify", func(call goja.FunctionCall) goja.Value {
+		data, ok := extractBytes(call.Argument(0))
+		if !ok {
+			return goja.Undefined()
+		}
+		return vm.ToValue(string(data))
+	}); err != nil {
+		return fmt.Errorf("CryptoJS.enc.Utf8.stringify: %w", err)
+	}
+
+	hexObj := vm.NewObject()
+	if err := hexObj.Set("stringify", func(call goja.FunctionCall) goja.Value {
+		data, ok := extractBytes(call.Argument(0))
+		if !ok {
+			return goja.Undefined()
+		}
+		return vm.ToValue(hex.EncodeToString(data))
+	}); err != nil {
+		return fmt.Errorf("CryptoJS.enc.Hex.stringify: %w", err)
+	}
+	if err := hexObj.Set("parse", func(call goja.FunctionCall) goja.Value {
+		decoded, err := hex.DecodeString(call.Argument(0).String())
+		if err != nil {
+			return goja.Undefined()
+		}
+		return newWordArray(decoded)
+	}); err != nil {
+		return fmt.Errorf("CryptoJS.enc.Hex.parse: %w", err)
+	}
 
 	base64Obj := vm.NewObject()
 	if err := base64Obj.Set("stringify", func(call goja.FunctionCall) goja.Value {
@@ -70,7 +126,7 @@ func setupCryptoJS(vm *goja.Runtime) error {
 		if len(call.Arguments) < 1 {
 			return goja.Undefined()
 		}
-		decoded, err := base64.StdEncoding.DecodeString(call.Arguments[0].String())
+		decoded, err := decodeBase64(call.Arguments[0].String())
 		if err != nil {
 			return goja.Undefined()
 		}
@@ -85,6 +141,9 @@ func setupCryptoJS(vm *goja.Runtime) error {
 	}
 	if err := encObj.Set("Base64", base64Obj); err != nil {
 		return fmt.Errorf("CryptoJS.enc.Base64: %w", err)
+	}
+	if err := encObj.Set("Hex", hexObj); err != nil {
+		return fmt.Errorf("CryptoJS.enc.Hex: %w", err)
 	}
 
 	cryptoJSObj := vm.NewObject()
@@ -117,7 +176,7 @@ func setupCryptoJS(vm *goja.Runtime) error {
 		if len(call.Arguments) < 1 {
 			return goja.Undefined()
 		}
-		decoded, err := base64.StdEncoding.DecodeString(call.Arguments[0].String())
+		decoded, err := decodeBase64(call.Arguments[0].String())
 		if err != nil {
 			panic(vm.NewGoError(fmt.Errorf("atob: invalid base64: %w", err)))
 		}
