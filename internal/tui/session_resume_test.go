@@ -137,6 +137,53 @@ func TestSessionResume_RequestsViewBreadcrumbSurvivesRelaunch(t *testing.T) {
 	}
 }
 
+func TestSessionResume_OverlayViewReopensTheRequestsList(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	collPath := writeTempCollectionFile(t, "Resume Collection")
+
+	parser := postman.NewParser()
+	m := NewModel(parser, history.NewStore(""))
+	m = m.loadCollection(collPath)
+	m.mode = ModeRequests
+	m = m.loadRequestsList()
+	m.mode = ModeInfo
+
+	m.saveSession()
+
+	m2 := simulateRelaunch(t)
+
+	if m2.mode != ModeRequests {
+		t.Errorf("expected an Info session to reopen ModeRequests, got %v", m2.mode)
+	}
+	if m2.collection == nil || m2.collection.Info.Name != "Resume Collection" {
+		t.Errorf("expected Resume Collection to be restored as active collection, got %+v", m2.collection)
+	}
+}
+
+func TestRestorableSessionMode(t *testing.T) {
+	cases := []struct {
+		saved         ViewMode
+		hasCollection bool
+		want          ViewMode
+	}{
+		{ModeCollections, true, ModeCollections},
+		{ModeEnvironments, false, ModeEnvironments},
+		{ModeVariables, false, ModeVariables},
+		{ModeRequests, true, ModeRequests},
+		{ModeRequests, false, ModeCollections},
+		{ModeInfo, true, ModeRequests},
+		{ModeResponse, true, ModeRequests},
+		{ModeInfo, false, ModeCollections},
+	}
+	for _, tc := range cases {
+		if got := restorableSessionMode(tc.saved, tc.hasCollection); got != tc.want {
+			t.Errorf("restorableSessionMode(%v, %v) = %v, want %v", tc.saved, tc.hasCollection, got, tc.want)
+		}
+	}
+}
+
 func TestSessionResume_ReopensTheCombinedView(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	m, _, _ := combinedModel(t)

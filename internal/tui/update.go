@@ -2378,16 +2378,9 @@ func (m Model) restoreSessionView(session *postman.Session) Model {
 		m.mergedEnvironmentActive = true
 	}
 
-	m.mode = ViewMode(session.Mode)
+	m.mode = restorableSessionMode(ViewMode(session.Mode), m.collection != nil)
 	m.breadcrumb = session.Breadcrumb
 	m.cursor = session.Cursor
-
-	if m.mode == ModeRequests && m.collection == nil {
-		// The last-viewed collection is gone (renamed/removed, or no
-		// collections are active any more for the combined view) — fall back
-		// to the collections list instead of showing an empty Requests screen.
-		m.mode = ModeCollections
-	}
 
 	switch m.mode {
 	case ModeCollections:
@@ -2423,6 +2416,22 @@ func (m Model) restoreSessionView(session *postman.Session) Model {
 		m.statusMessage = "Session restored (previous collection not found)"
 	}
 	return m
+}
+
+// restorableSessionMode maps the saved view onto one restoreSessionView can
+// rebuild. Overlay views (Info, Response, History, …) depend on transient
+// state that isn't persisted, so they reopen the requests list beneath them;
+// without a collection (renamed/removed, or no active collections left for the
+// combined view) the collections list is shown instead of an empty screen.
+func restorableSessionMode(saved ViewMode, hasCollection bool) ViewMode {
+	switch saved {
+	case ModeCollections, ModeEnvironments, ModeVariables:
+		return saved
+	}
+	if hasCollection {
+		return ModeRequests
+	}
+	return ModeCollections
 }
 
 func (m Model) saveActiveWorkflow() (Model, error) {
