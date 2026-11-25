@@ -545,3 +545,24 @@ func TestEmptyStructures(t *testing.T) {
 		t.Error("Expected no values in empty environment")
 	}
 }
+
+func TestItem_IsBash(t *testing.T) {
+	tests := []struct {
+		name string
+		item Item
+		want bool
+	}{
+		{"BASH method", Item{Request: &Request{Method: MethodBash}}, true},
+		{"method in any case", Item{Request: &Request{Method: "bash", URL: URL{Raw: "https://example.com"}}}, true},
+		{"bash:// URL", Item{Request: &Request{Method: "POST", URL: URL{Raw: "BASH://~/dev"}}}, true},
+		{"HTTP request", Item{Request: &Request{Method: "GET", URL: URL{Raw: "https://example.com"}}}, false},
+		{"folder", Item{Items: []Item{{Request: &Request{Method: MethodBash}}}}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.item.IsBash(); got != tt.want {
+				t.Errorf("IsBash() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

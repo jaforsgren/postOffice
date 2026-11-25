@@ -11,6 +11,7 @@ import (
 	"postOffice/internal/postman"
 	"postOffice/internal/protocol"
 	"postOffice/internal/script"
+	"postOffice/internal/shell"
 )
 
 // Engine sends requests through the protocol a registry picks for them.
@@ -20,9 +21,15 @@ type Engine struct {
 }
 
 // New returns an engine for every built-in protocol. Scripts of any protocol
-// send their pm.sendRequest calls with httpExecutor.
+// send their pm.sendRequest calls with httpExecutor. Bash scripts run
+// without input, so their prompts read EOF.
 func New(httpExecutor *http.Executor) *Engine {
-	return NewWithRegistry(protocol.NewBuiltinRegistry(httpExecutor), httpExecutor.SendRequest)
+	return NewWithTerminal(httpExecutor, nil)
+}
+
+// NewWithTerminal is New with bash scripts attached to terminal, so they can prompt.
+func NewWithTerminal(httpExecutor *http.Executor, terminal shell.Terminal) *Engine {
+	return NewWithRegistry(protocol.NewBuiltinRegistry(httpExecutor, terminal), httpExecutor.SendRequest)
 }
 
 // NewWithRegistry returns an engine for the protocols of registry.

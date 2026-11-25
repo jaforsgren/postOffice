@@ -204,6 +204,17 @@ func (m Model) buildRequestInfoLines(width int) []string {
 		return lines
 	}
 
+	if m.currentInfoItem.IsBash() {
+		lines = append(lines, requestStyle.Render("Type:"))
+		lines = append(lines, "  Bash Script")
+		lines = append(lines, "")
+		lines = append(lines, m.buildBashInfoSection(req)...)
+		lines = append(lines, m.buildDependenciesSection()...)
+		lines = append(lines, m.buildScriptsSection()...)
+		lines = append(lines, m.buildDocumentationSection(width)...)
+		return lines
+	}
+
 	lines = append(lines, requestStyle.Render("Type:"))
 	lines = append(lines, "  HTTP Request")
 	lines = append(lines, "")
@@ -395,11 +406,17 @@ func (m Model) buildURLSection(req *postman.Request, variables []postman.Variabl
 }
 
 func (m Model) buildHeadersSection(req *postman.Request, variables []postman.VariableSource) []string {
+	return buildResolvedHeaderLines("Headers:", req.Header, variables)
+}
+
+// buildResolvedHeaderLines lists headers under title, each followed by its
+// resolved value when variables change it.
+func buildResolvedHeaderLines(title string, headers []postman.Header, variables []postman.VariableSource) []string {
 	var lines []string
 
-	if len(req.Header) > 0 {
-		lines = append(lines, requestStyle.Render("Headers:"))
-		for _, header := range req.Header {
+	if len(headers) > 0 {
+		lines = append(lines, requestStyle.Render(title))
+		for _, header := range headers {
 			originalValue := header.Value
 			resolvedValue := postman.ResolveVariables(originalValue, variables)
 
@@ -443,6 +460,51 @@ func (m Model) buildBodySection(req *postman.Request, variables []postman.Variab
 		lines = append(lines, "")
 	}
 
+	return lines
+}
+
+// buildBashInfoSection shows where a bash script runs, the environment its
+// headers export and the whole script, each with its resolved form.
+func (m Model) buildBashInfoSection(req *postman.Request) []string {
+	variables := m.variablesAt(m.breadcrumb)
+	resolvedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+
+	lines := []string{requestStyle.Render("Working Directory:")}
+	workingDir := strings.TrimPrefix(req.URL.Raw, postman.SchemeBash)
+	if workingDir == "" {
+		lines = append(lines, "  "+subtleStyle.Render(bashDefaultWorkingDirLabel))
+	} else {
+		lines = append(lines, "  "+workingDir)
+		if resolved := postman.ResolveVariables(workingDir, variables); resolved != workingDir {
+			lines = append(lines, "  → "+resolvedStyle.Render(resolved))
+		}
+	}
+	lines = append(lines, "")
+
+	lines = append(lines, buildResolvedHeaderLines("Environment:", req.Header, variables)...)
+
+	lines = append(lines, requestStyle.Render("Script:"))
+	if req.Body == nil || req.Body.Raw == "" {
+		return append(lines, "  "+subtleStyle.Render(bashEmptyScriptLabel), "")
+	}
+	script := req.Body.Raw
+	resolvedScript := postman.ResolveVariables(script, variables)
+	if script == resolvedScript {
+		return append(append(lines, indentLines(script, "  ")...), "")
+	}
+	lines = append(lines, folderStyle.Render("  Template:"))
+	lines = append(lines, indentLines(script, "    ")...)
+	lines = append(lines, "")
+	lines = append(lines, resolvedStyle.Render("  Resolved:"))
+	lines = append(lines, indentLines(resolvedScript, "    ")...)
+	return append(lines, "")
+}
+
+func indentLines(text, indent string) []string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		lines[i] = indent + line
+	}
 	return lines
 }
 

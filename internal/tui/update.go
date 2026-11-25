@@ -106,6 +106,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ListenerMsg:
 		return m.handleListenerMsg(msg)
 
+	case TerminalHandOffMsg:
+		return m.handleTerminalHandOff(msg)
+
+	case TerminalReleasedMsg:
+		return m.handleTerminalReleased()
+
 	case WorkflowMsg:
 		m.workflowState = msg.State
 		if m.partialRunBase != nil {
@@ -1713,6 +1719,14 @@ func (m Model) enterNewItemEditMode(requestType string) Model {
 			URL:    postman.URL{Raw: "amqp://"},
 			Header: []postman.Header{},
 			Body:   &postman.Body{Mode: postman.BodyModeRaw, Raw: "{}"},
+		}
+		editType = EditTypeRequest
+	case requestTypeBash:
+		req = &postman.Request{
+			Method: postman.MethodBash,
+			URL:    postman.URL{Raw: postman.SchemeBash},
+			Header: []postman.Header{},
+			Body:   &postman.Body{Mode: postman.BodyModeRaw, Raw: bashRequestTemplate},
 		}
 		editType = EditTypeRequest
 	default: // HTTP

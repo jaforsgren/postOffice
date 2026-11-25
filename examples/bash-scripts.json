@@ -1,0 +1,56 @@
+{
+  "info": {
+    "name": "Bash Scripts",
+    "description": "BASH requests run their body as a bash script. The URL bash://<dir> is the working directory, headers are exported as environment variables and {{variables}} resolve in all three. Prompts such as read -p work in the TUI and in an interactive postOffice run.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "greeting", "value": "hello" }
+  ],
+  "item": [
+    {
+      "name": "Greet",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('who', 'postOffice');"] }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('exits 0', () => pm.response.to.have.status(200));",
+              "pm.test('greets', () => pm.expect(pm.response.text()).to.include('hello postOffice'));",
+              "pm.collectionVariables.set('lastGreeting', pm.response.text().trim());"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "BASH",
+        "header": [{ "key": "SHOUT", "value": "{{greeting}}" }],
+        "url": { "raw": "bash://" },
+        "body": { "mode": "raw", "raw": "echo \"{{greeting}} {{who}}\"\necho \"exported: $SHOUT\" >&2" }
+      }
+    },
+    {
+      "name": "Confirm deploy",
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": ["pm.test('confirmed', () => pm.response.to.have.status(200));"] }
+        }
+      ],
+      "request": {
+        "method": "BASH",
+        "header": [],
+        "url": { "raw": "bash://~/" },
+        "body": {
+          "mode": "raw",
+          "raw": "read -r -p \"Deploy to {{greeting}}? [y/n] \" answer\n[[ \"$answer\" == [yY]* ]] || { echo \"cancelled\"; exit 1; }\necho \"deploying from $(pwd)\""
+        }
+      }
+    }
+  ]
+}

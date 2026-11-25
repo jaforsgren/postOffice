@@ -98,6 +98,7 @@ type RequestCompleteMsg struct {
 type Model struct {
 	parser              *postman.Parser
 	engine              *engine.Engine
+	terminal            *shellTerminal
 	commandRegistry     *CommandRegistry
 	mode                ViewMode
 	commandMode         bool
@@ -363,9 +364,12 @@ func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
 	editFieldTextArea := textarea.New()
 	editFieldTextArea.CharLimit = 50000
 
+	terminal := newShellTerminal()
+
 	m := Model{
 		parser:                  parser,
-		engine:                  engine.New(http.NewExecutor()),
+		engine:                  engine.NewWithTerminal(http.NewExecutor(), terminal),
+		terminal:                terminal,
 		commandRegistry:         NewCommandRegistry(),
 		mode:                    ModeCollections,
 		commandMode:             false,
@@ -418,5 +422,5 @@ func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
 
 // Init waits for the listeners resumed from the previous session.
 func (m Model) Init() tea.Cmd {
-	return m.waitForAllListeners()
+	return tea.Batch(m.waitForAllListeners(), m.terminal.waitForHandOff())
 }

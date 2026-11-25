@@ -2,7 +2,7 @@
 
 keyboard-driven TUI for browsing, editing and running Postman collections.
 
-Send HTTP, gRPC, Service Bus and AMQP requests, chain them with dependencies, script them with Postman-style tests and workflows, and run the same collections headless in CI — without leaving the terminal.
+Send HTTP, gRPC, Service Bus and AMQP requests, run interactive bash scripts, chain them with dependencies, script them with Postman-style tests and workflows, and run the same collections headless in CI — without leaving the terminal.
 
 ![Requests view](docs/img/requests.png)
 
@@ -90,6 +90,7 @@ See the [headless CLI](docs/cli.md) for selection, listing, merging and aliases.
 - [Request history and timing](docs/history.md)
 - [gRPC](docs/grpc.md)
 - [Azure Service Bus: send, peek and watch](docs/servicebus.md)
+- [Bash scripts](docs/bash.md)
 - [Headless CLI](docs/cli.md)
 
 ## Configuration

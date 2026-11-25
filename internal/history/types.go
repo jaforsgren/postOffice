@@ -12,6 +12,7 @@ const (
 	// ProtocolServiceBusPeek is a non-destructive read of a queue or subscription.
 	ProtocolServiceBusPeek Protocol = "ASB-PEEK"
 	ProtocolAMQP           Protocol = "AMQP"
+	ProtocolBash           Protocol = "BASH"
 )
 
 // Entry is one recorded request execution. Snapshot holds the fully resolved

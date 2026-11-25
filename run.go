@@ -13,7 +13,10 @@ import (
 	"postOffice/internal/engine"
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/postman"
+	"postOffice/internal/shell"
 	"postOffice/internal/workflow"
+
+	"github.com/charmbracelet/x/term"
 )
 
 const reportFilePermissions = 0644
@@ -228,7 +231,7 @@ func executeRunContext(ctx context.Context, out io.Writer, collectionRef string,
 		onChange = newStepStream(out, styles).onChange
 	}
 
-	state := workflow.NewRunner(collection, environment, engine.New(internalhttp.NewExecutor())).Run(ctx, wf, runnerOptions, onChange)
+	state := workflow.NewRunner(collection, environment, engine.NewWithTerminal(internalhttp.NewExecutor(), runTerminal())).Run(ctx, wf, runnerOptions, onChange)
 	report := newRunReport(state, collection.Info.Name, environmentName(environment))
 	if err := writeRunOutput(out, styles, report, opts); err != nil {
 		return err
@@ -364,4 +367,14 @@ func withSelectedCollection(opts runOptions) (runOptions, error) {
 	}
 	opts.collectionPath, opts.requestPath = selected, opts.collectionPath
 	return opts, nil
+}
+
+// runTerminal attaches bash scripts to stdin when it is a terminal, so they
+// can prompt. Their output goes to stderr, keeping stdout for the report.
+// Without a terminal it is nil and scripts read no input.
+func runTerminal() shell.Terminal {
+	if !term.IsTerminal(os.Stdin.Fd()) {
+		return nil
+	}
+	return shell.NewStdioTerminal(os.Stdin, os.Stderr, os.Stderr)
 }

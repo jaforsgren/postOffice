@@ -2240,7 +2240,7 @@ func (m Model) enterRequestTypeSelectionMode() Model {
 	m.previousMode = m.mode
 	m.mode = ModeEdit
 	m.cursor = 0
-	m.items = []string{"HTTP", "gRPC", "Service Bus (ASB)", "AMQP"}
+	m.items = []string{"HTTP", "gRPC", "Service Bus (ASB)", "AMQP", requestTypeBash}
 	m.statusMessage = "Select request type (j/k navigate, Enter select, Esc cancel)"
 	return m
 }

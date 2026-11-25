@@ -13,7 +13,7 @@ func requestItem(method, rawURL string) *postman.Item {
 }
 
 func TestBuiltinRegistry_ForRoutesByProtocol(t *testing.T) {
-	registry := NewBuiltinRegistry(http.NewExecutor())
+	registry := NewBuiltinRegistry(http.NewExecutor(), nil)
 	tests := []struct {
 		name string
 		item *postman.Item
@@ -28,6 +28,9 @@ func TestBuiltinRegistry_ForRoutesByProtocol(t *testing.T) {
 		{"AMQP", requestItem("POST", "amqp://localhost:5672/orders"), history.ProtocolAMQP},
 		{"AMQPS", requestItem("POST", "AMQPS://localhost:5671/orders"), history.ProtocolAMQP},
 		{"Service Bus wins over a GRPC method", requestItem("GRPC", "asb://orders"), history.ProtocolServiceBus},
+		{"Bash by method", requestItem("BASH", ""), history.ProtocolBash},
+		{"Bash by scheme", requestItem("POST", "bash://~/dev"), history.ProtocolBash},
+		{"Bash method wins over a Service Bus URL", requestItem("bash", "asb://orders"), history.ProtocolBash},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -45,7 +48,7 @@ func TestBuiltinRegistry_ForRoutesByProtocol(t *testing.T) {
 func TestRegistry_ForRejectsFolders(t *testing.T) {
 	folder := &postman.Item{Name: "Users", Items: []postman.Item{*requestItem("GET", "https://example.com")}}
 
-	if _, err := NewBuiltinRegistry(http.NewExecutor()).For(folder); !errors.Is(err, ErrUnclaimedItem) {
+	if _, err := NewBuiltinRegistry(http.NewExecutor(), nil).For(folder); !errors.Is(err, ErrUnclaimedItem) {
 		t.Errorf("For(folder) error = %v, want ErrUnclaimedItem", err)
 	}
 }
@@ -62,8 +65,8 @@ func TestRegistry_ForPicksFirstClaimingProtocol(t *testing.T) {
 }
 
 func TestBuiltinRegistry_NamedFindsEveryHistoryProtocol(t *testing.T) {
-	registry := NewBuiltinRegistry(http.NewExecutor())
-	for _, name := range []history.Protocol{history.ProtocolHTTP, history.ProtocolGRPC, history.ProtocolServiceBus, history.ProtocolServiceBusPeek, history.ProtocolAMQP} {
+	registry := NewBuiltinRegistry(http.NewExecutor(), nil)
+	for _, name := range []history.Protocol{history.ProtocolHTTP, history.ProtocolGRPC, history.ProtocolServiceBus, history.ProtocolServiceBusPeek, history.ProtocolAMQP, history.ProtocolBash} {
 		protocol, err := registry.Named(name)
 		if err != nil || protocol.Name() != name {
 			t.Errorf("Named(%s) = %v, %v", name, protocol, err)
@@ -75,7 +78,7 @@ func TestBuiltinRegistry_NamedFindsEveryHistoryProtocol(t *testing.T) {
 }
 
 func TestBuiltinRegistry_Labels(t *testing.T) {
-	registry := NewBuiltinRegistry(http.NewExecutor())
+	registry := NewBuiltinRegistry(http.NewExecutor(), nil)
 	tests := []struct {
 		item *postman.Item
 		want string
@@ -85,6 +88,7 @@ func TestBuiltinRegistry_Labels(t *testing.T) {
 		{requestItem("POST", "asb://orders"), "ASB"},
 		{requestItem("peek", "asb://orders"), "PEEK"},
 		{requestItem("POST", "amqp://localhost/orders"), "AMQP"},
+		{requestItem("BASH", "bash://"), "BASH"},
 	}
 	for _, tt := range tests {
 		protocol, err := registry.For(tt.item)

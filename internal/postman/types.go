@@ -127,6 +127,22 @@ func (i *Item) IsAMQP() bool {
 	return strings.HasPrefix(lower, "amqp://") || strings.HasPrefix(lower, "amqps://")
 }
 
+// MethodBash marks a request that runs its body as a bash script.
+const MethodBash = "BASH"
+
+// SchemeBash prefixes a bash request's URL; the rest of the URL is the
+// working directory the script runs in.
+const SchemeBash = "bash://"
+
+// IsBash reports whether i runs a bash script instead of sending a request.
+func (i *Item) IsBash() bool {
+	if i.Request == nil {
+		return false
+	}
+	return strings.EqualFold(i.Request.Method, MethodBash) ||
+		strings.HasPrefix(strings.ToLower(i.Request.URL.Raw), SchemeBash)
+}
+
 type Environment struct {
 	ID      string        `json:"id"`
 	Name    string        `json:"name"`
