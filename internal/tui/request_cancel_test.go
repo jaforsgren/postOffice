@@ -137,9 +137,11 @@ func startBlockedWorkflowRun(t *testing.T, m Model) (Model, <-chan tea.Msg) {
 		<-ctx.Done()
 		return workflow.ExecutionState{WorkflowName: "blocked", Status: workflow.StatusStopped, Error: workflow.ErrRunCancelled.Error()}
 	})
-	runCmd := cmd().(tea.BatchMsg)[0]
+	cmds := cmd().(tea.BatchMsg)
+	runCmd, waitCmd := cmds[0], cmds[1]
+	go runCmd()
 	done := make(chan tea.Msg, 1)
-	go func() { done <- runCmd() }()
+	go func() { done <- waitCmd() }()
 	return m, done
 }
 

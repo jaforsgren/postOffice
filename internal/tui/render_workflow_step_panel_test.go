@@ -295,6 +295,42 @@ func TestShowWorkflowStepInfo_NotRunStepHasNoLogsSection(t *testing.T) {
 	}
 }
 
+func TestHandleEnterKey_FolderStepOpensItsInfoWithTheFailure(t *testing.T) {
+	const folderStepID = "folder"
+	const folderErrorLog = "[ERROR] cannot resolve folder \"Test Folder\": folder contains no requests"
+	m := panelTestModel()
+	m.activeWorkflow.Steps = []workflow.Step{{ID: folderStepID, Folder: "Test Folder"}}
+	folder := &workflow.StepState{ID: folderStepID, Folder: "Test Folder", Status: workflow.StatusFailed}
+	m.workflowState.Steps = []*workflow.StepState{folder}
+	m.workflowState.StepIndex = map[string]*workflow.StepState{folderStepID: folder}
+	m.workflowState.Logs = []workflow.LogEntry{{StepID: folderStepID, Message: folderErrorLog}}
+	m.workflowStepCursor = 0
+
+	m, _ = handleEnterKey(m)
+
+	if m.mode != ModeInfo {
+		t.Fatalf("expected the info view, got mode %v (%s)", m.mode, m.statusMessage)
+	}
+	m.infoViewport.Height = manyLogLines
+	if info := ansi.Strip(m.infoViewport.View()); !strings.Contains(info, folderErrorLog) {
+		t.Errorf("expected the folder step's failure in its info, got:\n%s", info)
+	}
+}
+
+func TestHandleEnterKey_RequestStepOpensItsResponse(t *testing.T) {
+	m := panelTestModel()
+	m.workflowStepCursor = 0
+
+	m, _ = handleEnterKey(m)
+
+	if m.mode != ModeResponse {
+		t.Fatalf("expected the response view, got mode %v (%s)", m.mode, m.statusMessage)
+	}
+	if m.lastResponse == nil || m.lastResponse.Body != loginResponseBody {
+		t.Errorf("expected the login step's response, got %+v", m.lastResponse)
+	}
+}
+
 func TestWorkflowStepInfoReport_HasTheStepRunLogsAndResponse(t *testing.T) {
 	m := panelTestModel()
 	m.activeWorkflow.Steps[0].Request = formRequestName

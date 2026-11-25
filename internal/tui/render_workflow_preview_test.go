@@ -176,7 +176,7 @@ func TestWorkflowPreview_ScrollKeysAreCappedAndCursorMoveResetsScroll(t *testing
 
 func TestWorkflowRunIndicator_ShowsRunningOnlyForTheRunningWorkflow(t *testing.T) {
 	m := workflowsListTestModel()
-	m.workflowChan = make(chan workflow.ExecutionState)
+	m.workflowChan = make(chan WorkflowMsg)
 
 	if indicator := ansi.Strip(m.workflowRunIndicator(m.workflows[1])); strings.Contains(indicator, workflow.StatusRunning) {
 		t.Errorf("indicator = %q, want no running marker for a workflow that is not running", indicator)

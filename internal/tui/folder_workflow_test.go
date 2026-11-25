@@ -244,7 +244,7 @@ func TestFolderRunConfirm_ReusesExistingSavedWorkflow(t *testing.T) {
 
 func TestFolderRunConfirm_RejectsWhileWorkflowRunning(t *testing.T) {
 	m := folderRunTestModel(t, writeFolderRunCollection(t))
-	m.workflowChan = make(chan workflow.ExecutionState)
+	m.workflowChan = make(chan WorkflowMsg)
 
 	m, _ = pressKey(m, ctrlEKey)
 

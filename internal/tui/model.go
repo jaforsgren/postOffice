@@ -96,8 +96,12 @@ type RequestCompleteMsg struct {
 }
 
 type Model struct {
-	parser              *postman.Parser
-	engine              *engine.Engine
+	parser *postman.Parser
+	engine *engine.Engine
+	// runEngine sends workflow and folder run steps. Its bash scripts get no
+	// terminal: taking it over would hide the run's progress and swallow its
+	// keys (ctrl+x, X) for every step, so their prompts read EOF instead.
+	runEngine           *engine.Engine
 	terminal            *shellTerminal
 	commandRegistry     *CommandRegistry
 	mode                ViewMode
@@ -231,7 +235,7 @@ type Model struct {
 	workflowState         workflow.ExecutionState
 	// partialRunBase is the previous run a partial run in progress merges into; nil otherwise.
 	partialRunBase *workflow.ExecutionState
-	workflowChan   <-chan workflow.ExecutionState
+	workflowChan   <-chan WorkflowMsg
 	// cancelWorkflowRun stops the workflow run in progress; nil when none is.
 	cancelWorkflowRun context.CancelFunc
 	// abortWorkflowStep aborts one running step of the run in progress (Runner.Abort); nil when none is.
@@ -341,12 +345,9 @@ type WorkflowMsg struct {
 // workflowRun runs a workflow with runner until it finishes or ctx is cancelled.
 type workflowRun func(ctx context.Context, runner *workflow.Runner, onChange func(workflow.ExecutionState)) workflow.ExecutionState
 
-// waitForWorkflow returns a tea.Cmd that blocks until the next state arrives on ch.
-func waitForWorkflow(ch <-chan workflow.ExecutionState) tea.Cmd {
-	return func() tea.Msg {
-		state, ok := <-ch
-		return WorkflowMsg{State: state, Done: !ok}
-	}
+// waitForWorkflow returns a tea.Cmd that blocks until the run's next message arrives on ch.
+func waitForWorkflow(ch <-chan WorkflowMsg) tea.Cmd {
+	return func() tea.Msg { return <-ch }
 }
 
 func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
@@ -365,10 +366,12 @@ func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
 	editFieldTextArea.CharLimit = 50000
 
 	terminal := newShellTerminal()
+	httpExecutor := http.NewExecutor()
 
 	m := Model{
 		parser:                  parser,
-		engine:                  engine.NewWithTerminal(http.NewExecutor(), terminal),
+		engine:                  engine.NewWithTerminal(httpExecutor, terminal),
+		runEngine:               engine.New(httpExecutor),
 		terminal:                terminal,
 		commandRegistry:         NewCommandRegistry(),
 		mode:                    ModeCollections,

@@ -34,10 +34,13 @@ func TestMergePartialRun_keepsTheResultsOfStepsItDidNotRun(t *testing.T) {
 	if got, want := stepIDs(merged), stepIDs(previous); !slices.Equal(got, want) {
 		t.Fatalf("steps = %v, want the previous run's %v", got, want)
 	}
-	for _, id := range []string{"a", "outer", "outer/b"} {
+	for _, id := range []string{"a", "outer/b"} {
 		if merged.StepIndex[id] != previous.StepIndex[id] {
 			t.Errorf("%s = %+v, want the previous run's result kept", id, merged.StepIndex[id])
 		}
+	}
+	if got := merged.StepIndex["outer"].Status; got != StatusSuccess {
+		t.Errorf("outer = %s, want rolled up from its sub-steps to success", got)
 	}
 	if merged.StepIndex["outer/c"] != partial.StepIndex["outer/c"] {
 		t.Errorf("outer/c should take the partial run's result")
@@ -78,5 +81,62 @@ func TestMergePartialRun_placesStepsThePreviousRunNeverListedInTheirFolder(t *te
 
 	if got := stepIDs(merged); !slices.Equal(got, []string{"outer", "outer/b", "outer/new", "after"}) {
 		t.Errorf("steps = %v, want outer/new listed inside outer", got)
+	}
+}
+
+// nestedRunStates are a run of a folder step "outer" holding a folder step
+// "outer/inner", which holds "outer/inner/x"; "outer/b" is outer's other sub-step.
+func nestedRunStates(outer, b, inner, x string) []*StepState {
+	return []*StepState{
+		{ID: "outer", Folder: "outer", Status: outer, Iteration: 1},
+		{ID: "outer/b", Groups: []string{"outer"}, Status: b, Iteration: 1},
+		{ID: "outer/inner", Folder: "inner", Groups: []string{"outer"}, Status: inner, Iteration: 1},
+		{ID: "outer/inner/x", Groups: []string{"outer", "outer/inner"}, Status: x, Iteration: 1},
+	}
+}
+
+func TestMergePartialRun_marksFolderStepsRunningUpToTheTopWhileASubStepRuns(t *testing.T) {
+	previous := ExecutionState{Steps: nestedRunStates(StatusSuccess, StatusSuccess, StatusSuccess, StatusSuccess)}
+	partial := ExecutionState{Steps: nestedRunStates(StatusPending, StatusPending, StatusPending, StatusRunning)}
+
+	merged := MergePartialRun(previous, partial)
+
+	for _, id := range []string{"outer", "outer/inner", "outer/inner/x"} {
+		if got := merged.StepIndex[id].Status; got != StatusRunning {
+			t.Errorf("%s = %s, want running", id, got)
+		}
+	}
+	if got := merged.StepIndex["outer/b"].Status; got != StatusSuccess {
+		t.Errorf("outer/b = %s, want the previous run's success", got)
+	}
+	if previous.Steps[0].Status != StatusSuccess {
+		t.Error("rolling up must not change the previous run's states")
+	}
+}
+
+func TestMergePartialRun_rollsFolderStepsUpFromEverySubStep(t *testing.T) {
+	previous := ExecutionState{Steps: nestedRunStates(StatusFailed, StatusFailed, StatusFailed, StatusFailed)}
+	partial := ExecutionState{Steps: nestedRunStates(StatusSkipped, StatusSkipped, StatusSkipped, StatusSuccess)}
+
+	merged := MergePartialRun(previous, partial)
+
+	if got := merged.StepIndex["outer/inner"].Status; got != StatusSuccess {
+		t.Errorf("outer/inner = %s, want success: its only sub-step passed", got)
+	}
+	if got := merged.StepIndex["outer"].Status; got != StatusFailed {
+		t.Errorf("outer = %s, want failed: outer/b still failed in the previous run", got)
+	}
+}
+
+func TestMergePartialRun_withoutAPreviousRunListsEveryStepOfThePartialRun(t *testing.T) {
+	partial := ExecutionState{Steps: nestedRunStates(StatusPending, StatusPending, StatusPending, StatusRunning)}
+
+	merged := MergePartialRun(ExecutionState{}, partial)
+
+	if got, want := stepIDs(merged), stepIDs(partial); !slices.Equal(got, want) {
+		t.Errorf("steps = %v, want %v", got, want)
+	}
+	if got := merged.StepIndex["outer"].Status; got != StatusRunning {
+		t.Errorf("outer = %s, want running", got)
 	}
 }

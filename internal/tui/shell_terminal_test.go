@@ -6,8 +6,12 @@ import (
 	"os/exec"
 	"postOffice/internal/history"
 	"postOffice/internal/postman"
+	"postOffice/internal/workflow"
 	"strings"
 	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestShellTerminal_HandsTheCommandToTheEventLoop(t *testing.T) {
@@ -36,6 +40,45 @@ func TestShellTerminal_CancelledWhileWaitingForTheTerminal(t *testing.T) {
 
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Run() = %v, want context.Canceled", err)
+	}
+}
+
+func TestWorkflowRun_BashStepRunsWithoutTakingTheTerminal(t *testing.T) {
+	m := NewModel(postman.NewParser(), history.NewStore(""))
+	m.collection = &postman.Collection{Items: []postman.Item{{
+		Name: "ask",
+		Request: &postman.Request{
+			Method: postman.MethodBash,
+			URL:    postman.URL{Raw: postman.SchemeBash},
+			Body:   &postman.Body{Mode: postman.BodyModeRaw, Raw: `read -r answer || echo "no input"`},
+		},
+	}}}
+	wf := &workflow.Workflow{
+		ID:     "seed",
+		Steps:  []workflow.Step{{ID: "ask", Request: "ask"}},
+		Script: "export default async function (wf) {\n  await wf.run(\"ask\");\n}",
+	}
+
+	m, cmd := m.launchRun(nil, func(ctx context.Context, runner *workflow.Runner, onChange func(workflow.ExecutionState)) workflow.ExecutionState {
+		return runner.Run(ctx, wf, workflow.ExecutionOptions{}, onChange)
+	})
+	go cmd().(tea.BatchMsg)[0]()
+
+	deadline := time.After(cancelTestLimit)
+	for {
+		select {
+		case msg := <-m.workflowChan:
+			if !msg.Done {
+				continue
+			}
+			step := msg.State.StepIndex["ask"]
+			if step.Status != workflow.StatusSuccess || !strings.Contains(step.LastResponse.Body, "no input") {
+				t.Errorf("step = %s with body %q, want success reading no input", step.Status, step.LastResponse.Body)
+			}
+			return
+		case <-deadline:
+			t.Fatal("the bash step waited for the terminal")
+		}
 	}
 }
 

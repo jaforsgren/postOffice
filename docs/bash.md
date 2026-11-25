@@ -31,6 +31,7 @@ A `BASH` request runs its body as a bash script. Add one with the request type p
 Scripts can prompt (`read -p "Continue? [y/n] "`):
 
 - **TUI** — the TUI steps aside like it does for `$EDITOR`, the script runs in the terminal, and the TUI returns once it exits. `ctrl+c` stops only the script.
+- **TUI workflow and folder runs** — steps get no terminal, so the run's progress stays on screen and `ctrl+x` / `X` keep working; a prompt reads EOF, and the script's output is in the step's response.
 - **Headless** (`postOffice run`) — with stdin a terminal the script reads it; its output is echoed on stderr so stdout keeps the report.
 - **No terminal** (CI, pipes) — stdin is empty, so a prompt reads EOF and the script decides what that means.
 

@@ -2495,16 +2495,22 @@ func (m Model) startWorkflowPartial(wf *workflow.Workflow, fromIdx, toIdx int) (
 }
 
 // runWorkflowPart runs part of wf with script. The steps it does not run keep
-// their results from wf's previous run (see workflow.MergePartialRun).
+// their results from wf's previous run, and folder steps take their sub-steps'
+// status (see workflow.MergePartialRun), so a step run alone inside a
+// sub-workflow shows its folder steps running.
 func (m Model) runWorkflowPart(wf *workflow.Workflow, script, runLabel string) (Model, tea.Cmd) {
 	previous := m.workflowState
 	ranBefore := m.activeWorkflow == wf && previous.WorkflowID == wf.ID && len(previous.Steps) > 0
 	m, cmd := m.runWorkflowScript(wf, script, runLabel)
-	if cmd == nil || !ranBefore {
+	if cmd == nil {
 		return m, cmd
 	}
-	m.workflowState = previous
-	m.partialRunBase = &previous
+	base := workflow.ExecutionState{}
+	if ranBefore {
+		m.workflowState = previous
+		base = previous
+	}
+	m.partialRunBase = &base
 	return m, cmd
 }
 
@@ -2606,6 +2612,17 @@ func (m Model) showWorkflowStepInfo() (Model, tea.Cmd) {
 	m.configureViewport(&m.infoViewport, strings.Join(lines, "\n"))
 	m.statusMessage = fmt.Sprintf("Inspecting: %s  (esc to return to workflow)", step.Target())
 	return m, nil
+}
+
+// openWorkflowStep opens a request step's response; a folder step sends no
+// response of its own, so it opens its info and logs, where a failure that
+// happened before any of its requests ran (an empty folder, a failed
+// pre-script) is reported.
+func (m Model) openWorkflowStep() (Model, tea.Cmd) {
+	if step, ok := m.selectedWorkflowStep(); ok && step.IsFolder() {
+		return m.showWorkflowStepInfo()
+	}
+	return m.showWorkflowStepResponse()
 }
 
 // showWorkflowStepResponse opens the Response view for the step's last executed response.
@@ -2744,24 +2761,32 @@ func (m Model) runWorkflowScript(wf *workflow.Workflow, script, runLabel string)
 // launchRun runs a workflow against environment in a goroutine, streaming
 // state snapshots to the TUI until it finishes.
 func (m Model) launchRun(environment *postman.Environment, run workflowRun) (Model, tea.Cmd) {
-	progressChan := make(chan workflow.ExecutionState, workflowProgressBuffer)
+	progressChan := make(chan WorkflowMsg, workflowProgressBuffer)
 	m.workflowChan = progressChan
 
-	runner := workflow.NewRunner(m.workflowCollection(), environment, m.engine).WithFolderWorkflows(m.folderWorkflowSource(m.workflowCollectionName()))
+	runner := workflow.NewRunner(m.workflowCollection(), environment, m.runEngine).WithFolderWorkflows(m.folderWorkflowSource(m.workflowCollectionName()))
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelWorkflowRun = cancel
 	m.abortWorkflowStep = runner.Abort
 
 	return m, tea.Batch(
 		func() tea.Msg {
-			finalState := run(ctx, runner, func(state workflow.ExecutionState) {
-				progressChan <- state
-			})
-			close(progressChan)
-			return WorkflowMsg{State: finalState, Done: true}
+			streamWorkflowRun(ctx, runner, run, progressChan)
+			return nil
 		},
 		waitForWorkflow(progressChan),
 	)
+}
+
+// streamWorkflowRun runs run, sending each state snapshot and then the final
+// state on progress. The final state must queue behind the snapshots: reported
+// any other way it can overtake them, and a stale snapshot (steps still
+// running) then lands after the run is done.
+func streamWorkflowRun(ctx context.Context, runner *workflow.Runner, run workflowRun, progress chan<- WorkflowMsg) {
+	finalState := run(ctx, runner, func(state workflow.ExecutionState) {
+		progress <- WorkflowMsg{State: state}
+	})
+	progress <- WorkflowMsg{State: finalState, Done: true}
 }
 
 func splitLines(text string) []string {

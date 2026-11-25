@@ -1315,7 +1315,7 @@ func handleBackOutKey(m Model) (Model, tea.Cmd) {
 
 func handleEnterKey(m Model) (Model, tea.Cmd) {
 	if m.mode == ModeWorkflowDetail {
-		return m.showWorkflowStepResponse()
+		return m.openWorkflowStep()
 	}
 	if m.mode == ModeSavedResponses {
 		if m.savedResponseCursor < len(m.savedResponses) {
