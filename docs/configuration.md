@@ -7,6 +7,7 @@ PostOffice has no config file to edit. It keeps its state in JSON files in your 
 | `~/.postoffice_collections.json` | Paths of loaded collections and environments, reloaded on startup |
 | `~/.postoffice_session.json` | The last view (`:session`) and the CLI selection (`postOffice use`) |
 | `~/.postoffice_history.json` | [Request history](history.md), the 200 most recent entries, owner-only (`0600`) |
+| `~/.postoffice_workflow_runs.json` | The latest finished run of each workflow (steps, logs, responses, timing), shown again when the workflow is opened; owner-only (`0600`) |
 | `~/.postoffice_saved_responses.json` | Responses saved with `s` |
 | `~/.postoffice_favorites.json` | Favorite requests (`f`) |
 | `~/.postoffice_aliases.json` | [CLI aliases](cli.md#aliases) |

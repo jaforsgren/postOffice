@@ -83,6 +83,7 @@ func (m Model) renderWorkflowDetail() string {
 			if ss.Total > 1 {
 				runStateStr += workflowMetaStyle.Render(fmt.Sprintf(" (%d/%d)", ss.Progress, ss.Total))
 			}
+			runStateStr += workflowMetaStyle.Render(stepElapsedLabel(ss))
 		}
 
 		// HTTP execution info (from requestExecutions, shown when no active run state)
@@ -132,8 +133,8 @@ func (m Model) workflowRunIndicator(wf *workflow.Workflow) string {
 	if m.workflowChan != nil && m.workflowState.WorkflowID == wf.ID {
 		return " " + workflowStatusStyle(workflow.StatusRunning).Render("● running"+iterationLabel(m.workflowState))
 	}
-	if m.workflowState.WorkflowID == wf.ID && m.workflowState.Status != "" {
-		return " " + workflowStatusStyle(m.workflowState.Status).Render("["+m.workflowState.Status+"]")
+	if run, ok := m.latestWorkflowRun(wf); ok && run.Status != "" {
+		return " " + workflowStatusStyle(run.Status).Render("["+run.Status+"]")
 	}
 	return ""
 }
@@ -229,7 +230,7 @@ func runReportLines(state workflow.ExecutionState, style runStyler) []string {
 
 	lines = append(lines, style.title(state.WorkflowName)+" "+style.status(state.Status, "["+state.Status+iterationLabel(state)+"]"))
 	if isRunFinished(state.Status) {
-		lines = append(lines, style.subtle(state.Summary.String()))
+		lines = append(lines, style.subtle(runSummaryLine(state)))
 	}
 	lines = append(lines, "")
 
@@ -361,8 +362,9 @@ func runReportStepLine(ss *workflow.StepState, bars string, showIteration bool, 
 	case ss.IsFolder():
 		detail += "  " + folderStepLabel + ss.Folder
 	case ss.LastResponse != nil:
-		detail += fmt.Sprintf("  %s  %s  %v", ss.Request, ss.LastResponse.Status, ss.LastResponse.Duration.Round(time.Millisecond))
+		detail += fmt.Sprintf("  %s  %s", ss.Request, ss.LastResponse.Status)
 	}
+	detail += stepElapsedLabel(ss)
 	return fmt.Sprintf("%s%s%s %-20s %s%s",
 		runReportStepIndent,
 		bars,

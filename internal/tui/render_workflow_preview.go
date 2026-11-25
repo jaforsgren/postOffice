@@ -77,8 +77,8 @@ func (m Model) workflowListLine(wf *workflow.Workflow, selected bool) string {
 
 // lastRunStatus is the status of wf's latest run, or pending when it has not run.
 func (m Model) lastRunStatus(wf *workflow.Workflow) string {
-	if m.workflowState.WorkflowID == wf.ID && m.workflowState.Status != "" {
-		return m.workflowState.Status
+	if run, ok := m.latestWorkflowRun(wf); ok && run.Status != "" {
+		return run.Status
 	}
 	return workflow.StatusPending
 }
@@ -111,8 +111,10 @@ func (m Model) buildWorkflowPreviewLines(width int) []string {
 
 func (m Model) workflowPreviewStepLine(wf *workflow.Workflow, index int, step workflow.Step) string {
 	status := workflow.StatusPending
-	if ss := m.workflowRunStepState(wf.ID, step.ID); ss != nil {
+	elapsed := ""
+	if ss := m.workflowRunStepState(wf, step.ID); ss != nil {
 		status = ss.Status
+		elapsed = stepElapsedLabel(ss)
 	}
 
 	line := workflowMetaStyle.Render(fmt.Sprintf("[%d]", index+1)) + " " +
@@ -121,7 +123,7 @@ func (m Model) workflowPreviewStepLine(wf *workflow.Workflow, index int, step wo
 	if annotations := stepScriptAnnotations(step); annotations != "" {
 		line += " " + workflowMetaStyle.Render(annotations)
 	}
-	return line
+	return line + workflowMetaStyle.Render(elapsed)
 }
 
 // workflowHeaderLines is the title (with run indicator), description, step
@@ -136,8 +138,8 @@ func (m Model) workflowHeaderLines(wf *workflow.Workflow) []string {
 		meta += fmt.Sprintf("  v%d", wf.Version)
 	}
 	lines = append(lines, workflowMetaStyle.Render(meta))
-	if m.workflowState.WorkflowID == wf.ID && isRunFinished(m.workflowState.Status) {
-		lines = append(lines, workflowMetaStyle.Render(m.workflowState.Summary.String()))
+	if run, ok := m.latestWorkflowRun(wf); ok && isRunFinished(run.Status) {
+		lines = append(lines, workflowMetaStyle.Render(runSummaryLine(run)))
 	}
 	return lines
 }

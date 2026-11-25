@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"postOffice/internal/engine"
 	internalhttp "postOffice/internal/http"
@@ -275,5 +276,27 @@ func TestNestedStep_unknownPathFailsTheStep(t *testing.T) {
 	}
 	if !reported {
 		t.Errorf("logs = %+v, want the missing step reported", state.Logs)
+	}
+}
+
+func TestSubWorkflow_folderStepIsTimedAcrossItsSubSteps(t *testing.T) {
+	server := newRecordingServer(t)
+
+	state := runWholeCollection(t, server,
+		recordedRequest("a"),
+		folder("outer", recordedRequest("b")),
+	)
+
+	if _, ok := state.Elapsed(time.Now()); !ok || state.FinishedAt.IsZero() {
+		t.Fatalf("run timing = %v..%v, want a finished run", state.StartedAt, state.FinishedAt)
+	}
+	for _, ss := range state.Steps {
+		if ss.StartedAt.IsZero() || ss.FinishedAt.Before(ss.StartedAt) {
+			t.Errorf("step %q timing = %v..%v, want it started and finished", ss.ID, ss.StartedAt, ss.FinishedAt)
+		}
+	}
+	outer, inner := state.StepIndex["outer"], state.StepIndex["outer/b"]
+	if outer.StartedAt.After(inner.StartedAt) || outer.FinishedAt.Before(inner.FinishedAt) {
+		t.Errorf("folder step %v..%v does not span its sub-step %v..%v", outer.StartedAt, outer.FinishedAt, inner.StartedAt, inner.FinishedAt)
 	}
 }

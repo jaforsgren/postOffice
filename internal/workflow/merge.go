@@ -3,6 +3,7 @@ package workflow
 import (
 	"slices"
 	"strings"
+	"time"
 )
 
 // stepRun identifies one step's run: a step ID in one run iteration.
@@ -50,10 +51,7 @@ func MergePartialRun(previous, partial ExecutionState) ExecutionState {
 	}
 	rollUpFolderSteps(merged.Steps, ran)
 
-	merged.StepIndex = make(map[string]*StepState, len(merged.Steps))
-	for _, ss := range merged.Steps {
-		merged.StepIndex[ss.ID] = ss
-	}
+	merged.IndexSteps()
 	merged.Logs = mergeLogs(previous.Logs, partial.Logs, merged.Steps, partial.Steps)
 	return merged
 }
@@ -83,6 +81,8 @@ func rollUpFolderSteps(steps []*StepState, ran map[stepRun]*StepState) {
 		if status := subStepsStatus(steps, steps[i]); status != "" {
 			rolledUp := *steps[i]
 			rolledUp.Status = status
+			// The folder step itself did not run, so the previous run's timing would mislead.
+			rolledUp.StartedAt, rolledUp.FinishedAt = time.Time{}, time.Time{}
 			steps[i] = &rolledUp
 		}
 	}

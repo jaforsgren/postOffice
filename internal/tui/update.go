@@ -131,7 +131,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.workflowChan = nil
 			m.partialRunBase = nil
-			m = m.forgetWorkflowRun()
+			m = m.forgetWorkflowRun().recordWorkflowRun()
 			if m.collection != nil {
 				for _, ss := range msg.State.Steps {
 					if !ss.IsFolder() && ss.LastResponse != nil {
@@ -147,6 +147,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, waitForWorkflow(m.workflowChan)
+
+	case workflowElapsedTickMsg:
+		return m.handleWorkflowElapsedTick(msg)
 
 	case GRPCReflectMsg:
 		if msg.Err != nil {
@@ -2461,7 +2464,7 @@ func (m Model) activateWorkflow(wf *workflow.Workflow) Model {
 	if m.isViewingMergedCollection() {
 		m.combinedWorkflowCollection = m.activeWorkflowCollection
 	}
-	return m
+	return m.showLatestWorkflowRun()
 }
 
 // openWorkflowDetail sets the active workflow and enters the detail view.
@@ -2721,6 +2724,7 @@ func (m Model) runWorkflowScript(wf *workflow.Workflow, script, runLabel string)
 	}
 
 	m = m.activateWorkflow(wf)
+	m.workflowRunKey = m.workflowRunKeyOf(wf, m.activeWorkflowCollection)
 	m.partialRunBase = nil
 	m.workflowState = workflow.ExecutionState{
 		WorkflowID:   wf.ID,
@@ -2768,6 +2772,7 @@ func (m Model) launchRun(environment *postman.Environment, run workflowRun) (Mod
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelWorkflowRun = cancel
 	m.abortWorkflowStep = runner.Abort
+	m.workflowRunSeq++
 
 	return m, tea.Batch(
 		func() tea.Msg {
@@ -2775,6 +2780,7 @@ func (m Model) launchRun(environment *postman.Environment, run workflowRun) (Mod
 			return nil
 		},
 		waitForWorkflow(progressChan),
+		tickWorkflowElapsed(m.workflowRunSeq),
 	)
 }
 

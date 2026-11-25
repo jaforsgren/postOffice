@@ -175,6 +175,7 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow, opts ExecutionOptions, o
 		Status:       StatusRunning,
 		StepIndex:    make(map[string]*StepState),
 		Iterations:   opts.IterationCount(),
+		StartedAt:    time.Now(),
 	}
 	if err := opts.Validate(); err != nil {
 		return r.finalize(StatusFailed, err.Error())
@@ -344,10 +345,14 @@ func (r *Runner) finalize(status, errMsg string) ExecutionState {
 	r.status = status
 	r.state.Status = status
 	r.state.Error = errMsg
+	r.state.FinishedAt = time.Now()
 
 	for _, ss := range r.state.Steps {
 		if ss.Status == StatusPending || ss.Status == StatusRunning {
 			ss.Status = StatusSkipped
+		}
+		if !ss.StartedAt.IsZero() && ss.FinishedAt.IsZero() {
+			ss.FinishedAt = r.state.FinishedAt
 		}
 	}
 	r.summarizeSteps()
@@ -405,6 +410,8 @@ func (r *Runner) notifyProgress() {
 		Iteration:    r.state.Iteration,
 		Iterations:   r.state.Iterations,
 		Summary:      r.state.Summary,
+		StartedAt:    r.state.StartedAt,
+		FinishedAt:   r.state.FinishedAt,
 	}
 	for _, ss := range r.state.Steps {
 		cp := *ss
@@ -660,8 +667,8 @@ func (r *Runner) runStep(stepID string, opts RunOptions) (*StepRunResult, error)
 		repeat = 1
 	}
 	ss.Total = repeat
-	ss.Status = StatusRunning
-	r.notifyProgress()
+	r.startStep(ss)
+	defer r.finishStep(ss)
 
 	if wfStep != nil && wfStep.PreScript != "" {
 		if err := r.runStepScript(wfStep.PreScript, stepID, nil); err != nil {
@@ -762,8 +769,8 @@ func (r *Runner) runFolderStep(step Step, entry string) (*StepRunResult, error) 
 		return nil, fmt.Errorf("cannot resolve folder %q: %w", step.Folder, err)
 	}
 
-	ss.Status = StatusRunning
-	r.notifyProgress()
+	r.startStep(ss)
+	defer r.finishStep(ss)
 
 	if err := r.runFolderStepScript(step.PreScript, ss); err != nil {
 		r.failStep(ss)
@@ -935,6 +942,20 @@ func (r *Runner) abortableContext(runID string, parent context.Context) (context
 		r.abortMu.Unlock()
 		cancel()
 	}
+}
+
+// startStep marks ss running from now; a step the script runs again restarts its clock.
+func (r *Runner) startStep(ss *StepState) {
+	ss.Status = StatusRunning
+	ss.StartedAt = time.Now()
+	ss.FinishedAt = time.Time{}
+	r.notifyProgress()
+}
+
+// finishStep stops ss's clock, whichever way the step ended.
+func (r *Runner) finishStep(ss *StepState) {
+	ss.FinishedAt = time.Now()
+	r.notifyProgress()
 }
 
 // markAborted stops an aborted step. The run carries on but fails at the end,

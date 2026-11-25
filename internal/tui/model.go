@@ -236,6 +236,12 @@ type Model struct {
 	// partialRunBase is the previous run a partial run in progress merges into; nil otherwise.
 	partialRunBase *workflow.ExecutionState
 	workflowChan   <-chan WorkflowMsg
+	// workflowRunKey names the run in progress (or last started) in workflowRuns;
+	// workflowRunSeq numbers runs, so ticks of an earlier run are dropped.
+	workflowRunKey workflow.RunKey
+	workflowRunSeq int
+	// workflowRuns keeps each workflow's latest finished run (see WithWorkflowRuns).
+	workflowRuns *workflow.RunStore
 	// cancelWorkflowRun stops the workflow run in progress; nil when none is.
 	cancelWorkflowRun context.CancelFunc
 	// abortWorkflowStep aborts one running step of the run in progress (Runner.Abort); nil when none is.
@@ -412,6 +418,7 @@ func NewModel(parser *postman.Parser, requestHistory *history.Store) Model {
 		requestExecutions:       make(map[string]*RequestExecution),
 		inFlightRequests:        make(map[string]context.CancelFunc),
 		favorites:               make(map[string]bool),
+		workflowRuns:            workflow.NewRunStore(""),
 	}
 	if ids, err := postman.LoadFavorites(); err == nil {
 		for _, id := range ids {

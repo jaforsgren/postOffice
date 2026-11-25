@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	internalhttp "postOffice/internal/http"
 	"postOffice/internal/script"
@@ -144,6 +145,26 @@ type StepState struct {
 	// LastResult holds the last attempt's tests, script errors and console
 	// output; nil until the step's request has run.
 	LastResult *script.TestResult `json:"-"`
+	// StartedAt and FinishedAt bound the step's run, its scripts, repeats and
+	// sub-workflow included; zero until it starts and while it runs.
+	StartedAt  time.Time
+	FinishedAt time.Time
+}
+
+// Elapsed is how long the step ran, up to now while it still runs. ok is
+// false when it never started.
+func (s StepState) Elapsed(now time.Time) (elapsed time.Duration, ok bool) {
+	return elapsedBetween(s.StartedAt, s.FinishedAt, now)
+}
+
+func elapsedBetween(started, finished, now time.Time) (time.Duration, bool) {
+	if started.IsZero() {
+		return 0, false
+	}
+	if finished.IsZero() {
+		return now.Sub(started), true
+	}
+	return finished.Sub(started), true
 }
 
 // IsFolder reports whether the step ran a folder's workflow rather than a request.
@@ -179,15 +200,34 @@ type ExecutionState struct {
 	WorkflowID   string
 	WorkflowName string
 	Status       string
-	Steps        []*StepState          // ordered for display, every iteration's steps in turn
-	StepIndex    map[string]*StepState // keyed by step ID; the latest iteration's state
-	Logs         []LogEntry
-	Error        string
+	Steps        []*StepState // ordered for display, every iteration's steps in turn
+	// StepIndex is keyed by step ID and holds the latest iteration's state;
+	// it is derived from Steps (see IndexSteps), so it is not persisted.
+	StepIndex map[string]*StepState `json:"-"`
+	Logs      []LogEntry
+	Error     string
 	// Iteration is the 1-based iteration in progress (or last run); Iterations the planned count.
 	Iteration  int
 	Iterations int
 	// Summary is filled in when the run finishes.
 	Summary RunSummary
+	// StartedAt and FinishedAt bound the whole run; FinishedAt is zero while it runs.
+	StartedAt  time.Time
+	FinishedAt time.Time
+}
+
+// Elapsed is how long the run took, up to now while it still runs. ok is
+// false when it never started.
+func (s ExecutionState) Elapsed(now time.Time) (elapsed time.Duration, ok bool) {
+	return elapsedBetween(s.StartedAt, s.FinishedAt, now)
+}
+
+// IndexSteps rebuilds StepIndex from Steps; later iterations replace earlier ones.
+func (s *ExecutionState) IndexSteps() {
+	s.StepIndex = make(map[string]*StepState, len(s.Steps))
+	for _, ss := range s.Steps {
+		s.StepIndex[ss.ID] = ss
+	}
 }
 
 // IsMultiIteration reports whether steps need their iteration shown to be told apart.

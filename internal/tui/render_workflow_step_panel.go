@@ -92,7 +92,7 @@ func (m Model) buildStepPanelLines(width int) []string {
 	}
 
 	lines := []string{
-		styledRunStyler.title(ss.ID) + " " + styledRunStyler.status(ss.Status, "["+ss.Status+"]"),
+		styledRunStyler.title(ss.ID) + " " + styledRunStyler.status(ss.Status, "["+ss.Status+"]") + subtleStyle.Render(stepElapsedLabel(ss)),
 		subtleStyle.Render(ss.Target()),
 	}
 	if ss.Total > 1 {
@@ -183,16 +183,17 @@ func (m Model) runStepState(stepID string) *workflow.StepState {
 	if m.activeWorkflow == nil {
 		return nil
 	}
-	return m.workflowRunStepState(m.activeWorkflow.ID, stepID)
+	return m.workflowRunStepState(m.activeWorkflow, stepID)
 }
 
-// workflowRunStepState is the state of stepID in workflowID's latest run, or
-// nil when that workflow has not run.
-func (m Model) workflowRunStepState(workflowID, stepID string) *workflow.StepState {
-	if m.workflowState.WorkflowID != workflowID || m.workflowState.StepIndex == nil {
+// workflowRunStepState is the state of stepID in wf's latest run, or nil when
+// wf has not run.
+func (m Model) workflowRunStepState(wf *workflow.Workflow, stepID string) *workflow.StepState {
+	run, ok := m.latestWorkflowRun(wf)
+	if !ok || run.StepIndex == nil {
 		return nil
 	}
-	return m.workflowState.StepIndex[stepID]
+	return run.StepIndex[stepID]
 }
 
 func wrapLines(lines []string, width int) []string {
