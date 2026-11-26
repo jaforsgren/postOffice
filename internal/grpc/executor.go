@@ -236,17 +236,13 @@ func loadProtoset(path string) ([]*descriptorpb.FileDescriptorProto, error) {
 // getFileDescriptorsForSymbol fetches all FileDescriptorProtos that define the
 // given symbol (and their transitive dependencies) via server reflection.
 func getFileDescriptorsForSymbol(stream reflectionStream, symbol string) ([]*descriptorpb.FileDescriptorProto, error) {
-	if err := stream.Send(&rpb.ServerReflectionRequest{
+	resp, err := roundTrip(stream, &rpb.ServerReflectionRequest{
 		MessageRequest: &rpb.ServerReflectionRequest_FileContainingSymbol{
 			FileContainingSymbol: symbol,
 		},
-	}); err != nil {
-		return nil, fmt.Errorf("failed to send file_containing_symbol for %q: %w", symbol, err)
-	}
-
-	resp, err := stream.Recv()
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to receive descriptor for %q: %w", symbol, err)
+		return nil, fmt.Errorf("file_containing_symbol for %q failed: %w", symbol, err)
 	}
 
 	fdResp, ok := resp.MessageResponse.(*rpb.ServerReflectionResponse_FileDescriptorResponse)

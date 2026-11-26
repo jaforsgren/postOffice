@@ -3,7 +3,9 @@ package grpc
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
+	"io"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -99,6 +101,22 @@ func (c *Client) exchangeOn(ctx context.Context, method string, exchange func(re
 	return exchange(stream)
 }
 
+// roundTrip sends one reflection request and receives its response.
+// Gotcha: once the server has ended the stream (a v1 request answered
+// Unimplemented by a v1alpha-only server), Send returns a bare io.EOF and the
+// real status only comes from Recv. Returning the EOF would skip the v1alpha
+// fallback whenever the server's answer beats the request out.
+func roundTrip(stream reflectionStream, request *rpb.ServerReflectionRequest) (*rpb.ServerReflectionResponse, error) {
+	if err := stream.Send(request); err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("send: %w", err)
+	}
+	response, err := stream.Recv()
+	if err != nil {
+		return nil, fmt.Errorf("receive: %w", err)
+	}
+	return response, nil
+}
+
 // ListServices uses server reflection to enumerate all services and their methods,
 // and generates a JSON message template for each method's input type.
 func (c *Client) ListServices(ctx context.Context) ([]ServiceInfo, error) {
@@ -123,15 +141,11 @@ func (c *Client) ListServices(ctx context.Context) ([]ServiceInfo, error) {
 }
 
 func listServiceNames(stream reflectionStream) ([]string, error) {
-	if err := stream.Send(&rpb.ServerReflectionRequest{
+	resp, err := roundTrip(stream, &rpb.ServerReflectionRequest{
 		MessageRequest: &rpb.ServerReflectionRequest_ListServices{ListServices: ""},
-	}); err != nil {
-		return nil, fmt.Errorf("failed to send list_services: %w", err)
-	}
-
-	resp, err := stream.Recv()
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to receive list_services response: %w", err)
+		return nil, fmt.Errorf("list_services failed: %w", err)
 	}
 
 	listResp, ok := resp.MessageResponse.(*rpb.ServerReflectionResponse_ListServicesResponse)
@@ -154,17 +168,13 @@ func listServiceNames(stream reflectionStream) ([]string, error) {
 }
 
 func describeService(stream reflectionStream, serviceName string) (*ServiceInfo, error) {
-	if err := stream.Send(&rpb.ServerReflectionRequest{
+	resp, err := roundTrip(stream, &rpb.ServerReflectionRequest{
 		MessageRequest: &rpb.ServerReflectionRequest_FileContainingSymbol{
 			FileContainingSymbol: serviceName,
 		},
-	}); err != nil {
-		return nil, fmt.Errorf("failed to send file_containing_symbol for %s: %w", serviceName, err)
-	}
-
-	resp, err := stream.Recv()
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to receive descriptor for %s: %w", serviceName, err)
+		return nil, fmt.Errorf("file_containing_symbol for %s failed: %w", serviceName, err)
 	}
 
 	fdResp, ok := resp.MessageResponse.(*rpb.ServerReflectionResponse_FileDescriptorResponse)
